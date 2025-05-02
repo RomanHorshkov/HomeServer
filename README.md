@@ -1,6 +1,6 @@
 # Concurrent TCP + HTTP/1.1 Server (C11 / POSIX)
 
-A compact yet fully‑featured teaching project that demonstrates how to write a modular **preforking TCP + HTTP/1.1 server** in pure C11/POSIX, with:
+A compact yet fully‑featured teaching project that demonstrates how to write a modular **preforking TCP + HTTP/1.1 server** in pure C11/POSIX, now extended to serve **dynamic JSON** and **rich client‑side pages**, with:
 
 * non‑blocking *listener* sockets
 * blocking *client* sockets protected by **SO\_RCVTIMEO** (short‑then‑long)
@@ -11,9 +11,12 @@ A compact yet fully‑featured teaching project that demonstrates how to write a
 * full request‑header capture (e.g. *User‑Agent*, *Accept*, …)
 * proper **Connection: keep‑alive/close** negotiation and persistent sockets (120 s idle timeout)
 * serving real **static pages** (`index.html`, `style.css`) from `www/`
+* a **JSON API** endpoint (`/api/whoami`) providing request metadata
+* a **dynamic HTML+JS** page (`whoami.html`) that fetches and animates server data
+* an optional **rich animation** demo (`dynamic.html`) with CSS/JS effects
 * log‑controlled terminal shutdown (`q`)
 
-Everything builds with **`gcc -std=c11 -Wall -Wextra -Werror -pedantic`** and only the POSIX libc + the bundled `libllhttp.a`—no threads, no external runtime deps.
+Everything builds with **`gcc -std=c11 -Wall -Wextra -Werror -pedantic`** and only the POSIX libc + the bundled **`libllhttp.a`** and **`libcjson.a`**—no threads, no external runtime deps.
 
 ---
 
@@ -25,7 +28,7 @@ Everything builds with **`gcc -std=c11 -Wall -Wextra -Werror -pedantic`** and on
 4. [Sockets & blocking model](#sockets--blocking-model)
 5. [Fork lifecycle](#fork-lifecycle)
 6. [Timeouts & limits](#timeouts--limits)
-7. [HTTP capabilities](#http-capabilities)
+7. [HTTP capabilities & dynamic features](#http-capabilities--dynamic-features)
 8. [Build details](#build-details)
 9. [Logging semantics](#logging-semantics)
 10. [Testing matrix](#testing-matrix)
@@ -52,7 +55,7 @@ $ ./build/bin/server
 http://localhost:3490/
 ```
 
-You should see a styled **index.html** page with **style.css** loaded on the **same TCP socket** thanks to HTTP keep‑alive.
+You should see a styled **index.html** page with **style.css**, plus links to **Who Am I** (`whoami.html`) and **Dynamic Demo** (`dynamic.html`).
 
 ---
 
@@ -63,47 +66,51 @@ You should see a styled **index.html** page with **style.css** loaded on the **s
 ├── Makefile
 ├── README.md             ← this file
 ├── browser/
-│   ├── inc/              ← high‑level HTTP API
-│   └── src/              ← router + http_manager (uses llhttp)
-├── inc/                  ← core server headers
+│   ├── inc/              ← high‑level HTTP API (router.h, handlers.h)
+│   └── src/              ← router.c, handlers.c, http_manager.c
+├── inc/                  ← core server headers (listener.h, server_settings.h…)
 ├── libraries/
-│   └── llhttp/           ← **libllhttp.a** + public header
-├── src/                  ← core TCP / fork() logic
-└── www/                  ← static assets
+│   ├── llhttp/           ← **libllhttp.a** + llhttp.h
+│   └── cjson/            ← **libcjson.a** + cJSON.h
+├── src/                  ← core TCP/fork logic (server.c, listener.c…)
+└── www/                  ← static assets + client‐side pages:
+    ├── index.html
+    ├── style.css
+    ├── whoami.html       ← static page that fetches `/api/whoami`
+    └── dynamic.html      ← CSS/JS animation demo
 ```
 
 ---
 
 ## Top‑level data‑flow
 
-```
-Parent process (main loop)
+```text
+Parent (main)
 │
-├── accept() client socket (non‑blocking listeners)
-├── fork()
-│   ├── Child process
-│   │   ├── Close listeners
-│   │   ├── clients_handle_client(fd)
-│   │   │   ├── recv() HTTP request (may loop for keep‑alive)
-│   │   │   ├── llhttp_parse() → HttpRequest
-│   │   │   ├── router → HttpResponse
-│   │   │   ├── build HTTP response (Connection: keep‑alive/close)
-│   │   │   └── send() response
-│   │   └── Close fd and _exit(0) when idle >|120 s|
-│   └── Parent process
-│       ├── track PID + fd
-│       └── continue
-└── reap zombie children (waitpid)
+├─ accept() new client FD (non‑blocking listener)
+├─ fork()
+│  ├─ Child:
+│  │   ├─ close other listeners
+│  │   ├─ clients_handle_client(fd):
+│  │   │   ├─ recv() HTTP request(s)
+│  │   │   ├─ llhttp_parse() → HttpRequest struct
+│  │   │   ├─ router_handle_request() → HttpResponse
+│  │   │   │       static pages OR JSON API handler
+│  │   │   ├─ build HTTP response (Connection negotiation)
+│  │   │   └─ send() response
+│  │   └─ exit after idle/timeouts
+│  └─ Parent: track PID, reap zombies, continue
+└─ waitpid() reaper
 ```
 
 ---
 
 ## Sockets & blocking model
 
-| Layer                | Blocking?                                                                   | Key options & behaviour                                                                |
-| -------------------- | --------------------------------------------------------------------------- | -------------------------------------------------------------------------------------- |
-| **Listeners**        | **NON‑blocking** (`O_NONBLOCK`)                                             | `SO_REUSEADDR`, `SO_LINGER{1,0}`, dual‑stack (IPv4 + IPv6)                             |
-| **Accepted clients** | *Blocking* with **SO\_RCVTIMEO**: 30 s pre‑handshake ⇒ 120 s post‑handshake | Persistent; same socket reused for multiple requests until idle or `Connection: close` |
+| Layer                | Blocking?                                                                  | Behavior                                                      |
+| -------------------- | -------------------------------------------------------------------------- | ------------------------------------------------------------- |
+| **Listener sockets** | **NON‑blocking** (`O_NONBLOCK`)                                            | `SO_REUSEADDR`, dual‑stack (IPv4 + IPv6)                      |
+| **Client sockets**   | *Blocking* with **SO\_RCVTIMEO**: 30 s pre‑handshake, 120 s post‑handshake | HTTP/1.1 keep‑alive, closes on `Connection: close` or timeout |
 
 ---
 
@@ -112,85 +119,108 @@ Parent process (main loop)
 1. `accept()` new connection
 2. `fork()`
 
-   * **Child**: handles client end‑to‑end, loops for keep‑alive, exits when `should_close` or timeout.
-   * **Parent**: tracks child PID, returns to accept‑loop.
-3. Parent reaps zombies via non‑blocking `waitpid()`.
+   * **Child**: single‑responsibility handler loop → exit on close/timeout
+   * **Parent**: manages listener, limits, and reaps children
+3. `waitpid()` or signal handler to clean up zombies
 
 ---
 
 ## Timeouts & limits
 
-(defined in `inc/server_settings.h`)
+(see `inc/server_settings.h`)
 
-| Symbol                    | Meaning                             | Default   |
-| ------------------------- | ----------------------------------- | --------- |
-| `MAX_LISTENERS`           | Max listening sockets (IPv4 + IPv6) | **2**     |
-| `MAX_CLIENTS`             | Max simultaneous children           | **10**    |
-| `MAX_PENDING_CONNECTIONS` | `listen()` backlog                  | **10**    |
-| `CLIENT_MAX_TIMEOUT_S`    | Pre‑handshake idle timeout          | **30 s**  |
-| `CLIENT_MAX_TIMEOUT_S_L`  | Post‑handshake keep‑alive timeout   | **120 s** |
-| `SERVER_SLEEP_TIME_*`     | Parent loop sleep                   | **50 ms** |
+| Symbol                    | Meaning                           | Default   |
+| ------------------------- | --------------------------------- | --------- |
+| `MAX_LISTENERS`           | Listening sockets (IPv4 + IPv6)   | **2**     |
+| `MAX_CLIENTS`             | Simultaneous child processes      | **10**    |
+| `MAX_PENDING_CONNECTIONS` | `listen()` backlog                | **10**    |
+| `CLIENT_MAX_TIMEOUT_S`    | Pre‑handshake idle timeout        | **30 s**  |
+| `CLIENT_MAX_TIMEOUT_S_L`  | Post‑handshake keep‑alive timeout | **120 s** |
+| `SERVER_LOOP_SLEEP_USEC`  | Ephemeral parent loop pause       | **50 ms** |
 
 ---
 
-## HTTP capabilities
+## HTTP capabilities & dynamic features
 
-* **HTTP/1.1 compliant parsing** via **llhttp** (Node.js engine)
-* Full header capture (case‑insensitive) → logged nicely
-* Handles **`Connection: keep‑alive`** automatically (default)
-* Respects **`Connection: close`** request header
-* Supports only **`GET`** for now
-* Simple router:
+* **HTTP/1.1 parsing** via **llhttp** (Node.js engine port) in `browser/src/http_manager.c`
 
-  * `/` or `/home` → `index.html`
-  * `/style.css`      → `style.css`
-  * Anything else     → `404 Not Found`
-* Static files served from **`www/`**
+  * Callbacks in `on_url`, `on_method`, `on_header_field`, `on_header_value` fill the `HttpRequest` struct
+  * Connection policy determined by `determine_connection_policy()` (keep-alive vs close)
+* **Request orchestration** in `browser/src/browser.c`:
+
+  * `browser_manage_client_req()` calls `http_parse_request()`, then `router_handle_request()`, then `http_build_response()`
+* **Building responses** in `browser/src/http_manager.c`:
+
+  * `http_build_response()` uses `snprintf()` to assemble status line, headers, and body into the send buffer
+* **Static file serving** in `browser/src/static_page.c`:
+
+  * `static_page_serve_file()` opens files under `www/`, `fseek()`/`ftell()` to determine size, `malloc()` + `fread()` to load content
+  * **Note:** the allocated buffer is passed to `HttpResponse.body` and later freed by `http_build_response()` (or should be freed by the caller after sending)
+* **JSON API** (`/api/whoami`) implemented in `browser/src/handlers.c`:
+
+  * Uses **cJSON** (`libraries/cjson/libcjson.a`) to build a JSON object with:
+
+    * `server_time` (ISO 8601 with ms)
+    * `method`, `path`
+    * all request headers in an object
+  * Serializes with `cJSON_PrintUnformatted()`; the returned `char*` must be freed when no longer needed
+
+**Router paths** (defined in `browser/src/router.c`):
+
+| Path          | Handler                                    |
+| ------------- | ------------------------------------------ |
+| `/`, `/home`  | `index.html` (static\_page\_serve\_file)   |
+| `/style.css`  | `style.css` (static\_page\_serve\_file)    |
+| `/whoami`     | `whoami.html` (static\_page\_serve\_file)  |
+| `/dynamic`    | `dynamic.html` (static\_page\_serve\_file) |
+| `/api/whoami` | `whoami_json_handler()` (JSON API)         |
+| *otherwise*   | `404 Not Found`                            |
 
 ---
 
 ## Build details
 
-* **Makefile** auto‑detects `src/*.c` & `browser/src/*.c`.
-* Links against bundled **`libraries/llhttp/libllhttp.a`**.
-* Build targets: `make`, `make debug`, `make release`, `make run`, `make clean`.
-* All warnings are treated as errors (`-Werror`) — clean builds only.
+* **Makefile** auto‑detects C sources in `src/` and `browser/src/`.
+* Links static **`-lllhttp`** and **`-lcjson`** from `libraries/llhttp/` and `libraries/cjson/`.
+* Targets: `make`, `make debug`, `make release`, `make run`, `make clean`.
+* All warnings are errors (`-Werror`) — ensure clean builds.
 
 ---
 
 ## Logging semantics
 
-* Logfile: **`server.log`** (truncated each run).
-* Format: `[YYYY-MM-DD hh:mm:ss] [LEVEL] message`.
-* Levels: `INFO`, `ERROR`.
-* Flushes on every write for tail‑friendly debugging.
+* Log file: **`server.log`** (overwritten each run)
+* Format: `[YYYY-MM-DD hh:mm:ss] [LEVEL] message`
+* Levels: `INFO`, `ERROR`
+* Flush on every write for real‑time tailing
 
 ---
 
 ## Testing matrix
 
-| Scenario                                              | Expected result                                                   |
-| ----------------------------------------------------- | ----------------------------------------------------------------- |
-| Browser request `/` + `/style.css` on same TCP socket | Served correctly; single child process; persistent connection     |
-| Browser sends `Connection: close`                     | Child returns response with `Connection: close` and closes socket |
-| Connect 11× clients in parallel                       | 11th refused (max clients = 10)                                   |
-| Abrupt client disconnect                              | Child exits cleanly, parent reaps                                 |
-| Client idle > 30 s before first request               | Child exits                                                       |
-| Client idle > 120 s after last request                | Child exits                                                       |
-| Press `q` in server                                   | Parent closes listeners, waits for children, exits                |
+| Scenario                                      | Expected result                                                  |
+| --------------------------------------------- | ---------------------------------------------------------------- |
+| Browser `/` + `/style.css` on same TCP socket | Served on same connection; persistent if no `Connection: close`  |
+| Static `/whoami.html` load + JS fetch         | HTML delivered; JS fetches `/api/whoami`; clock animates locally |
+| JSON `/api/whoami`                            | Correct JSON payload; proper headers; no side‑effects            |
+| CSS/JS animations on `/dynamic.html`          | Background gradient, typewriter, slideshow, pulse animations run |
+| Client sends `Connection: close`              | Response with `Connection: close`; child closes socket           |
+| >10 parallel clients                          | 11th connection refused (max clients = 10)                       |
+| Idle >30 s before first req                   | Child exits                                                      |
+| Idle >120 s after last req                    | Child exits                                                      |
+| Press `q` in server                           | Parent stops accepting, reaps children, exits                    |
 
 ---
 
 ## Future work
 
-* Chunked‐encoding + streamed responses
-* MIME‑type detection for arbitrary assets
-* Simple templating + dynamic `/info` JSON endpoint
-* Optional TLS (via `openssl` wrappers)
-* Switch to thread‑pool + `epoll` for high concurrency
-* CLI flags for port, backlog, www dir
-* **HTTP/1.1 pipelining** support
-* Explore HTTP/2 upgrade via `nghttp2`
+* Chunked‑encoding & streamed responses
+* MIME‑type auto‑detection
+* Extended router: POST, PUT, DELETE, pipelining
+* Optional TLS via OpenSSL wrappers
+* Thread‑pool + `epoll` for high concurrency
+* CLI flags (port, backlog, www dir)
+* Additional JSON endpoints for metrics, config
 
-Pull requests and ideas welcome!
-
+Pull requests & ideas welcome!
+Happy coding!

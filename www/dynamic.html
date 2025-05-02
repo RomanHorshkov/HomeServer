@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Party Page</title>
+  <style>
+    /* Rainbow background */
+    @keyframes rainbow {
+      0%   { background-position: 0%   50%; }
+      50%  { background-position: 100% 50%; }
+      100% { background-position: 0%   50%; }
+    }
+    body {
+      background: linear-gradient(270deg,
+        #ff0000, #ff7f00, #ffff00, #00ff00,
+        #0000ff, #4b0082, #8f00ff);
+      background-size: 1400% 1400%;
+      animation: rainbow 10s ease infinite;
+      color: white;
+      text-align: center;
+      padding: 2rem;
+      font-family: sans-serif;
+    }
+
+    /* Animations */
+    @keyframes pulse {
+      0%   { transform: scale(1);   opacity: 1; }
+      50%  { transform: scale(1.2); opacity: 0.7;}
+      100% { transform: scale(1);   opacity: 1; }
+    }
+    .pulse { animation: pulse 2s ease-in-out infinite; }
+
+    @keyframes fadeIn {
+      from { opacity: 0; }
+      to   { opacity: 1; }
+    }
+    .fade-in { animation: fadeIn 2s forwards; }
+
+    #typewriter {
+      margin-top: 2rem;
+      font-size: 1.5rem;
+      white-space: pre-wrap;  /* allow newlines */
+    }
+
+    #slideshow {
+      width: 200px;
+      margin-top: 2rem;
+      border: 5px solid white;
+      border-radius: 10px;
+      animation: slideDown 1s ease-out forwards;
+    }
+    @keyframes slideDown {
+      from { transform: translateY(-50px); opacity: 0; }
+      to   { transform: translateY(0);     opacity: 1; }
+    }
+  </style>
+</head>
+<body>
+  <h1 class="pulse">Welcome to the Party!</h1>
+  <div id="typewriter" class="fade-in"></div>
+  <img id="slideshow" src="img1.jpg" alt="slide">
+
+  <script>
+    // Typewriter effect
+    function typeWriter(el, text, delay=100) {
+      el.textContent = '';
+      let i = 0;
+      const timer = setInterval(() => {
+        el.textContent += text.charAt(i);
+        i++;
+        if (i >= text.length) clearInterval(timer);
+      }, delay);
+    }
+
+    // Start after page loads
+    window.onload = () => {
+      const tw = document.getElementById('typewriter');
+      typeWriter(tw,
+        "This page is super-colored!\n" +
+        "Text types itself,\n" +
+        "Images slide down,\n" +
+        "Everything pulses!",
+        75
+      );
+
+      // Simple slideshow
+      const images = ['img1.jpg','img2.jpg','img3.jpg'];
+      let idx = 0;
+      const slide = document.getElementById('slideshow');
+      setInterval(() => {
+        idx = (idx + 1) % images.length;
+        slide.src = images[idx];
+      }, 3000);
+    };
+  </script>
+</body>
+</html>

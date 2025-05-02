@@ -1,9 +1,10 @@
 # ------ Build configuration ------
 CC              := gcc
 CFLAGS          := -std=c11 -Wall -Werror -Wextra -pedantic -g
-LDLIBS 			+= -Llibraries/llhttp -lllhttp
+LDLIBS 			+= -Llibraries/llhttp -lllhttp\
+                   -Llibraries/cjson -lcjson
 
-INCDIRS 		:= inc browser/inc libraries/llhttp
+INCDIRS 		:= inc browser/inc libraries/llhttp libraries/cjson
 SRCDIRS         := src browser/src
 BUILDDIR        := build
 OBJDIR          := $(BUILDDIR)/obj

@@ -76,19 +76,14 @@ int http_parse_request(const char* buffer, const size_t buffer_len, HttpRequest*
     /* Determine if the client requested Connection: close */
     determine_connection_policy(req, client_connection_policy);
 
-    if (req->should_close)
-    {
-        /* code */
-    }
-    
-
     if (err != HPE_OK)
     {
         log_error("llhttp parse error", llhttp_errno_name(err));
         return -1;
     }
     else
-    {
+    {   
+        /* log all the html headers */
         log_info("METHOD: %s\n", req->method);
         log_info("PATH: %s\n", req->path);
         for (int i = 0; i < req->header_count; ++i)
@@ -127,11 +122,11 @@ int http_build_response(const HttpResponse* resp, int* client_connection_policy,
             conn_hdr,
             (resp->body != NULL) ? resp->body : "");
             
-            if (written > 0 && (size_t)written < max_len)
-            {
-                res = written;
-            }
-            else
+        if (written > 0 && (size_t)written < max_len)
+        {
+            res = written;
+        }
+        else
         {
             log_error("http_manager: build response: snprintf failed or buffer too small", strerror(errno));
         }
