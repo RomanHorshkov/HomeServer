@@ -1,4 +1,5 @@
-#define _POSIX_C_SOURCE 200809L
+#define _GNU_SOURCE
+
 #include "http_manager.h"
 #include "logger.h"
 #include "llhttp.h"
@@ -22,6 +23,7 @@ static int on_url(llhttp_t* parser, const char* at, size_t length);
 static int on_header_field(llhttp_t* parser, const char* at, size_t length);
 static int on_header_value(llhttp_t* parser, const char* at, size_t length);
 static int on_method(llhttp_t* parser, const char* at, size_t length);
+static void determine_connection_policy(HttpRequest* req, int* client_connection_policy);
 
 /****************************************************************************
  * PUBLIC FUNCTIONS DEFINITIONS
@@ -32,7 +34,7 @@ static int on_method(llhttp_t* parser, const char* at, size_t length);
  * Parses a basic HTTP request.
  * Fills HttpRequest with method and path if successful.
  */
-int http_parse_request(const char* buffer, const size_t buffer_len, HttpRequest* req)
+int http_parse_request(const char* buffer, const size_t buffer_len, HttpRequest* req, int* client_connection_policy)
 {
     llhttp_t parser;
     llhttp_settings_t settings;
@@ -71,6 +73,15 @@ int http_parse_request(const char* buffer, const size_t buffer_len, HttpRequest*
         ctx.req->header_values[i][value_len] = '\0';
     }
 
+    /* Determine if the client requested Connection: close */
+    determine_connection_policy(req, client_connection_policy);
+
+    if (req->should_close)
+    {
+        /* code */
+    }
+    
+
     if (err != HPE_OK)
     {
         log_error("llhttp parse error", llhttp_errno_name(err));
@@ -93,7 +104,7 @@ int http_parse_request(const char* buffer, const size_t buffer_len, HttpRequest*
  * Builds a simple HTTP response in the output buffer.
  * Fills the out_buffer with the complete HTTP response.
  */
-int http_build_response(const HttpResponse* resp, char* out_buffer, size_t max_len)
+int http_build_response(const HttpResponse* resp, int* client_connection_policy, char* out_buffer, size_t max_len)
 {
     /* return value */
     int res = -1;
@@ -101,17 +112,19 @@ int http_build_response(const HttpResponse* resp, char* out_buffer, size_t max_l
     /* check input validity */
     if (resp != NULL && out_buffer != NULL)
     {
+        const char* conn_hdr = (*client_connection_policy == HTTP_CONNECTION_CLOSE ? "close" : "keep-alive");
         int written = snprintf(out_buffer, max_len,
             "HTTP/1.1 %d %s\r\n"
             "Content-Type: %s\r\n"
             "Content-Length: %zu\r\n"
-            "Connection: close\r\n"
+            "Connection: %s\r\n"
             "\r\n"
             "%s",
             resp->status_code,
             resp->status_text,
             resp->content_type,
             resp->body_length,
+            conn_hdr,
             (resp->body != NULL) ? resp->body : "");
             
             if (written > 0 && (size_t)written < max_len)
@@ -145,7 +158,9 @@ static int on_url(llhttp_t* parser, const char* at, size_t length)
     return 0;
 }
 
-// Called when header name is parsed
+/** 
+ * Called when header name is parsed 
+ */
 static int on_header_field(llhttp_t* parser, const char* at, size_t length)
 {
     LlhttpParserContext* ctx = (LlhttpParserContext*) parser->data;
@@ -165,7 +180,9 @@ static int on_header_field(llhttp_t* parser, const char* at, size_t length)
     return 0;
 }
 
-// Called when header value is parsed
+/**
+ * Called when header value is parsed
+ */
 static int on_header_value(llhttp_t* parser, const char* at, size_t length)
 {
     LlhttpParserContext* ctx = (LlhttpParserContext*) parser->data;
@@ -174,10 +191,33 @@ static int on_header_value(llhttp_t* parser, const char* at, size_t length)
     return 0;
 }
 
-// Called when method is detected
+/**
+ * Called when method is detected
+ */
 static int on_method(llhttp_t* parser, const char* at, size_t length)
 {
     LlhttpParserContext* ctx = (LlhttpParserContext*) parser->data;
     snprintf(ctx->req->method, HTTP_MAX_METHOD_LEN, "%.*s", (int)length, at);
     return 0;
+}
+
+/**
+ * Analyze headers in an HttpRequest to determine if the client wants to close the connection.
+ * Sets req->should_close accordingly.
+ */
+static void determine_connection_policy(HttpRequest* req, int* client_connection_policy)
+{
+    req->should_close = 0; // Default for HTTP/1.1 is keep-alive
+    *client_connection_policy = HTTP_CONNECTION_KEEP_ALIVE;
+
+    for (int i = 0; i < req->header_count; ++i)
+    {
+        if (strcasecmp(req->header_names[i], "Connection") == 0 &&
+            strcasestr(req->header_values[i], "close"))
+        {
+            req->should_close = 1;
+            *client_connection_policy = HTTP_CONNECTION_CLOSE;
+            break;
+        }
+    }
 }

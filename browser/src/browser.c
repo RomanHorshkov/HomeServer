@@ -5,7 +5,6 @@
  ****************************************************************************
  */
 
-#include "http_manager.h"
 #include "router.h"
 #include "static_page.h"
 #include "logger.h"
@@ -19,7 +18,7 @@
  ****************************************************************************
  */
 
-int browser_manage_client_req(char* recv_buf, size_t n, char* send_buf)
+size_t browser_manage_client_req(char* recv_buf, size_t n, char* send_buf, int *client_connection_policy)
 {
     /* return value, set to failure */
     int res = -1;
@@ -32,7 +31,7 @@ int browser_manage_client_req(char* recv_buf, size_t n, char* send_buf)
     
     /* suppose http requests are coming from the client */
     /* fill the request structure properly */
-    if (http_parse_request(recv_buf, n, &request) == -1)
+    if (http_parse_request(recv_buf, n, &request, client_connection_policy) == -1)
     {
         log_error("Browser: http parse request gone wrong", strerror(errno));
     }
@@ -47,7 +46,7 @@ int browser_manage_client_req(char* recv_buf, size_t n, char* send_buf)
     /* build the http response */
     else
     {
-        res = http_build_response(&response, send_buf, HTTP_SEND_BUFFER_LEN);
+        res = http_build_response(&response, client_connection_policy, send_buf, HTTP_SEND_BUFFER_LEN);
     }
 
     return res;

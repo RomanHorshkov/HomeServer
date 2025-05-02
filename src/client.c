@@ -25,7 +25,6 @@
 
 
 
-
 /****************************************************************************
  * PRIVATE STRUCTURED VARIABLES
  ****************************************************************************
@@ -136,13 +135,16 @@ void clients_handle_client(int *client_fd)
     /* send buffer */
     char send_buff[HTTP_SEND_BUFFER_LEN];
 
+    /* Client's connection policy over http */
+    int client_connection_policy = -1;
+
     /* recv is BLOCKING here */
     while((n = recv(fd, recv_buff, sizeof(recv_buff), 0)) > 0)
     {
         log_info("Client [pid %d fd %d]: received, parsing ->", getpid(), fd);
 
         /* serve the request if any and respond */
-        int send_len = browser_manage_client_req(recv_buff, (size_t)n, send_buff);
+        size_t send_len = browser_manage_client_req(recv_buff, (size_t)n, send_buff, &client_connection_policy);
 
         if(send_len <= 0)
         {
@@ -153,6 +155,13 @@ void clients_handle_client(int *client_fd)
         {
             log_error("Client: failed to send() response", strerror(errno));
         }
+        /* Check if the client wants the connection to close */
+        else if (client_connection_policy == HTTP_CONNECTION_CLOSE)
+        {
+            log_info("Client [pid %d fd %d]: closes connection", getpid(), fd);
+            break; /* exit and close the client */
+        }
+        
 
         /* Upgrade after first msg received the client's socket options */
         else if(!received_first_time && upgrade_client_socket_options(&fd) == 0)
