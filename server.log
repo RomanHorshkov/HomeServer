@@ -1,0 +1,101 @@
+[2025-05-02 17:52:39] [INFO] getaddrinfo succeeded. Printing address info list results:
+
+[2025-05-02 17:52:39] [INFO] [0] IPv4 address: 0.0.0.0 | socktype: 1 | protocol: TCP | flags: 0x1
+
+[2025-05-02 17:52:39] [INFO] [1] IPv6 address: :: | socktype: 1 | protocol: TCP | flags: 0x1
+
+[2025-05-02 17:52:39] [INFO] 🚀 C Server running on http://localhost:3490
+
+[2025-05-02 17:52:49] [INFO] Client (fd=6) accepted, but getnameinfo failed: ai_family not supported
+[2025-05-02 17:52:49] [INFO] Clients: client accepted from unknown:unknown (fd=6)
+[2025-05-02 17:52:49] [INFO] Clients: active clients 1
+[2025-05-02 17:52:49] [INFO] Clients: client started: PID 52037; fd 6; host unknown; service unknown 
+[2025-05-02 17:52:49] [INFO] Client (fd=7) accepted, but getnameinfo failed: ai_family not supported
+[2025-05-02 17:52:49] [INFO] Clients: client accepted from unknown:unknown (fd=7)
+[2025-05-02 17:52:49] [INFO] Clients: active clients 2
+[2025-05-02 17:52:49] [INFO] Listener: closing listeners' sockets
+[2025-05-02 17:52:49] [INFO] Client [pid 52037 fd 6]: received, parsing ->
+[2025-05-02 17:52:49] [INFO] METHOD: GET
+
+[2025-05-02 17:52:49] [INFO] PATH: /
+
+[2025-05-02 17:52:49] [INFO] Host: localhost:3490
+
+[2025-05-02 17:52:49] [INFO] Connection: keep-alive
+
+[2025-05-02 17:52:49] [INFO] sec-ch-ua: "Google Chrome";v="135", "Not-A.Brand";v="8", "Chromium";v="135"
+
+[2025-05-02 17:52:49] [INFO] sec-ch-ua-mobile: ?0
+
+[2025-05-02 17:52:49] [INFO] sec-ch-ua-platform: "Windows"
+
+[2025-05-02 17:52:49] [INFO] Upgrade-Insecure-Requests: 1
+
+[2025-05-02 17:52:49] [INFO] User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36
+
+[2025-05-02 17:52:49] [INFO] Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7
+
+[2025-05-02 17:52:49] [INFO] Sec-Fetch-Site: none
+
+[2025-05-02 17:52:49] [INFO] Sec-Fetch-Mode: navigate
+
+[2025-05-02 17:52:49] [INFO] Clients: client started: PID 52038; fd 7; host unknown; service unknown 
+[2025-05-02 17:52:49] [INFO] Sec-Fetch-User: ?1
+
+[2025-05-02 17:52:49] [INFO] Sec-Fetch-Dest: document
+
+[2025-05-02 17:52:49] [INFO] Accept-Encoding: gzip, deflate, br, zstd
+
+[2025-05-02 17:52:49] [INFO] Accept-Language: en-US,en;q=0.9,it-IT;q=0.8,it;q=0.7
+
+[2025-05-02 17:52:49] [INFO] Listener: closing listeners' sockets
+[2025-05-02 17:52:49] [INFO] Upgraded timeout for fd=6 to 120s
+
+[2025-05-02 17:52:49] [INFO] Client fd=6 closed connection.
+
+[2025-05-02 17:52:49] [INFO] Client handeled; Connection closed.
+[2025-05-02 17:52:49] [INFO] Client [pid 52038 fd 7]: received, parsing ->
+[2025-05-02 17:52:49] [INFO] METHOD: GET
+
+[2025-05-02 17:52:49] [INFO] PATH: /style.css
+
+[2025-05-02 17:52:49] [INFO] Host: localhost:3490
+
+[2025-05-02 17:52:49] [INFO] Connection: keep-alive
+
+[2025-05-02 17:52:49] [INFO] sec-ch-ua-platform: "Windows"
+
+[2025-05-02 17:52:49] [INFO] User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36
+
+[2025-05-02 17:52:49] [INFO] sec-ch-ua: "Google Chrome";v="135", "Not-A.Brand";v="8", "Chromium";v="135"
+
+[2025-05-02 17:52:49] [INFO] sec-ch-ua-mobile: ?0
+
+[2025-05-02 17:52:49] [INFO] Accept: text/css,*/*;q=0.1
+
+[2025-05-02 17:52:49] [INFO] Sec-Fetch-Site: same-origin
+
+[2025-05-02 17:52:49] [INFO] Sec-Fetch-Mode: no-cors
+
+[2025-05-02 17:52:49] [INFO] Sec-Fetch-Dest: style
+
+[2025-05-02 17:52:49] [INFO] Referer: http://localhost:3490/
+
+[2025-05-02 17:52:49] [INFO] Accept-Encoding: gzip, deflate, br, zstd
+
+[2025-05-02 17:52:49] [INFO] Accept-Language: en-US,en;q=0.9,it-IT;q=0.8,it;q=0.7
+
+[2025-05-02 17:52:49] [INFO] Upgraded timeout for fd=7 to 120s
+
+[2025-05-02 17:52:49] [INFO] Client fd=7 closed connection.
+
+[2025-05-02 17:52:49] [INFO] Client handeled; Connection closed.
+[2025-05-02 17:52:49] [INFO] Clients: client reaped: PID 52037 (fd=6)
+[2025-05-02 17:52:49] [INFO] Clients: remaining clients: 1
+[2025-05-02 17:52:49] [INFO] Clients: client reaped: PID 52038 (fd=7)
+[2025-05-02 17:52:49] [INFO] Clients: remaining clients: 0
+[2025-05-02 17:53:02] [INFO] Received 'q' from stdin. Exiting server...
+
+[2025-05-02 17:53:02] [INFO] Listeners: -- shutdown -- 
+[2025-05-02 17:53:02] [INFO] Listener: closing listeners' sockets
+[2025-05-02 17:53:02] [INFO] Clients: -- shutdown -- 
