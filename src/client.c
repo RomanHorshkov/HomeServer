@@ -5,11 +5,11 @@
 
 #include "client.h"
 #include "browser.h"
-#include "server_settings.h"
+// #include "server_settings.h"
 #include "logger.h"
 
 #include <errno.h>                  // errno, EADDRINUSE, etc.
-#include <unistd.h>                 // ssize_t
+// #include <unistd.h>                 // ssize_t
 #include <sys/socket.h>             // socklen_t, socket(), bind(), setsockopt(), etc.
 #include <sys/time.h>               // struct timeval
 #include <string.h>                 // memset(), strcpy(), strlen(), etc.

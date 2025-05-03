@@ -7,6 +7,7 @@
  ****************************************************************************
  */
 #include "server_settings.h"
+#include <unistd.h>                 // ssize_t
 #include <stddef.h>                 // size_t
 
 
@@ -65,7 +66,15 @@ enum HTTPConnectionPolicy
  ****************************************************************************
  */
 
-/* Parse an HTTP request from a buffer */
+/**
+ * @brief Parse an HTTP/1.1 request into an HttpRequest struct.
+ *
+ * The caller owns @p out and must free it with http_request_destroy().
+ *
+ * @param[in]  buf     Raw request buffer (NUL‑terminated)
+ * @param[out] out     Newly allocated HttpRequest
+ * @return             0 on success, negative errno on failure
+ */
 int http_parse_request(const char* buffer, size_t n, HttpRequest* req, int* client_connection_policy);
 
 /* Build an HTTP response string into a buffer (already formatted) */
