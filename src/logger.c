@@ -45,6 +45,7 @@ void logger_close()
     if(log_file && log_file != stdout)
     {
         fclose(log_file);
+        log_file = NULL;
     }
 }
 
