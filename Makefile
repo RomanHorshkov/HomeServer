@@ -20,7 +20,7 @@ OBJECTS         := $(patsubst %.c,$(OBJDIR)/%.o,$(SOURCES))
 DEPS            := $(OBJECTS:.o=.d)
 
 # ------ Phony targets ------
-.PHONY: all clean run debug release
+.PHONY: all clean run debug release tidy lint format
 
 # ------ Default build ------
 all: $(BINDIR)/$(TARGET)
@@ -48,6 +48,30 @@ debug: all
 
 release: export CFLAGS += -O2 -DNDEBUG
 release: all
+
+# Auto formatting ---------------------------------------------------------
+format:
+	find . -regex '.*\.\(c\|h\)' -exec clang-format -i {} +
+
+# Static analysis ----------------------------------------------------------
+lint:
+	cppcheck --enable=all --inconclusive --std=c99 --language=c --quiet \
+		--suppress=missingIncludeSystem \
+		-Iinc -Ibrowser/inc -Ilibraries/cjson -Ilibraries/llhttp \
+		src/ browser/src/
+
+# Better Static analysis
+tidy:
+	@echo "🐻 Generating compile_commands.json using bear..."
+	bear -- make -B > /dev/null
+
+	@echo "🧠 Running clang-tidy..."
+	clang-tidy src/*.c browser/src/*.c -p . -- \
+		-Iinc -Ibrowser/inc -Ilibraries/cjson -Ilibraries/llhttp
+
+	@echo "🧼 Cleaning temporary build files..."
+# rm -f compile_commands.json // keep for now the compile_commands
+	rm -f *.o */*.o */*/*.o
 
 clean:
 	rm -rf $(BUILDDIR)

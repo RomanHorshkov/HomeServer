@@ -78,12 +78,11 @@ int http_parse_request(const char* buffer, const size_t buffer_len, HttpRequest*
     else
     {
         /* log all the html headers */
-        log_info("METHOD: %s\n", req->method);
-        log_info("PATH: %s\n", req->path);
-        for(int i = 0; i < req->header_count; ++i)
-        {
-            log_info("%s: %s\n", req->header_names[i], req->header_values[i]);
-        }
+        log_info("METHOD: %s, PATH: %s", req->method, req->path);
+        // for(int i = 0; i < req->header_count; ++i)
+        // {
+        //     log_info("%s: %s\n", req->header_names[i], req->header_values[i]);
+        // }
     }
 
     return 0;

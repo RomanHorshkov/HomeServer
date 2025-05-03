@@ -5,7 +5,8 @@
  * PUBLIC STRUCTURED VARIABLES DECLARATIONS
  ****************************************************************************
  */
-
+struct sockaddr_storage;
+typedef int pid_t;
 typedef struct clients_pot clients_t;
 
 /****************************************************************************

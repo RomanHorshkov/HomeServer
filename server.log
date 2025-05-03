@@ -1,0 +1,120 @@
+[2025-05-03 12:01:03] [INFO] getaddrinfo succeeded. Printing address info list results:
+
+[2025-05-03 12:01:03] [INFO] [0] IPv4 address: 0.0.0.0 | socktype: 1 | protocol: TCP | flags: 0x1
+
+[2025-05-03 12:01:03] [INFO] [1] IPv6 address: :: | socktype: 1 | protocol: TCP | flags: 0x1
+
+[2025-05-03 12:01:03] [INFO] 🚀 C Server running on http://localhost:3490
+
+[2025-05-03 12:01:10] [INFO] Client (fd=6) accepted, but getnameinfo failed: ai_family not supported
+[2025-05-03 12:01:10] [INFO] Clients: client accepted from unknown:unknown (fd=6)
+[2025-05-03 12:01:10] [INFO] Clients: active clients 1
+[2025-05-03 12:01:10] [INFO] Clients: client started: PID 32146; fd 6; host unknown; service unknown 
+[2025-05-03 12:01:10] [INFO] Client (fd=7) accepted, but getnameinfo failed: ai_family not supported
+[2025-05-03 12:01:10] [INFO] Clients: client accepted from unknown:unknown (fd=7)
+[2025-05-03 12:01:10] [INFO] Clients: active clients 2
+[2025-05-03 12:01:10] [INFO] Listener: closing listeners' sockets
+[2025-05-03 12:01:10] [INFO] Client [pid 32146 fd 6]: received, parsing ->
+[2025-05-03 12:01:10] [INFO] METHOD: GET, PATH: /
+[2025-05-03 12:01:10] [INFO] req method: GET; req path: /
+[2025-05-03 12:01:10] [INFO] Clients: client started: PID 32147; fd 7; host unknown; service unknown 
+[2025-05-03 12:01:10] [INFO] Listener: closing listeners' sockets
+[2025-05-03 12:01:10] [INFO] Upgraded timeout for fd=6 to 120s
+
+[2025-05-03 12:01:10] [INFO] Client [pid 32146 fd 6]: received, parsing ->
+[2025-05-03 12:01:10] [INFO] METHOD: GET, PATH: /style.css
+[2025-05-03 12:01:10] [INFO] req method: GET; req path: /style.css
+[2025-05-03 12:01:22] [INFO] Client [pid 32146 fd 6]: received, parsing ->
+[2025-05-03 12:01:22] [INFO] METHOD: GET, PATH: /whoami
+[2025-05-03 12:01:22] [INFO] req method: GET; req path: /whoami
+[2025-05-03 12:01:23] [INFO] Client [pid 32146 fd 6]: received, parsing ->
+[2025-05-03 12:01:23] [INFO] METHOD: GET, PATH: /style.css
+[2025-05-03 12:01:23] [INFO] req method: GET; req path: /style.css
+[2025-05-03 12:01:23] [INFO] Client [pid 32146 fd 6]: received, parsing ->
+[2025-05-03 12:01:23] [INFO] METHOD: GET, PATH: /api/whoami
+[2025-05-03 12:01:23] [INFO] req method: GET; req path: /api/whoami
+[2025-05-03 12:01:41] [INFO] Client handeled; Connection closed.
+[2025-05-03 12:01:41] [INFO] Clients: client reaped: PID 32147 (fd=7)
+[2025-05-03 12:01:41] [INFO] Clients: remaining clients: 1
+[2025-05-03 12:01:47] [INFO] Client [pid 32146 fd 6]: received, parsing ->
+[2025-05-03 12:01:47] [INFO] METHOD: GET, PATH: /dynamic
+[2025-05-03 12:01:47] [INFO] req method: GET; req path: /dynamic
+[2025-05-03 12:01:47] [INFO] Client [pid 32146 fd 6]: received, parsing ->
+[2025-05-03 12:01:47] [INFO] METHOD: GET, PATH: /img1.jpg
+[2025-05-03 12:01:47] [INFO] req method: GET; req path: /img1.jpg
+[2025-05-03 12:01:47] [INFO] Client (fd=7) accepted, but getnameinfo failed: ai_family not supported
+[2025-05-03 12:01:47] [INFO] Clients: client accepted from unknown:unknown (fd=7)
+[2025-05-03 12:01:47] [INFO] Clients: active clients 2
+[2025-05-03 12:01:47] [INFO] Clients: client started: PID 32605; fd 7; host unknown; service unknown 
+[2025-05-03 12:01:47] [INFO] Listener: closing listeners' sockets
+[2025-05-03 12:01:51] [INFO] Client [pid 32146 fd 6]: received, parsing ->
+[2025-05-03 12:01:51] [INFO] METHOD: GET, PATH: /img2.jpg
+[2025-05-03 12:01:51] [INFO] req method: GET; req path: /img2.jpg
+[2025-05-03 12:01:54] [INFO] Client [pid 32146 fd 6]: received, parsing ->
+[2025-05-03 12:01:54] [INFO] METHOD: GET, PATH: /img3.jpg
+[2025-05-03 12:01:54] [INFO] req method: GET; req path: /img3.jpg
+[2025-05-03 12:01:57] [INFO] Client [pid 32146 fd 6]: received, parsing ->
+[2025-05-03 12:01:57] [INFO] METHOD: GET, PATH: /img1.jpg
+[2025-05-03 12:01:57] [INFO] req method: GET; req path: /img1.jpg
+[2025-05-03 12:02:00] [INFO] Client [pid 32146 fd 6]: received, parsing ->
+[2025-05-03 12:02:00] [INFO] METHOD: GET, PATH: /img2.jpg
+[2025-05-03 12:02:00] [INFO] req method: GET; req path: /img2.jpg
+[2025-05-03 12:02:02] [INFO] Client [pid 32146 fd 6]: received, parsing ->
+[2025-05-03 12:02:02] [INFO] METHOD: GET, PATH: /img3.jpg
+[2025-05-03 12:02:03] [INFO] req method: GET; req path: /img3.jpg
+[2025-05-03 12:02:06] [INFO] Client [pid 32146 fd 6]: received, parsing ->
+[2025-05-03 12:02:06] [INFO] METHOD: GET, PATH: /img1.jpg
+[2025-05-03 12:02:06] [INFO] req method: GET; req path: /img1.jpg
+[2025-05-03 12:02:09] [INFO] Client [pid 32146 fd 6]: received, parsing ->
+[2025-05-03 12:02:09] [INFO] METHOD: GET, PATH: /img2.jpg
+[2025-05-03 12:02:09] [INFO] req method: GET; req path: /img2.jpg
+[2025-05-03 12:02:12] [INFO] Client [pid 32146 fd 6]: received, parsing ->
+[2025-05-03 12:02:12] [INFO] METHOD: GET, PATH: /img3.jpg
+[2025-05-03 12:02:12] [INFO] req method: GET; req path: /img3.jpg
+[2025-05-03 12:02:15] [INFO] Client [pid 32146 fd 6]: received, parsing ->
+[2025-05-03 12:02:15] [INFO] METHOD: GET, PATH: /img1.jpg
+[2025-05-03 12:02:15] [INFO] req method: GET; req path: /img1.jpg
+[2025-05-03 12:02:17] [INFO] Client handeled; Connection closed.
+[2025-05-03 12:02:17] [INFO] Clients: client reaped: PID 32605 (fd=7)
+[2025-05-03 12:02:17] [INFO] Clients: remaining clients: 1
+[2025-05-03 12:02:18] [INFO] Client [pid 32146 fd 6]: received, parsing ->
+[2025-05-03 12:02:18] [INFO] METHOD: GET, PATH: /img2.jpg
+[2025-05-03 12:02:18] [INFO] req method: GET; req path: /img2.jpg
+[2025-05-03 12:02:21] [INFO] Client [pid 32146 fd 6]: received, parsing ->
+[2025-05-03 12:02:21] [INFO] METHOD: GET, PATH: /img3.jpg
+[2025-05-03 12:02:21] [INFO] req method: GET; req path: /img3.jpg
+[2025-05-03 12:02:24] [INFO] Client [pid 32146 fd 6]: received, parsing ->
+[2025-05-03 12:02:24] [INFO] METHOD: GET, PATH: /img1.jpg
+[2025-05-03 12:02:24] [INFO] req method: GET; req path: /img1.jpg
+[2025-05-03 12:02:27] [INFO] Client [pid 32146 fd 6]: received, parsing ->
+[2025-05-03 12:02:27] [INFO] METHOD: GET, PATH: /img2.jpg
+[2025-05-03 12:02:27] [INFO] req method: GET; req path: /img2.jpg
+[2025-05-03 12:02:30] [INFO] Client [pid 32146 fd 6]: received, parsing ->
+[2025-05-03 12:02:30] [INFO] METHOD: GET, PATH: /img3.jpg
+[2025-05-03 12:02:30] [INFO] req method: GET; req path: /img3.jpg
+[2025-05-03 12:02:33] [INFO] Client [pid 32146 fd 6]: received, parsing ->
+[2025-05-03 12:02:33] [INFO] METHOD: GET, PATH: /img1.jpg
+[2025-05-03 12:02:33] [INFO] req method: GET; req path: /img1.jpg
+[2025-05-03 12:02:36] [INFO] Client [pid 32146 fd 6]: received, parsing ->
+[2025-05-03 12:02:36] [INFO] METHOD: GET, PATH: /img2.jpg
+[2025-05-03 12:02:36] [INFO] req method: GET; req path: /img2.jpg
+[2025-05-03 12:02:39] [INFO] Client [pid 32146 fd 6]: received, parsing ->
+[2025-05-03 12:02:39] [INFO] METHOD: GET, PATH: /img3.jpg
+[2025-05-03 12:02:39] [INFO] req method: GET; req path: /img3.jpg
+[2025-05-03 12:02:42] [INFO] Client [pid 32146 fd 6]: received, parsing ->
+[2025-05-03 12:02:42] [INFO] METHOD: GET, PATH: /img1.jpg
+[2025-05-03 12:02:42] [INFO] req method: GET; req path: /img1.jpg
+[2025-05-03 12:02:45] [INFO] Client [pid 32146 fd 6]: received, parsing ->
+[2025-05-03 12:02:45] [INFO] METHOD: GET, PATH: /img2.jpg
+[2025-05-03 12:02:45] [INFO] req method: GET; req path: /img2.jpg
+[2025-05-03 12:02:48] [INFO] Client [pid 32146 fd 6]: received, parsing ->
+[2025-05-03 12:02:48] [INFO] METHOD: GET, PATH: /img3.jpg
+[2025-05-03 12:02:48] [INFO] req method: GET; req path: /img3.jpg
+[2025-05-03 12:03:14] [INFO] Received 'q' from stdin. Exiting server...
+
+[2025-05-03 12:03:14] [INFO] Listeners: -- shutdown -- 
+[2025-05-03 12:03:14] [INFO] Listener: closing listeners' sockets
+[2025-05-03 12:03:14] [INFO] Clients: -- shutdown -- 
+[2025-05-03 12:03:17] [INFO] Client [pid 32146 fd 6]: received, parsing ->
+[2025-05-03 12:03:17] [INFO] METHOD: GET, PATH: /img1.jpg
+[2025-05-03 12:03:17] [INFO] req method: GET; req path: /img1.jpg
