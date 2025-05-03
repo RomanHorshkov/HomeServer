@@ -5,6 +5,7 @@
  * PUBLIC INCLUDES
  ****************************************************************************
  */
+#include <errno.h>   // errno, EADDRINUSE, etc.
 #include <string.h>  // memset(), strcpy(), strlen(), strerror(), etc.
 
 /****************************************************************************
