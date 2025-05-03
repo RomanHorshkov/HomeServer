@@ -2,7 +2,7 @@
  * Server TCP implementation
  */
 
-#include "core.h"                   // server's core, main brain
+#include "core.h"  // server's core, main brain
 
 /****************************************************************************
  * PUBLIC FUNCTIONS DEFINITIONS
@@ -16,7 +16,9 @@ int main()
 
     if(server_init(port) == -1)
     {
-        /* do nothing */
+        /* ensure cleanup even on failure */
+        /* This process has to be properly memory-controlled */
+        // server_shutdown();
     }
     else
     {

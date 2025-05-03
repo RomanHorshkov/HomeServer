@@ -1,12 +1,11 @@
 #ifndef SERVER_LOGGER_H
 #define SERVER_LOGGER_H
 
-
 /****************************************************************************
  * PUBLIC INCLUDES
  ****************************************************************************
  */
-#include <string.h>                 // memset(), strcpy(), strlen(), strerror(), etc.
+#include <string.h>  // memset(), strcpy(), strlen(), strerror(), etc.
 
 /****************************************************************************
  * PUBLIC STRUCTURED VARIABLES DECLARATIONS
