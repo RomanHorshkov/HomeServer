@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>File Drive</title>
+  <style>
+    body { font-family: sans-serif; padding: 1rem; }
+    details { margin-left: 1rem; }
+    summary { cursor: pointer; }
+    ul { list-style: none; padding-left: 1rem; }
+    a { text-decoration: none; color: #0066cc; }
+  </style>
+</head>
+<body>
+  <h1>Your “Drive”</h1>
+  <div id="tree"></div>
+
+  <script>
+    /**
+     * Recursively fetch and render a directory.
+     * @param {string} path  e.g. "/images"
+     * @param {HTMLElement} container  where to append
+     */
+    function renderDir(path, container) {
+      fetch('/api/drive?path=' + encodeURIComponent(path))
+        .then(r => r.json())
+        .then(json => {
+          const list = document.createElement('ul');
+          json.items.forEach(item => {
+            if (item.type === 'directory') {
+              const det = document.createElement('details');
+              const sum = document.createElement('summary');
+              sum.textContent = item.name;
+              det.appendChild(sum);
+              // on first open, load its children
+              det.addEventListener('toggle', () => {
+                if (det.open && !det.loaded) {
+                  renderDir(path + (path.endsWith('/')?'':'/') + item.name, det);
+                  det.loaded = true;
+                }
+              });
+              list.appendChild(det);
+            } else {
+              const li = document.createElement('li');
+              const a  = document.createElement('a');
+              a.href = path + (path.endsWith('/')?'':'/') + item.name;
+              a.textContent = item.name;
+              li.appendChild(a);
+              list.appendChild(li);
+            }
+          });
+          container.appendChild(list);
+        })
+        .catch(console.error);
+    }
+
+    document.addEventListener('DOMContentLoaded', () => {
+      const root = document.getElementById('tree');
+      renderDir('/', root);
+    });
+  </script>
+</body>
+</html>
