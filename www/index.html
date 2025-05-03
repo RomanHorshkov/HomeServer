@@ -1,17 +1,45 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
+    <meta charset="utf-8">
     <title>My Upgraded C Website</title>
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
     <h1>Welcome to My C Web Server!</h1>
     <p>This site is powered entirely by a C server using epoll.</p>
+
+    <!-- Navigation bar -->
     <nav>
         <a href="/">Home</a> |
-        <a href="/whoami">Who Am I</a>
-        <a href="/dynamic">Dynamic</a>
+        <a href="/whoami">Who Am I</a> |
+        <a href="/dynamic">Dynamic</a> |
+        <a href="/drive">Drive</a>
     </nav>
-    <h2>Current Server Time:</h2>
+
+    <!-- Server time section -->
+    <section id="time-section">
+      <h2>Current Server Time:</h2>
+      <div id="server-time">Loading…</div>
+    </section>
+
+    <!-- Fetch /api/whoami JSON and update the time -->
+    <script>
+    document.addEventListener('DOMContentLoaded', () => {
+      fetch('/api/whoami')
+        .then(response => {
+          if (!response.ok) throw new Error('Network response was not OK');
+          return response.json();
+        })
+        .then(data => {
+          // data.server_time comes from your whoami JSON handler
+          document.getElementById('server-time').textContent = data.server_time;
+        })
+        .catch(err => {
+          console.error('Failed to fetch server time:', err);
+          document.getElementById('server-time').textContent = 'Error loading time';
+        });
+    });
+    </script>
 </body>
 </html>

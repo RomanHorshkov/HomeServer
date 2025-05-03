@@ -134,6 +134,18 @@ int router_handle_request(const HttpRequest *request, HttpResponse *response)
         return static_page_serve_file(file_path, guess_mime_type(file_path), response);
     }
 
+    /* Drive UI page */
+    if(strcmp(request->path, "/drive") == 0)
+    {
+        return static_page_serve_file("www/drive.html", "text/html", response);
+    }
+
+    /* Drive JSON API: /api/drive?path=/some/subdir */
+    else if(strncmp(request->path, "/api/drive", 10) == 0)
+    {
+        return drive_json_handler(request, response);
+    }
+
     /* Fallback to 404 Not Found */
     send_404(response);
     return 0;
