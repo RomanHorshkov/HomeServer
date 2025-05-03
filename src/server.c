@@ -2,7 +2,7 @@
  * Server TCP implementation
  */
 
-#include "core.h"                   // server's core, main brain
+#include "core.h"  // server's core, main brain
 
 /****************************************************************************
  * PUBLIC FUNCTIONS DEFINITIONS

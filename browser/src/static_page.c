@@ -1,10 +1,11 @@
 #include "static_page.h"
-#include "logger.h"
+
+#include <errno.h>  // errno, EADDRINUSE, etc.
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <errno.h>                  // errno, EADDRINUSE, etc.
 
+#include "logger.h"
 
 /****************************************************************************
  * PUBLIC FUNCTIONS DEFINITIONS
@@ -20,25 +21,25 @@ int static_page_serve_file(const char* filepath, const char* content_type, HttpR
     int res = -1;
 
     /* check input validity */
-    if (filepath != NULL && response != NULL)
+    if(filepath != NULL && response != NULL)
     {
         FILE* f = fopen(filepath, "rb");
-        if (f != NULL)
+        if(f != NULL)
         {
             /* Seek to end to find file size */
             fseek(f, 0, SEEK_END);
             long fsize = ftell(f);
             fseek(f, 0, SEEK_SET);
 
-            if (fsize > 0)
+            if(fsize > 0)
             {
                 /* Allocate memory for the file content */
                 char* file_buffer = (char*)malloc(fsize + 1);
-                if (file_buffer != NULL)
+                if(file_buffer != NULL)
                 {
                     /* Read file content into buffer */
                     size_t read_bytes = fread(file_buffer, 1, fsize, f);
-                    if (read_bytes == (size_t)fsize)
+                    if(read_bytes == (size_t)fsize)
                     {
                         /* Null-terminate just in case */
                         file_buffer[fsize] = '\0';
@@ -56,7 +57,8 @@ int static_page_serve_file(const char* filepath, const char* content_type, HttpR
                     {
                         free(file_buffer);
                         fclose(f);
-                        log_error("static_page: serve file: read_bytes != file_size", strerror(errno));
+                        log_error("static_page: serve file: read_bytes != file_size",
+                                  strerror(errno));
                     }
                 }
                 else

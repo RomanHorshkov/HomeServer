@@ -1,20 +1,18 @@
 #define _POSIX_C_SOURCE 200112L
 #define _GNU_SOURCE
-#include <netdb.h>                  // getaddrinfo(), addrinfo, gai_strerror()
-
 #include "logger.h"
-#include <stdarg.h>                 // varg
-#include <time.h>                   // For timestamps
-#include <stdlib.h>                 // exit(), malloc(), free()
-#include <stdio.h>                  // FILE
-#include <arpa/inet.h>              // inet_ntop(), inet_pton()
 
+#include <arpa/inet.h>  // inet_ntop(), inet_pton()
+#include <netdb.h>      // getaddrinfo(), addrinfo, gai_strerror()
+#include <stdarg.h>     // varg
+#include <stdio.h>      // FILE
+#include <stdlib.h>     // exit(), malloc(), free()
+#include <time.h>       // For timestamps
 
 /****************************************************************************
  * PRIVATE VARIABLES DEFINITIONS
  ****************************************************************************/
 static FILE *log_file = NULL;
-
 
 /****************************************************************************
  * PRIVATE FUNCTIONS DECLARATIONS
@@ -30,11 +28,11 @@ static void log_internal(const char *level, const char *fmt, va_list args);
 void logger_init(const char *filename)
 {
     /* check if file not yet opened */
-    if (log_file == NULL)
+    if(log_file == NULL)
     {
         /* "w" = overwrite on server restart */
         log_file = fopen(filename, "w");
-        if (!log_file)
+        if(!log_file)
         {
             perror("Failed to open log file");
             log_file = stdout;  // fallback
@@ -44,7 +42,7 @@ void logger_init(const char *filename)
 
 void logger_close()
 {
-    if (log_file && log_file != stdout)
+    if(log_file && log_file != stdout)
     {
         fclose(log_file);
     }
@@ -71,18 +69,18 @@ void log_addrinfo_list(const struct addrinfo *ai)
     int index = 0;
     char ip_str[INET6_ADDRSTRLEN];
 
-    for (; ai != NULL; ai = ai->ai_next, ++index)
+    for(; ai != NULL; ai = ai->ai_next, ++index)
     {
         void *addr;
         const char *ipver;
 
-        if (ai->ai_family == AF_INET)
+        if(ai->ai_family == AF_INET)
         {
             struct sockaddr_in *ipv4 = (struct sockaddr_in *)ai->ai_addr;
             addr = &(ipv4->sin_addr);
             ipver = "IPv4";
         }
-        else if (ai->ai_family == AF_INET6)
+        else if(ai->ai_family == AF_INET6)
         {
             struct sockaddr_in6 *ipv6 = (struct sockaddr_in6 *)ai->ai_addr;
             addr = &(ipv6->sin6_addr);
@@ -104,7 +102,7 @@ void log_addrinfo_list(const struct addrinfo *ai)
         {
             strcpy(protocol_name, "TCP");
         }
-        else if (ai->ai_protocol == IPPROTO_UDP)
+        else if(ai->ai_protocol == IPPROTO_UDP)
         {
             strcpy(protocol_name, "UDP");
         }
@@ -113,8 +111,8 @@ void log_addrinfo_list(const struct addrinfo *ai)
             strcpy(protocol_name, "UNKNOWN");
         }
 
-        log_info("[%d] %s address: %s | socktype: %d | protocol: %s | flags: 0x%x\n",
-               index, ipver, ip_str, ai->ai_socktype, protocol_name, ai->ai_flags);
+        log_info("[%d] %s address: %s | socktype: %d | protocol: %s | flags: 0x%x\n", index, ipver,
+                 ip_str, ai->ai_socktype, protocol_name, ai->ai_flags);
     }
 }
 
@@ -133,7 +131,7 @@ static void log_timestamp()
 
 static void log_internal(const char *level, const char *fmt, va_list args)
 {
-    if (!log_file) return;
+    if(!log_file) return;
 
     log_timestamp();
     fprintf(log_file, "[%s] ", level);
