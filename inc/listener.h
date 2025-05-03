@@ -24,14 +24,14 @@ typedef struct Listener Listener_t;
  ****************************************************************************
  */
 
-int listener_init(Listener_t **listener, const char *port);
+int listener_init(Listener_t **listener_ptr, const char *port);
 
-int listener_check_incoming_clients(Listener_t **listener, struct sockaddr_storage *client_addr,
+int listener_check_incoming_clients(Listener_t **listener_ptr, struct sockaddr_storage *client_addr,
                                     int *client_fd);
 
-void listener_close(Listener_t **listener);
+void listener_close(Listener_t **listener_ptr);
 
-void listener_shutdown(Listener_t **listener);
+void listener_shutdown(Listener_t **listener_ptr);
 
 // #ifdef __cplusplus
 // }

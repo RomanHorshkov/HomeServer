@@ -36,17 +36,17 @@ struct Listener
 
 static int start_listener(struct addrinfo *server_info_out, Listener_t **listener_ptr);
 
-static int init_memory(Listener_t **listener);
+static int init_memory(Listener_t **listener_ptr);
 
 static int set_socket_hints(struct addrinfo *hints);
 
-static int set_listener_socket_reusability(int *socket_fd);
+static int set_listener_socket_reusability(const int *socket_fd);
 
-static int set_listener_socket_restartability(int *socket_fd);
+static int set_listener_socket_restartability(const int *socket_fd);
 
-static int set_listener_socket_non_blocking(int *socket_fd);
+static int set_listener_socket_non_blocking(const int *socket_fd);
 
-static int set_listener_socket_options(int *socket_fd, int32_t *ai_family);
+static int set_listener_socket_options(const int *listener_socket_fd, const int32_t *ai_family);
 
 /****************************************************************************
  * PUBLIC FUNCTIONS DEFINITIONS
@@ -62,7 +62,7 @@ int listener_init(Listener_t **listener_ptr, const char *port)
     struct addrinfo hints;
 
     /* getaddrinfo output info */
-    struct addrinfo *server_info_out;
+    struct addrinfo *server_info_out = NULL;
 
     /* check if memory properly initialised */
     if(init_memory(listener_ptr) == -1)
@@ -101,7 +101,7 @@ int listener_init(Listener_t **listener_ptr, const char *port)
     return res;
 }
 
-int listener_check_incoming_clients(Listener_t **listener, struct sockaddr_storage *client_addr,
+int listener_check_incoming_clients(Listener_t **listener_ptr, struct sockaddr_storage *client_addr,
                                     int *client_fd)
 {
     /* TO DO:
@@ -110,9 +110,6 @@ int listener_check_incoming_clients(Listener_t **listener, struct sockaddr_stora
 
     /* result value */
     int res = -1;
-
-    /* temporary listener_fd */
-    int listener_fd_tmp;
 
     /* temporary client_fd */
     int client_fd_tmp;
@@ -123,17 +120,16 @@ int listener_check_incoming_clients(Listener_t **listener, struct sockaddr_stora
     /* Loop through all the listeners */
     for(int i = 0; i < MAX_LISTENERS; i++)
     {
-        listener_fd_tmp = (*listener)->listeners_fds[i];
-
         /* Check if listener on */
-        if(listener_fd_tmp <= 0)
+        if((*listener_ptr)->listeners_fds[i] <= 0)
         {
             /* the listener is not active */
             continue;
         }
 
         /* Accept incoming client request if any */
-        client_fd_tmp = accept(listener_fd_tmp, (struct sockaddr *)client_addr, &addr_len);
+        client_fd_tmp =
+            accept((*listener_ptr)->listeners_fds[i], (struct sockaddr *)client_addr, &addr_len);
 
         /* accept is set to not blocking:
         will return errno EAGAIN or EWOULDBLOCK if no incoming connections */
@@ -168,7 +164,7 @@ int listener_check_incoming_clients(Listener_t **listener, struct sockaddr_stora
     return res;
 }
 
-void listener_close(Listener_t **listener)
+void listener_close(Listener_t **listener_ptr)
 {
     log_info("Listener: closing listeners' sockets");
 
@@ -176,16 +172,16 @@ void listener_close(Listener_t **listener)
     for(int i = 0; i < MAX_LISTENERS; i++)
     {
         /* check if listener is active */
-        if((*listener)->listeners_fds[i] > 0)
+        if((*listener_ptr)->listeners_fds[i] > 0)
         {
             /* close listener file descriptor */
-            close((*listener)->listeners_fds[i]);
+            close((*listener_ptr)->listeners_fds[i]);
 
             /* reset to 0 */
-            (*listener)->listeners_fds[i] = 0;
+            (*listener_ptr)->listeners_fds[i] = 0;
 
             /* decrease listener number */
-            (*listener)->active_listeners_no--;
+            (*listener_ptr)->active_listeners_no--;
         }
         else
         {
@@ -194,11 +190,11 @@ void listener_close(Listener_t **listener)
     }
 }
 
-void listener_shutdown(Listener_t **listener)
+void listener_shutdown(Listener_t **listener_ptr)
 {
     log_info("Listeners: -- shutdown -- ");
-    listener_close(listener);
-    free(*listener);
+    listener_close(listener_ptr);
+    free(*listener_ptr);
 }
 
 /****************************************************************************
@@ -306,11 +302,11 @@ static int set_socket_hints(struct addrinfo *hints)
     /* return value */
     int res = -1;
 
-    /* make sure hints setted to 0 */
-    memset(hints, 0, sizeof(struct addrinfo));
-
     if(hints)
     {
+        /* make sure hints setted to 0 */
+        memset(hints, 0, sizeof(struct addrinfo));
+
         /* AF_UNSPEC allows IPv4 or IPv6 */
         hints->ai_family = AF_UNSPEC;
 
@@ -327,7 +323,7 @@ static int set_socket_hints(struct addrinfo *hints)
     return res;
 }
 
-static int set_listener_socket_reusability(int *socket_fd)
+static int set_listener_socket_reusability(const int *socket_fd)
 {
     /* return value */
     int res = -1;
@@ -347,7 +343,7 @@ static int set_listener_socket_reusability(int *socket_fd)
     return res;
 }
 
-static int set_listener_socket_restartability(int *socket_fd)
+static int set_listener_socket_restartability(const int *socket_fd)
 {
     /* return value */
     int res = -1;
@@ -369,7 +365,7 @@ static int set_listener_socket_restartability(int *socket_fd)
     return res;
 }
 
-static int set_listener_socket_non_blocking(int *socket_fd)
+static int set_listener_socket_non_blocking(const int *socket_fd)
 {
     /* return value */
     int res = -1;
@@ -394,25 +390,26 @@ static int set_listener_socket_non_blocking(int *socket_fd)
     return res;
 }
 
-static int set_listener_socket_options(int *socket_fd, int32_t *ai_family)
+static int set_listener_socket_options(const int *listener_socket_fd, const int32_t *ai_family)
 {
     /* return value */
     int ret = -1;
     /* yes value */
     int yes = 1;
 
-    if(set_listener_socket_reusability(socket_fd) != -1)
+    if(set_listener_socket_reusability(listener_socket_fd) != -1)
     {
-        if(set_listener_socket_restartability(socket_fd) != -1)
+        if(set_listener_socket_restartability(listener_socket_fd) != -1)
         {
-            if(set_listener_socket_non_blocking(socket_fd) != -1)
+            if(set_listener_socket_non_blocking(listener_socket_fd) != -1)
             {
                 /* Set the return to 0 */
                 ret = 0;
                 /* restrict the socket to only ipv6 if socket for ipv6 */
                 if(*ai_family == AF_INET6)
                 {
-                    if(setsockopt(*socket_fd, IPPROTO_IPV6, IPV6_V6ONLY, &yes, sizeof(yes)) == -1)
+                    if(setsockopt(*listener_socket_fd, IPPROTO_IPV6, IPV6_V6ONLY, &yes,
+                                  sizeof(yes)) == -1)
                     {
                         ret = -1;
                         log_error("Socket ipv6 opts failed: %s\n", strerror(errno));

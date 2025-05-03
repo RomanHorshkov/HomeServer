@@ -119,7 +119,7 @@ int clients_add_new_client(clients_t **clients, struct sockaddr_storage *client_
     return res;
 }
 
-void clients_handle_client(int *client_fd)
+void clients_handle_client(const int *client_fd)
 {
     /* set a local file descriptor */
     int fd = *client_fd;
@@ -144,7 +144,7 @@ void clients_handle_client(int *client_fd)
         log_info("Client [pid %d fd %d]: received, parsing ->", getpid(), fd);
 
         /* serve the request if any and respond */
-        size_t send_len =
+        ssize_t send_len =
             browser_manage_client_req(recv_buff, (size_t)n, send_buff, &client_connection_policy);
 
         if(send_len <= 0)
@@ -152,7 +152,7 @@ void clients_handle_client(int *client_fd)
             log_error("Client: browser failed to manage request", strerror(errno));
         }
 
-        else if(send(fd, send_buff, (size_t)send_len, 0) < 0)
+        else if(send(fd, send_buff, send_len, 0) < 0)
         {
             log_error("Client: failed to send() response", strerror(errno));
         }
@@ -186,7 +186,7 @@ void clients_handle_client(int *client_fd)
     log_info("Client handeled; Connection closed.");
 }
 
-void clients_erase_client(clients_t **clients, pid_t *client_pid)
+void clients_erase_client(clients_t **clients, const pid_t *client_pid)
 {
     for(int i = 0; i < MAX_CLIENTS; i++)
     {

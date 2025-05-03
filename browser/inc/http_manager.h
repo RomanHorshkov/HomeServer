@@ -70,15 +70,15 @@ enum HTTPConnectionPolicy
  *
  * The caller owns @p out and must free it with http_request_destroy().
  *
- * @param[in]  buf     Raw request buffer (NUL‑terminated)
- * @param[out] out     Newly allocated HttpRequest
- * @return             0 on success, negative errno on failure
+ * @param[in]  buffer   Raw request buffer (NUL‑terminated)
+ * @param[out] out      Newly allocated HttpRequest
+ * @return              0 on success, negative errno on failure
  */
-int http_parse_request(const char* buffer, size_t n, HttpRequest* req,
+int http_parse_request(const char* buffer, size_t buffer_len, HttpRequest* req,
                        int* client_connection_policy);
 
 /* Build an HTTP response string into a buffer (already formatted) */
-int http_build_response(const HttpResponse* resp, int* client_connection_policy, char* out_buffer,
-                        size_t max_len);
+int http_build_response(const HttpResponse* resp, const int* client_connection_policy,
+                        char* out_buffer, size_t max_len);
 
 #endif /* HTTP_MANAGER_H */

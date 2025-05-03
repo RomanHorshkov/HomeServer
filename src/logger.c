@@ -19,7 +19,7 @@ static FILE *log_file = NULL;
  ****************************************************************************/
 
 static void log_timestamp();
-static void log_internal(const char *level, const char *fmt, va_list args);
+static void log_internal_va(const char *level, const char *fmt, va_list args);
 
 /****************************************************************************
  * PUBLIC FUNCTIONS DEFINITIONS
@@ -52,7 +52,7 @@ void log_info(const char *fmt, ...)
 {
     va_list args;
     va_start(args, fmt);
-    log_internal("INFO", fmt, args);
+    log_internal_va("INFO", fmt, args);
     va_end(args);
 }
 
@@ -60,7 +60,7 @@ void log_error(const char *fmt, ...)
 {
     va_list args;
     va_start(args, fmt);
-    log_internal("ERROR", fmt, args);
+    log_internal_va("ERROR", fmt, args);
     va_end(args);
 }
 
@@ -122,20 +122,23 @@ void log_addrinfo_list(const struct addrinfo *ai)
 
 static void log_timestamp()
 {
-    time_t now = time(NULL);
-    struct tm *tm_info = localtime(&now);
+    static time_t now;
+    static struct tm *tm_info;
     char buffer[32];
+    now = time(NULL);
+    tm_info = localtime(&now);
     strftime(buffer, sizeof(buffer), "[%Y-%m-%d %H:%M:%S]", tm_info);
     fprintf(log_file, "%s ", buffer);
 }
 
-static void log_internal(const char *level, const char *fmt, va_list args)
+static void log_internal_va(const char *level, const char *fmt, va_list args)
 {
-    if(!log_file) return;
-
-    log_timestamp();
-    fprintf(log_file, "[%s] ", level);
-    vfprintf(log_file, fmt, args);
-    fprintf(log_file, "\n");
-    fflush(log_file);  // flush every line for safety
+    if(log_file != NULL)
+    {
+        log_timestamp();
+        fprintf(log_file, "[%s] ", level);
+        vfprintf(log_file, fmt, args);
+        fprintf(log_file, "\n");
+        fflush(log_file);
+    }
 }

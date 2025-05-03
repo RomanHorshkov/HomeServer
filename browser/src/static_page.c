@@ -35,6 +35,7 @@ int static_page_serve_file(const char* filepath, const char* content_type, HttpR
             {
                 /* Allocate memory for the file content */
                 char* file_buffer = (char*)malloc(fsize + 1);
+
                 if(file_buffer != NULL)
                 {
                     /* Read file content into buffer */
@@ -50,6 +51,9 @@ int static_page_serve_file(const char* filepath, const char* content_type, HttpR
                         response->content_type = content_type;
                         response->body = file_buffer;
                         response->body_length = (size_t)fsize;
+
+                        /* close the file */
+                        fclose(f);  // <-- THIS WAS MISSING
 
                         res = 0;
                     }

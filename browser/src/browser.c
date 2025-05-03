@@ -17,8 +17,8 @@
  ****************************************************************************
  */
 
-size_t browser_manage_client_req(char* recv_buf, size_t n, char* send_buf,
-                                 int* client_connection_policy)
+ssize_t browser_manage_client_req(const char* recv_buf, size_t n, char* send_buf,
+                                  int* client_connection_policy)
 {
     /* return value, set to failure */
     int res = -1;

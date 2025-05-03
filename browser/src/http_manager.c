@@ -92,8 +92,8 @@ int http_parse_request(const char* buffer, const size_t buffer_len, HttpRequest*
  * Builds a simple HTTP response in the output buffer.
  * Fills the out_buffer with the complete HTTP response.
  */
-int http_build_response(const HttpResponse* resp, int* client_connection_policy, char* out_buffer,
-                        size_t max_len)
+int http_build_response(const HttpResponse* resp, const int* client_connection_policy,
+                        char* out_buffer, size_t max_len)
 {
     /* return value */
     int res = -1;

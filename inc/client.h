@@ -19,9 +19,9 @@ int clients_init(clients_t **clients);
 int clients_add_new_client(clients_t **clients, struct sockaddr_storage *client_addr,
                            int *client_fd);
 
-void clients_handle_client(int *client_fd);
+void clients_handle_client(const int *client_fd);
 
-void clients_erase_client(clients_t **clients, pid_t *client_pid);
+void clients_erase_client(clients_t **clients, const pid_t *client_pid);
 
 // void clients_close_client(clients_t **clients, pid_t *client_pid);
 

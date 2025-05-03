@@ -65,11 +65,14 @@ tidy:
 	@echo "🐻 Generating compile_commands.json using bear..."
 	bear -- make -B > /dev/null
 
-	@echo "🧠 Running clang-tidy..."
-	clang-tidy src/*.c browser/src/*.c -p . -- \
+	@echo "🧠 Running clang-tidy (suppressing C11 unsafe API warnings)..."
+	clang-tidy \
+		-checks=-clang-analyzer-security.insecureAPI.DeprecatedOrUnsafeBufferHandling \
+		src/*.c browser/src/*.c -p . -- \
 		-Iinc -Ibrowser/inc -Ilibraries/cjson -Ilibraries/llhttp
 
 	@echo "🧼 Cleaning temporary build files..."
+
 # rm -f compile_commands.json // keep for now the compile_commands
 	rm -f *.o */*.o */*/*.o
 
