@@ -1,26 +1,23 @@
 #define _POSIX_C_SOURCE 200112L
 #define _GNU_SOURCE
 
-#include <netdb.h>                  // socklen_t
-
 #include "core.h"
-#include "server_settings.h"
-#include "server_input.h"
-#include "logger.h"
-#include "listener.h"
+
+#include <errno.h>       // errno, EADDRINUSE, etc.
+#include <netdb.h>       // socklen_t
+#include <stdlib.h>      // malloc(), calloc(), NULL etc
+#include <string.h>      // memset(), strcpy(), strlen(), etc.
+#include <sys/socket.h>  // socklen_t, socket(), bind(), setsockopt(), etc.
+#include <sys/time.h>    // struct timeval
+#include <sys/wait.h>    // wait, who hang, pid_t
+#include <time.h>        // nanosleep()
+#include <unistd.h>      // fork(), close()
+
 #include "client.h"
-
-
-#include <errno.h>                  // errno, EADDRINUSE, etc.
-#include <stdlib.h>                 // malloc(), calloc(), NULL etc
-#include <string.h>                 // memset(), strcpy(), strlen(), etc.
-#include <time.h>                   // nanosleep()
-#include <unistd.h>                 // fork(), close()
-#include <sys/socket.h>             // socklen_t, socket(), bind(), setsockopt(), etc.
-#include <sys/time.h>               // struct timeval
-#include <sys/wait.h>               // wait, who hang, pid_t
-
-
+#include "listener.h"
+#include "logger.h"
+#include "server_input.h"
+#include "server_settings.h"
 
 /****************************************************************************
  * PRIVATE STRUCTURED TYPES
@@ -56,7 +53,6 @@ static clients_t *clients;
  ****************************************************************************
  */
 
-
 static int accept_client(void);
 
 static void reap_zombies(void);
@@ -79,7 +75,7 @@ int server_init(const char *port)
     {
         /* TO DO */
     }
-    else if (clients_init(&clients) == -1)
+    else if(clients_init(&clients) == -1)
     {
         /* TO DO */
     }
@@ -92,23 +88,22 @@ int server_init(const char *port)
     return ret;
 }
 
-
 void server_run(void)
 {
     pid_t pid;
 
-    while (check_stdin_for_exit() != 0)
+    while(check_stdin_for_exit() != 0)
     {
         int client_fd = accept_client(/* an all listeners */);
-        
-        if (client_fd != -1)
+
+        if(client_fd != -1)
         {
             /* Fork for a new client */
             pid = fork();
-            
-            if (pid == 0)
+
+            if(pid == 0)
             {
-                /* 
+                /*
                 Child process:
                 Start child process and handle the client
                 */
@@ -120,11 +115,11 @@ void server_run(void)
                 clients_handle_client(&client_fd);
 
                 /* Exit */
-                _exit(0);  /* child only */
+                _exit(0); /* child only */
             }
-            else if (pid > 0)
+            else if(pid > 0)
             {
-                /* 
+                /*
                 Parent process:
                 */
 
@@ -135,7 +130,6 @@ void server_run(void)
                 parent clean just with listeners */
                 // close(client_fd);
                 // clients_close_client(&clients, &client_fd);
-
             }
             else
             {
@@ -144,7 +138,7 @@ void server_run(void)
             }
         }
         else
-        {   
+        {
             struct timespec ts;
             ts.tv_sec = SERVER_SLEEP_TIME_S;
             ts.tv_nsec = SERVER_SLEEP_TIME_NS;
@@ -185,23 +179,21 @@ static int accept_client(void)
     /* save and manage new client */
     else if(clients_add_new_client(&clients, &client_addr, &client_fd) == -1)
     {
-        // do nothing 
+        // do nothing
     }
 
     return client_fd;
 }
 
-
 static void reap_zombies(void)
 {
-
     pid_t reaped_pid;
 
     /* -1 to check any child,
     WHOHANG doesn't block if no child dead,
     returns:
     child's PID if any dies, 0 if none, -1 if error */
-    while ((reaped_pid = waitpid(-1, NULL, WNOHANG)) > 0)
+    while((reaped_pid = waitpid(-1, NULL, WNOHANG)) > 0)
     {
         clients_erase_client(&clients, &reaped_pid);
     }
