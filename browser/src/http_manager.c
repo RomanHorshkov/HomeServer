@@ -89,46 +89,54 @@ int http_parse_request(const char* buffer, const size_t buffer_len, HttpRequest*
 }
 
 /**
- * Builds a simple HTTP response in the output buffer.
- * Fills the out_buffer with the complete HTTP response.
+ * Builds a simple HTTP response (headers + binary body) into out_buffer.
+ *
+ * Returns: total bytes written (headers+body), or -1 on error.
  */
 int http_build_response(const HttpResponse* resp, const int* client_connection_policy,
                         char* out_buffer, size_t max_len)
 {
-    /* return value */
-    int res = -1;
-
-    /* check input validity */
-    if(resp != NULL && out_buffer != NULL)
+    if(!resp || !out_buffer)
     {
-        const char* conn_hdr =
-            (*client_connection_policy == HTTP_CONNECTION_CLOSE ? "close" : "keep-alive");
-        int written = snprintf(out_buffer, max_len,
-                               "HTTP/1.1 %d %s\r\n"
-                               "Content-Type: %s\r\n"
-                               "Content-Length: %zu\r\n"
-                               "Connection: %s\r\n"
-                               "\r\n"
-                               "%s",
-                               resp->status_code, resp->status_text, resp->content_type,
-                               resp->body_length, conn_hdr, (resp->body != NULL) ? resp->body : "");
-
-        if(written > 0 && (size_t)written < max_len)
-        {
-            res = written;
-        }
-        else
-        {
-            log_error("http_manager: build response: snprintf failed or buffer too small",
-                      strerror(errno));
-        }
-    }
-    else
-    {
-        log_error("http_manager: build response: invalid input", strerror(errno));
+        log_error("http_manager: build response: invalid input", "");
+        return -1;
     }
 
-    return res;
+    /* Choose Connection header */
+    const char* conn_hdr =
+        (*client_connection_policy == HTTP_CONNECTION_CLOSE ? "close" : "keep-alive");
+
+    /* 1) Build the headers (no body here!) */
+    int hdr_len = snprintf(out_buffer, max_len,
+                           "HTTP/1.1 %d %s\r\n"
+                           "Content-Type: %s\r\n"
+                           "Content-Length: %zu\r\n"
+                           "Connection: %s\r\n"
+                           "\r\n",
+                           resp->status_code, resp->status_text, resp->content_type,
+                           resp->body_length, conn_hdr);
+
+    if(hdr_len < 0 || (size_t)hdr_len >= max_len)
+    {
+        log_error("http_manager: build response: header too large", "");
+        return -1;
+    }
+
+    /* 2) Check space for the body */
+    if((size_t)hdr_len + resp->body_length > max_len)
+    {
+        log_error("http_manager: build response: response too large for buffer", "");
+        return -1;
+    }
+
+    /* 3) Copy the raw bytes of the body immediately after the headers */
+    if(resp->body && resp->body_length > 0)
+    {
+        memcpy(out_buffer + hdr_len, resp->body, resp->body_length);
+    }
+
+    /* Total bytes = headers + body */
+    return hdr_len + (int)resp->body_length;
 }
 
 /****************************************************************************

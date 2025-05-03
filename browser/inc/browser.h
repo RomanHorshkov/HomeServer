@@ -13,7 +13,7 @@
  ****************************************************************************
  */
 
-ssize_t browser_manage_client_req(const char* recv_buf, size_t n, char* send_buf,
+ssize_t browser_manage_client_req(int fd, const char* recv_buf, size_t n,
                                   int* client_connection_policy);
 
 #endif /* SERVER_BROWSER_H */

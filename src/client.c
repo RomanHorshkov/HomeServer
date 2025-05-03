@@ -132,9 +132,6 @@ void clients_handle_client(const int *client_fd)
     /* receive buffer len */
     ssize_t n;
 
-    /* send buffer */
-    char send_buff[HTTP_SEND_BUFFER_LEN];
-
     /* Client's connection policy over http */
     int client_connection_policy = -1;
 
@@ -143,24 +140,18 @@ void clients_handle_client(const int *client_fd)
     {
         log_info("Client [pid %d fd %d]: received, parsing ->", getpid(), fd);
 
-        /* serve the request if any and respond */
-        ssize_t send_len =
-            browser_manage_client_req(recv_buff, (size_t)n, send_buff, &client_connection_policy);
-
-        if(send_len <= 0)
+        /* serve the request; if any and respond */
+        if(browser_manage_client_req(fd, recv_buff, (size_t)n, &client_connection_policy) <= 0)
         {
             log_error("Client: browser failed to manage request", strerror(errno));
         }
 
-        else if(send(fd, send_buff, send_len, 0) < 0)
-        {
-            log_error("Client: failed to send() response", strerror(errno));
-        }
         /* Check if the client wants the connection to close */
         else if(client_connection_policy == HTTP_CONNECTION_CLOSE)
         {
+            /* exit and close the client */
             log_info("Client [pid %d fd %d]: closes connection", getpid(), fd);
-            break; /* exit and close the client */
+            break;
         }
 
         /* Upgrade after first msg received the client's socket options */

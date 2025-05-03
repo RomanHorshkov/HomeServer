@@ -32,7 +32,7 @@
  */
 
 /* Client short timeout [s] */
-#define CLIENT_MAX_TIMEOUT_S 30
+#define CLIENT_MAX_TIMEOUT_S 5
 
 /* Client long timeout [s] */
 #define CLIENT_MAX_TIMEOUT_S_L 120

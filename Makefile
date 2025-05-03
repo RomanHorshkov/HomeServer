@@ -77,7 +77,7 @@ tidy:
 	rm -f *.o */*.o */*/*.o
 
 clean:
-	rm -rf $(BUILDDIR)
+	rm -rf $(BUILDDIR) & rm server.log
 
 # Auto‑generated dependency files -----------------------------------------
 -include $(DEPS)
