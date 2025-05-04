@@ -55,9 +55,10 @@ format:
 
 # Static analysis ----------------------------------------------------------
 lint:
-	cppcheck --enable=all --inconclusive --std=c99 --language=c --quiet \
+	cppcheck --enable=all --inconclusive --std=c11 --language=c --quiet \
 		--suppress=missingIncludeSystem \
-		-Iinc -Iexternal/cjson -Iexternal/llhttp \
+		-Iinclude -Iinclude/core -Iinclude/browser \
+		-Iexternal/cjson -Iexternal/llhttp \
 		src/
 
 # Better Static analysis
@@ -68,16 +69,18 @@ tidy:
 	@echo "🧠 Running clang-tidy (suppressing C11 unsafe API warnings)..."
 	clang-tidy \
 		-checks=-clang-analyzer-security.insecureAPI.DeprecatedOrUnsafeBufferHandling \
-		src/*.c -p . -- \
-		-Iinc -Iexternal/cjson -Iexternal/llhttp
+		$(shell find src -name '*.c') -p . -- \
+		-Iinclude -Iinclude/core -Iinclude/browser \
+		-Iexternal/cjson -Iexternal/llhttp
 
 	@echo "🧼 Cleaning temporary build files..."
+	rm -f *.o */*.o */*/*.o
 
 # rm -f compile_commands.json // keep for now the compile_commands
 	rm -f *.o */*.o */*/*.o
 
 clean:
-	rm -rf $(BUILDDIR) & rm server.log
+	rm -rf $(BUILDDIR) server.log
 
 # Auto‑generated dependency files -----------------------------------------
 -include $(DEPS)
