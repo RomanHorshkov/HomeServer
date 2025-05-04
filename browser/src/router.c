@@ -146,6 +146,24 @@ int router_handle_request(const HttpRequest *request, HttpResponse *response)
         return drive_json_handler(request, response);
     }
 
+    /* ------------------------------------------------------------------
+     * Serve any file under /assets/ from disk
+     * ------------------------------------------------------------------ */
+    if(strncmp(request->path, "/assets/", 8) == 0)
+    {
+        char file_path[PATH_MAX];
+        snprintf(file_path, sizeof file_path, "%s%s", STATIC_ROOT, request->path);
+
+        /* Guard against “..” path‑traversal attempts */
+        if(strstr(file_path, ".."))
+        {
+            send_404(response);
+            return 0;
+        }
+
+        return static_page_serve_file(file_path, guess_mime_type(file_path), response);
+    }
+
     /* Fallback to 404 Not Found */
     send_404(response);
     return 0;
