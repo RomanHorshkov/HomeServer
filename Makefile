@@ -51,15 +51,22 @@ release: all
 
 # Auto formatting ---------------------------------------------------------
 format:
-	find . -regex '.*\.\(c\|h\)' -exec clang-format -i {} +
+ifndef FILES
+	@echo "🛠  Formatting all .c/.h files in the project..."
+	@find . -regex '.*\.\(c\|h\)' -exec clang-format -i {} +
+else
+	@echo "🛠  Formatting staged files: $(FILES)"
+	@clang-format -i $(FILES)
+endif
 
 # Static analysis ----------------------------------------------------------
 lint:
-	cppcheck --enable=all --inconclusive --std=c11 --language=c --quiet \
+	@cppcheck --enable=all --inconclusive --std=c11 --language=c --quiet \
 		--suppress=missingIncludeSystem \
 		-Iinclude -Iinclude/core -Iinclude/browser \
 		-Iexternal/cjson -Iexternal/llhttp \
-		src/
+		src/ \
+		2> /dev/null
 
 # Better Static analysis
 tidy:
