@@ -23,10 +23,6 @@ void clients_handle_client(const int *client_fd);
 
 void clients_erase_client(clients_t **clients, const pid_t *client_pid);
 
-// void clients_close_client(clients_t **clients, pid_t *client_pid);
-
-// void clients_close_all(clients_t **clients);
-
 void clients_set_client_pid(clients_t **clients, pid_t *pid, int *client_fd);
 
 void clients_shutdown(clients_t **clients);

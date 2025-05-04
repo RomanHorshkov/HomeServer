@@ -1,4 +1,3 @@
-#define _POSIX_C_SOURCE 200112L
 #define _GNU_SOURCE
 #include "logger.h"
 
@@ -11,19 +10,37 @@
 
 /****************************************************************************
  * PRIVATE VARIABLES DEFINITIONS
- ****************************************************************************/
+ ****************************************************************************
+ */
 static FILE *log_file = NULL;
+
+
 
 /****************************************************************************
  * PRIVATE FUNCTIONS DECLARATIONS
- ****************************************************************************/
+ ****************************************************************************
+ */
 
+/**
+ * @brief Print current timestamp in `[YYYY-MM-DD HH:MM:SS]` format.
+ *
+ * Used internally before every log entry.
+ */
 static void log_timestamp();
+
+/**
+ * @brief Internal logging implementation.
+ *
+ * @param level "INFO", "ERROR", etc.
+ * @param fmt Format string
+ * @param args Variadic arguments
+ */
 static void log_internal_va(const char *level, const char *fmt, va_list args);
 
 /****************************************************************************
  * PUBLIC FUNCTIONS DEFINITIONS
- ****************************************************************************/
+ ****************************************************************************
+ */
 
 void logger_init(const char *filename)
 {

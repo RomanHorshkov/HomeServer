@@ -1,4 +1,3 @@
-#define _POSIX_C_SOURCE 200112L
 #define _GNU_SOURCE
 
 #include "core.h"
@@ -23,16 +22,8 @@
  * PRIVATE STRUCTURED TYPES
  ****************************************************************************
  */
+/* None */
 
-// /* Server's clients */
-// typedef struct
-// {
-//     int client_fd;
-//     int pid;
-//     char host[NI_MAXHOST];
-//     char service[NI_MAXSERV];
-// }
-// Client_t;
 
 /****************************************************************************
  * PRIVATE VARIABLES DEFINITIONS
@@ -43,7 +34,7 @@
 static Listener_t *listener = NULL;
 
 /* Server's clients */
-static clients_t *clients;
+static clients_t *clients = NULL;
 
 // static Client_t *clients = NULL;
 // static int active_clients_no = 0;
@@ -73,11 +64,11 @@ int server_init(const char *port)
     /* init the listener */
     if(listener_init(&listener, port) == -1)
     {
-        /* TO DO */
+        log_error("CORE: listener failed to init.", strerror(errno));
     }
     else if(clients_init(&clients) == -1)
     {
-        /* TO DO */
+        log_error("CORE: clients failed to init.", strerror(errno));
     }
     else
     {
@@ -90,6 +81,7 @@ int server_init(const char *port)
 
 void server_run(void)
 {
+    /* process id for fork() */
     pid_t pid;
 
     while(check_stdin_for_exit() != 0)
@@ -115,7 +107,7 @@ void server_run(void)
                 clients_handle_client(&client_fd);
 
                 /* Exit */
-                _exit(0); /* child only */
+                _exit(0);
             }
             else if(pid > 0)
             {
@@ -133,7 +125,7 @@ void server_run(void)
             }
             else
             {
-                log_error("fork: %s", strerror(errno));
+                log_error("CORE: fork failure: %s", strerror(errno));
                 /* maybe should close the last client */
             }
         }
