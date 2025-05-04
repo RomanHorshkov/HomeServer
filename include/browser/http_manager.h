@@ -78,7 +78,7 @@ int http_parse_request(const char* buffer, size_t buffer_len, HttpRequest* req,
                        int* client_connection_policy);
 
 /* Build an HTTP response string into a buffer (already formatted) */
-int http_build_response(const HttpResponse* resp, const int* client_connection_policy,
-                        char* out_buffer, size_t max_len);
+// int http_build_response(const HttpResponse* resp, const int* client_connection_policy,
+//                         char* out_buffer, size_t max_len);
 
 #endif /* HTTP_MANAGER_H */
