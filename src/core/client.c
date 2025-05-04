@@ -212,43 +212,6 @@ void clients_erase_client(clients_t **clients, const pid_t *client_pid)
     }
 }
 
-// void clients_close_client(clients_t **clients, pid_t *client_fd)
-// {
-//     for (int i = 0; i < MAX_CLIENTS; i++)
-//     {
-//         if ((*clients)->clients[i].client_fd == *client_fd)
-//         {
-//             log_info("Client closed: PID %d (fd=%d)",
-//                      (*clients)->clients[i].pid,
-//                      (*clients)->clients[i].client_fd);
-
-//             /* close the client */
-//             close((*clients)->clients[i].client_fd);
-
-//             /* Clear the client slot */
-//             (*clients)->clients[i].client_fd = -1;
-//             (*clients)->clients[i].pid = -1;
-//         }
-//         else
-//         {
-//             /* try next client */
-//             continue;
-//         }
-//     }
-// }
-
-// void clients_close_all(clients_t **clients)
-// {
-//     for (int i = 0; i < MAX_CLIENTS; i++)
-//     {
-//         if ((*clients)->clients[i].client_fd > 0 )
-//         {
-//             /* close the client */
-//             close((*clients)->clients[i].client_fd);
-//         }
-//     }
-// }
-
 void clients_set_client_pid(clients_t **clients, pid_t *pid, int *client_fd)
 {
     /* loop through all clients */
