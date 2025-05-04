@@ -66,7 +66,6 @@ lint:
 		-Iinclude -Iinclude/core -Iinclude/browser \
 		-Iexternal/cjson -Iexternal/llhttp \
 		src/ \
-		2> /dev/null
 
 # Better Static analysis
 tidy:
