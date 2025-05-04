@@ -157,10 +157,10 @@ static ssize_t send_all(int fd, const void *buf, size_t len)
 {
     size_t total_sent = 0;
     const char *ptr = (const char *)buf;
-    ssize_t sent;
 
     while(total_sent < len)
     {
+        ssize_t sent;
         sent = send(fd, ptr + total_sent, len - total_sent, 0);
         if(sent < 0)
         {

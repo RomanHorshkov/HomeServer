@@ -248,7 +248,7 @@ static int url_decode(const char *src, char *dst, size_t dst_sz)
         if(src[si] == '%' && isxdigit((unsigned char)src[si + 1]) &&
            isxdigit((unsigned char)src[si + 2]))
         {
-            char hex[3] = {src[si + 1], src[si + 2], '\0'};
+            const char hex[3] = {src[si + 1], src[si + 2], '\0'};
             dst[di++] = (char)strtol(hex, NULL, 16);
             si += 2;
         }
