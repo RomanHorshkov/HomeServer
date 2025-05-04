@@ -1,11 +1,11 @@
 # ------ Build configuration ------
 CC              := gcc
 CFLAGS          := -std=c11 -Wall -Werror -Wextra -pedantic -g
-LDLIBS 			+= -Llibraries/llhttp -lllhttp\
-                   -Llibraries/cjson -lcjson
+LDLIBS 			+= -Lexternal/llhttp -lllhttp\
+                   -Lexternal/cjson -lcjson
 
-INCDIRS 		:= inc browser/inc libraries/llhttp libraries/cjson
-SRCDIRS         := src browser/src
+INCDIRS 		:= include include/core include/browser external/llhttp external/cjson
+SRCDIRS         := src
 BUILDDIR        := build
 OBJDIR          := $(BUILDDIR)/obj
 BINDIR          := $(BUILDDIR)/bin
@@ -15,8 +15,8 @@ TARGET          := server
 INCLUDES        := $(foreach dir,$(INCDIRS),-I$(dir))
 
 # ------ Source & object lists ------
-SOURCES         := $(foreach dir,$(SRCDIRS),$(wildcard $(dir)/*.c))
-OBJECTS         := $(patsubst %.c,$(OBJDIR)/%.o,$(SOURCES))
+SOURCES 		:= $(shell find $(SRCDIRS) -name '*.c')
+OBJECTS 		:= $(patsubst %.c,$(OBJDIR)/%.o,$(SOURCES))
 DEPS            := $(OBJECTS:.o=.d)
 
 # ------ Phony targets ------
@@ -31,7 +31,7 @@ $(BINDIR)/$(TARGET): $(OBJECTS)
 	$(CC) $(CFLAGS) $^ $(LDLIBS) -o $@
 
 # Compile step -------------------------------------------------------------
-$(OBJDIR)/%.o: %.c | $(OBJDIR)
+$(OBJDIR)/%.o: %.c
 	@mkdir -p $(dir $@)
 	$(CC) $(CFLAGS) $(INCLUDES) -MMD -MP -c $< -o $@
 
@@ -57,8 +57,8 @@ format:
 lint:
 	cppcheck --enable=all --inconclusive --std=c99 --language=c --quiet \
 		--suppress=missingIncludeSystem \
-		-Iinc -Ibrowser/inc -Ilibraries/cjson -Ilibraries/llhttp \
-		src/ browser/src/
+		-Iinc -Iexternal/cjson -Iexternal/llhttp \
+		src/
 
 # Better Static analysis
 tidy:
@@ -68,8 +68,8 @@ tidy:
 	@echo "🧠 Running clang-tidy (suppressing C11 unsafe API warnings)..."
 	clang-tidy \
 		-checks=-clang-analyzer-security.insecureAPI.DeprecatedOrUnsafeBufferHandling \
-		src/*.c browser/src/*.c -p . -- \
-		-Iinc -Ibrowser/inc -Ilibraries/cjson -Ilibraries/llhttp
+		src/*.c -p . -- \
+		-Iinc -Iexternal/cjson -Iexternal/llhttp
 
 	@echo "🧼 Cleaning temporary build files..."
 
