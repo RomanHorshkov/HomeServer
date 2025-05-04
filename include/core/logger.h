@@ -29,7 +29,7 @@ struct addrinfo;
  ****************************************************************************
  */
 
- /**
+/**
  * @brief Initialize the logger.
  *
  * Opens the given file for writing (overwriting any existing content).
