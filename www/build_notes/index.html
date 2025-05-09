@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Build Notes</title>
+    <link rel="stylesheet" href="/style.css">
+    <script src="assets/header.js" defer></script>
+    <script src="https://cdn.jsdelivr.net/npm/plantuml-encoder/dist/plantuml-encoder.js"></script>
+</head>
+<body>
+    <header>
+        <h1>Build Notes</h1>
+        <p>Documentation and diagrams for my server project.</p>
+    </header>
+
+    <section>
+        <h2>Diagrams</h2>
+        <select id="diagramSelect" onchange="updateDiagram()">
+            <option value="example.puml">Example Diagram</option>
+        </select>
+        <iframe id="diagram" src="" frameborder="0"></iframe>
+    </section>
+
+    <section>
+        <h2>Notes</h2>
+        <p>Here you can add text descriptions, code snippets, and anything else related to your build process.</p>
+    </section>
+
+    <script>
+        function updateDiagram() {
+            const select = document.getElementById("diagramSelect");
+            const file = select.value;
+            fetch(`/build_notes/diagrams/${file}`)
+                .then(response => response.text())
+                .then(data => {
+                    const encoded = plantumlEncoder.encode(data);
+                    const url = `https://www.plantuml.com/plantuml/svg/${encoded}`;
+                    document.getElementById("diagram").src = url;
+                });
+        }
+
+        // Load the first diagram by default
+        updateDiagram();
+    </script>
+</body>
+</html>

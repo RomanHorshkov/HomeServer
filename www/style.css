@@ -19,7 +19,10 @@
 /* ---------------------------------------------------------------------
    Base layout / typography
    ------------------------------------------------------------------ */
-html, body { margin: 0; min-height: 100%; }
+html, body {
+  margin: 0;
+  min-height: 100vh;     /* ← stretch to viewport height */
+}
 body {
   background: var(--bg);
   color: var(--text);
@@ -29,7 +32,10 @@ body {
   display: flex;
   flex-direction: column;
 }
-
+/* …or, if you don’t have <main>, apply to footer directly: */
+body > footer {
+  margin-top: auto;      /* ← pushes it to the bottom */
+}
 /* ---------------------------------------------------------------------
    Site‑wide sticky header
    ------------------------------------------------------------------ */
@@ -50,9 +56,16 @@ header {
   box-shadow: var(--shadow);
 }
 header .logo {
-  font-weight: 600;
-  color: var(--magenta);
-  font-size: 1.25rem;
+    font-size: 1.5em;
+    font-weight: bold;
+    color: var(--magenta);
+    text-decoration: none;
+    margin-right: 20px;
+    transition: color 0.2s ease;
+}
+header .logo:hover {
+    color: var(--accent);
+    text-decoration: underline;
 }
 header nav {
   display: flex;
@@ -63,7 +76,37 @@ header nav a {
   text-decoration: none;
   font-size: .95rem;
 }
+/* Highlight the active page link in the header */
+header nav a.active {
+    color: var(--magenta);
+    font-weight: bold;
+}
 header nav a:hover { text-decoration: underline; }
+
+/* ---------------------------------------------------------------------
+   Footer
+   ------------------------------------------------------------------ */
+footer {
+    background-color: var(--surface);
+    color: var(--text);
+    text-align: center;
+    padding: 8px 0;        /* ↓ much less vertical space */
+    font-size: .8rem;      /* ↓ smaller text */
+    margin-top: 0;         /* override any leftover margins */
+    border-top: 1px solid var(--border);
+    box-shadow: var(--shadow);
+}
+
+footer a {
+    color: var(--accent);
+    text-decoration: none;
+    transition: color 0.2s ease;
+}
+
+footer a:hover {
+    color: var(--accent-hover);
+    text-decoration: underline;
+}
 
 /* ---------------------------------------------------------------------
    Headings / links

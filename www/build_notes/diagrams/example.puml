@@ -1,0 +1,49 @@
+@startuml
+title Classic TCP server bootstrap (getaddrinfo ➜ accept)
+
+' ---------- general look ----------
+skinparam shadowing false
+skinparam sequenceMessageAlign center
+skinparam participantPadding 15
+
+' ---------- actors ----------
+participant "App\n(your code)"          as App
+participant "libc / NSS\n(getaddrinfo)" as Libc
+participant "Kernel\n(syscalls)"        as Kernel
+participant "NIC / LAN"                 as NIC
+participant "Remote host"               as Client
+
+' ====================================================================
+' 1. Address‑resolution phase
+' ====================================================================
+note over App,Libc
+  App calls getaddrinfo(NULL, "8080", AI_PASSIVE)
+  • NULL + AI_PASSIVE ⇒ wildcard 0.0.0.0 / ::
+  • "8080" stays a string so service‑name lookup still works
+end note
+App   -> Libc : getaddrinfo()
+Libc  -> Libc : hosts / DNS / services lookup
+Libc  --> App : addrinfo linked list
+
+' ====================================================================
+' 2. Create/bind/listen
+' ====================================================================
+loop every addrinfo
+  App   -> Kernel : socket()
+  Kernel --> App  : fd
+  App -> App : set_listener_socket_options()
+  App   -> Kernel : bind(fd, sockaddr)
+  Kernel --> App  : bind result
+  alt bind succeeds
+       App   -> Kernel : listen(fd, backlog)
+       Kernel --> App  : listen result
+       alt listen succeeds
+       App -> App : save_listener
+       else listen fails
+       App   -> Kernel : close(fd)
+      end alt
+  else bind fails
+       App   -> Kernel : close(fd)
+  end alt
+end loop
+@enduml

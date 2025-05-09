@@ -45,6 +45,8 @@
 /** Content types */
 #define CONTENT_HTML "text/html"
 #define CONTENT_CSS "text/css"
+#define BUILD_NOTES_DIR "www/build_notes/diagrams/"
+#define BUILD_NOTES_PAGE "www/build_notes/index.html"
 
 /** HTTP methods */
 #define HTTP_GET "GET"
@@ -134,16 +136,43 @@ int router_handle_request(const HttpRequest *request, HttpResponse *response)
         return static_page_serve_file(file_path, guess_mime_type(file_path), response);
     }
 
+    /* ------------------------------------------------------------------
+     * Serve Drive page
+     * ------------------------------------------------------------------ */
     /* Drive UI page */
     if(strcmp(request->path, "/drive") == 0)
     {
         return static_page_serve_file("www/drive.html", "text/html", response);
     }
 
-    /* Drive JSON API: /api/drive?path=/some/subdir */
-    else if(strncmp(request->path, "/api/drive", 10) == 0)
+    /* Drive UI page: JSON API: /api/drive?path=/some/subdir */
+    if(strncmp(request->path, "/api/drive", 10) == 0)
     {
         return drive_json_handler(request, response);
+    }
+
+    /* ------------------------------------------------------------------
+     * Serve build_notes page
+     * ------------------------------------------------------------------ */
+    if(strcmp(request->path, "/build_notes") == 0 || strcmp(request->path, "/build_notes/") == 0)
+    {
+        return static_page_serve_file(BUILD_NOTES_PAGE, "text/html", response);
+    }
+
+    /* puml file */
+    if(strncmp(request->path, "/build_notes/diagrams/", 22) == 0)
+    {
+        char file_path[PATH_MAX];
+        snprintf(file_path, sizeof(file_path), "%s%s", BUILD_NOTES_DIR, request->path + 22);
+
+        // Check for path traversal attempts
+        if(strstr(file_path, ".."))
+        {
+            send_404(response);
+            return 0;
+        }
+
+        return static_page_serve_file(file_path, "text/plain", response);
     }
 
     /* ------------------------------------------------------------------
