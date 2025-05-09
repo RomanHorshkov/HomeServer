@@ -60,9 +60,17 @@ static const struct
     const char *extension;
     const char *mime_type;
 } mime_map[] = {
-    {".html", "text/html"}, {".css", "text/css"},      {".js", "application/javascript"},
-    {".jpg", "image/jpeg"}, {".jpeg", "image/jpeg"},   {".png", "image/png"},
-    {".gif", "image/gif"},  {".svg", "image/svg+xml"},
+    {".html", "text/html"},
+    {".css", "text/css"},
+    {".js", "application/javascript"},
+    {".jpg", "image/jpeg"},
+    {".jpeg", "image/jpeg"},
+    {".png", "image/png"},
+    {".gif", "image/gif"},
+    {".svg", "image/svg+xml"},
+    {".json", "application/json"},  // for manifest
+    {".md", "text/markdown"},       // if ever want a real markdown mime
+    {".puml", "text/plain"}         // PlantUML source
 };
 
 /****************************************************************************
@@ -140,7 +148,7 @@ int router_handle_request(const HttpRequest *request, HttpResponse *response)
      * Serve Drive page
      * ------------------------------------------------------------------ */
     /* Drive UI page */
-    if(strcmp(request->path, "/drive") == 0)
+    if(strncmp(request->path, "/drive", 6) == 0)
     {
         return static_page_serve_file("www/drive.html", "text/html", response);
     }
@@ -154,25 +162,28 @@ int router_handle_request(const HttpRequest *request, HttpResponse *response)
     /* ------------------------------------------------------------------
      * Serve build_notes page
      * ------------------------------------------------------------------ */
-    if(strcmp(request->path, "/build_notes") == 0 || strcmp(request->path, "/build_notes/") == 0)
+    if(strncmp(request->path, "/build_notes", 12) == 0)
     {
-        return static_page_serve_file(BUILD_NOTES_PAGE, "text/html", response);
-    }
-
-    /* puml file */
-    if(strncmp(request->path, "/build_notes/diagrams/", 22) == 0)
-    {
-        char file_path[PATH_MAX];
-        snprintf(file_path, sizeof(file_path), "%s%s", BUILD_NOTES_DIR, request->path + 22);
-
-        // Check for path traversal attempts
-        if(strstr(file_path, ".."))
+        const char *rest = request->path + 12;  // points at either '\0' or "/…"
+        if(*rest == '\0' || (rest[0] == '/' && rest[1] == '\0'))
         {
-            send_404(response);
-            return 0;
+            // exact /build_notes or /build_notes/
+            return static_page_serve_file(BUILD_NOTES_PAGE, CONTENT_HTML, response);
         }
-
-        return static_page_serve_file(file_path, "text/plain", response);
+        if(rest[0] == '/')
+        {
+            // anything under /build_notes/…
+            char file_path[PATH_MAX];
+            snprintf(file_path, sizeof file_path, "%s%s", STATIC_ROOT, request->path);
+            if(strstr(request->path, "..") || access(file_path, R_OK) != 0)
+            {
+                send_404(response);
+                return 0;
+            }
+            const char *mime = guess_mime_type(file_path);
+            if(strstr(file_path, ".json")) mime = "application/json";
+            return static_page_serve_file(file_path, mime, response);
+        }
     }
 
     /* ------------------------------------------------------------------

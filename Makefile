@@ -19,8 +19,13 @@ SOURCES 		:= $(shell find $(SRCDIRS) -name '*.c')
 OBJECTS 		:= $(patsubst %.c,$(OBJDIR)/%.o,$(SOURCES))
 DEPS            := $(OBJECTS:.o=.d)
 
+# ─── Build a manifest of all .puml diagrams and .md/.txt notes ───
+NOTES_DIR := www/build_notes/notes
+DIAG_DIR  := www/build_notes/diagrams
+MANIFEST  := www/build_notes/manifest.json
+
 # ------ Phony targets ------
-.PHONY: all clean run debug release tidy lint format
+.PHONY: all clean run debug release tidy lint format notes
 
 # ------ Default build ------
 all: $(BINDIR)/$(TARGET)
@@ -84,6 +89,24 @@ tidy:
 
 # rm -f compile_commands.json // keep for now the compile_commands
 	rm -f *.o */*.o */*/*.o
+
+notes:
+	@echo "Generating $(MANIFEST)…"
+	@mkdir -p $(dir $(MANIFEST))
+	@echo "{"                                                          >  $(MANIFEST)
+	@echo '  "diagrams": ['                                           >> $(MANIFEST)
+	@find $(DIAG_DIR) -maxdepth 1 -type f -name '*.puml' \
+	  | sed -e 's@.*/\(.*\)$$@"\1"@' \
+	  | paste -sd ",\n    " -                                        >> $(MANIFEST)
+	@echo '  ],'                                                      >> $(MANIFEST)
+	@echo '  "notes": ['                                              >> $(MANIFEST)
+	@find $(NOTES_DIR) -maxdepth 1 -type f \( -name '*.md' -o -name '*.txt' \) \
+	  | sed -e 's@.*/\(.*\)$$@"\1"@' \
+	  | paste -sd ",\n    " -                                        >> $(MANIFEST)
+	@echo '  ]'                                                       >> $(MANIFEST)
+	@echo "}"                                                         >> $(MANIFEST)
+	@echo "$(MANIFEST) updated."
+
 
 clean:
 	rm -rf $(BUILDDIR) server.log

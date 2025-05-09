@@ -1,0 +1,8 @@
+{
+  "diagrams": [
+"example.puml"
+  ],
+  "notes": [
+"intro.md","login_flow.md"
+  ]
+}
