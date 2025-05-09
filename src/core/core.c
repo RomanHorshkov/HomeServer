@@ -35,9 +35,6 @@ static Listener_t *listener = NULL;
 /* Server's clients */
 static clients_t *clients = NULL;
 
-// static Client_t *clients = NULL;
-// static int active_clients_no = 0;
-
 /****************************************************************************
  * PRIVATE FUNCTIONS DECLARATIONS
  ****************************************************************************
@@ -60,15 +57,17 @@ int server_init(const char *port)
     /* Start the logger */
     logger_init("server.log");
 
-    /* init the listener */
+    /* Initialize the listener */
     if(listener_init(&listener, port) == -1)
     {
         log_error("CORE: listener failed to init.", strerror(errno));
     }
+    /* Initialize the clients */
     else if(clients_init(&clients) == -1)
     {
         log_error("CORE: clients failed to init.", strerror(errno));
     }
+    /* Successful initialization */
     else
     {
         log_info("🚀 C Server running on http://localhost:%s\n", port);
@@ -96,13 +95,12 @@ void server_run(void)
             {
                 /*
                 Child process:
-                Start child process and handle the client
                 */
+
                 /* Close all listeners, no need for them in this process */
                 listener_close(&listener);
 
-                /* Handle client:
-                blocking function */
+                /* Handle client: blocking function */
                 clients_handle_client(&client_fd);
 
                 /* Exit */
