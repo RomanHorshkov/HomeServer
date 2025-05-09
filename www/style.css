@@ -90,9 +90,10 @@ footer {
     background-color: var(--surface);
     color: var(--text);
     text-align: center;
-    padding: 8px 0;        /* ↓ much less vertical space */
+    padding: 0px 0;        /* ↓ much less vertical space */
     font-size: .8rem;      /* ↓ smaller text */
     margin-top: 0;         /* override any leftover margins */
+    margin-bottom: 32px;           /* re‑establish gap below header */
     border-top: 1px solid var(--border);
     box-shadow: var(--shadow);
 }

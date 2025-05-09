@@ -1,7 +1,7 @@
 # Concurrent TCP + HTTP/1.1 Server (C11 / POSIX)
 
 A compact yet fully‑featured teaching project that demonstrates how to write a **modular, preforking TCP + HTTP/1.1 server** in pure C11/POSIX.
-It now serves **dynamic JSON APIs**, **rich client‑side pages** and a **directory‑driven file browser**, with:
+It now serves **dynamic JSON APIs**, **rich client‑side pages**, a **build‑notes viewer**, and a **directory‑driven file browser**, with:
 
 * non‑blocking *listener* sockets
 * blocking *client* sockets protected by **SO\_RCVTIMEO** (short‑then‑long)
@@ -14,7 +14,8 @@ It now serves **dynamic JSON APIs**, **rich client‑side pages** and a **direct
 * serving real **static pages** (`index.html`, `style.css`, **header component**, images, …) from `www/`
 * a **JSON API** endpoint (`/api/whoami`) providing request metadata
 * a **Drive API** endpoint (`/api/drive?path=/subdir`) that returns JSON directory listings
-* matching HTML front‑ends: **Who Am I** (`whoami.html`) and **Drive** (`drive.html`)
+* a **Build Notes viewer** (`/build_notes`) that turns Markdown + PlantUML source into live docs
+* matching HTML front‑ends: **Who Am I** (`whoami.html`), **Drive** (`drive.html`) and **Build Notes** (`build_notes/index.html`)
 * an optional **rich animation** demo (`dynamic.html`) with CSS/JS effects
 * log‑controlled terminal shutdown (`q`)
 
@@ -62,6 +63,7 @@ You should see the styled **index.html** page with **header.html** included, plu
 
 * **Who Am I** (`whoami.html` → calls `/api/whoami`)
 * **Drive** (`drive.html` → calls `/api/drive`)
+* **Build Notes** (`build_notes/index.html` → loads `/build_notes`)
 * **Dynamic demo** (`dynamic.html` – CSS/JS animations)
 
 ---
@@ -121,6 +123,15 @@ You should see the styled **index.html** page with **header.html** included, plu
     ├── assets/
     │   ├── header.html     # reusable navbar / hero component
     │   └── header.js       # helper script to inject header
+    ├── build_notes/        # static “Build Notes” viewer
+    │   ├── index.html
+    │   ├── load-notes.js
+    │   ├── manifest.json
+    │   ├── diagrams/
+    │   │   └── example.puml
+    │   └── notes/
+    │       ├── intro.md
+    │       └── login_flow.md
     ├── drive.html          # Drive UI – fetches /api/drive
     ├── dynamic.html        # Animation demo
     ├── images/
@@ -164,7 +175,7 @@ Parent (main)
 │  │   │   ├─ recv() HTTP request(s)
 │  │   │   ├─ llhttp_parse() → HttpRequest struct
 │  │   │   ├─ router_handle_request() → HttpResponse
-│  │   │   │       static_page | whoami_json | drive_json
+│  │   │   │       static_page | whoami_json | drive_json | build_notes_static
 │  │   │   ├─ send_response() (headers + body, Connection handling)
 │  │   │   └─ repeat / exit on close or timeouts
 │  │   └─ _exit()
@@ -223,18 +234,20 @@ Parent (main)
   * **`/api/drive?path=/subdir`**: JSON array of directory entries under `www/`.
 * **Router paths** (defined in `src/browser/router.c`):
 
-  | Path / Prefix   | Handler                                    |
-  | --------------- | ------------------------------------------ |
-  | `/`, `/home`    | `index.html` (static)                      |
-  | `/style.css`    | `style.css` (static)                       |
-  | `/whoami`       | `whoami.html` (static)                     |
-  | `/dynamic`      | `dynamic.html` (static)                    |
-  | `/drive`        | `drive.html` (static React‑less JS page)   |
-  | `/api/whoami`   | `whoami_json_handler()` (JSON API)         |
-  | `/api/drive`    | `drive_json_handler()` (directory listing) |
-  | `/images/…`     | Binary files under `www/images/`           |
-  | `/assets/…`     | Shared HTML/JS bits under `www/assets/`    |
-  | *anything else* | `404 Not Found`                            |
+  | Path / Prefix    | Handler                                       |
+  | ---------------- | --------------------------------------------- |
+  | `/`, `/home`     | `index.html` (static)                         |
+  | `/style.css`     | `style.css` (static)                          |
+  | `/whoami`        | `whoami.html` (static)                        |
+  | `/dynamic`       | `dynamic.html` (static)                       |
+  | `/drive`         | `drive.html` (static JS page)                 |
+  | `/build_notes`   | `build_notes/index.html` (static + client JS) |
+  | `/build_notes/…` | Static files under `www/build_notes/`         |
+  | `/api/whoami`    | `whoami_json_handler()` (JSON API)            |
+  | `/api/drive`     | `drive_json_handler()` (directory listing)    |
+  | `/images/…`      | Binary files under `www/images/`              |
+  | `/assets/…`      | Shared HTML/JS bits under `www/assets/`       |
+  | *anything else*  | `404 Not Found`                               |
 
 ---
 
@@ -310,18 +323,19 @@ Feel free to extend the hook with `make tidy` or unit‑test execution once the 
 
 ## Testing matrix
 
-| Scenario                                      | Expected result                                            |
-| --------------------------------------------- | ---------------------------------------------------------- |
-| Browser `/` + `/style.css` on same TCP socket | Served through keep‑alive; connection persists             |
-| Static `/whoami.html` + JS fetch              | HTML delivered; JS fetches `/api/whoami`; clock animates   |
-| `/drive` page                                 | React‑less UI loads; JS fetches `/api/drive`; list renders |
-| JSON `/api/whoami`                            | 200, correct JSON payload, content‑type `application/json` |
-| JSON `/api/drive?path=/images`                | 200, array of files (`img1.jpg` …)                         |
-| 11th parallel client                          | Connection refused (max‑clients = 10)                      |
-| Client sends `Connection: close`              | Response has `Connection: close`; child exits afterwards   |
-| Idle >30 s before first request               | Child exits (pre‑handshake timeout)                        |
-| Idle >120 s after last request                | Child exits (keep‑alive timeout)                           |
-| Press `q` in server                           | Parent stops accepting, reaps children, exits cleanly      |
+| Scenario                                      | Expected result                                                                                   |
+| --------------------------------------------- | ------------------------------------------------------------------------------------------------- |
+| Browser `/` + `/style.css` on same TCP socket | Served through keep‑alive; connection persists                                                    |
+| Static `/whoami.html` + JS fetch              | HTML delivered; JS fetches `/api/whoami`; clock animates                                          |
+| `/drive` page                                 | JS UI loads; JS fetches `/api/drive`; list renders                                                |
+| `/build_notes` page                           | HTML delivered; JS fetches `manifest.json` + notes + diagrams; accordion & PlantUML iframe render |
+| JSON `/api/whoami`                            | 200, correct JSON payload, content‑type `application/json`                                        |
+| JSON `/api/drive?path=/images`                | 200, array of files (`img1.jpg` …)                                                                |
+| 11th parallel client                          | Connection refused (max‑clients = 10)                                                             |
+| Client sends `Connection: close`              | Response has `Connection: close`; child exits afterwards                                          |
+| Idle >30 s before first request               | Child exits (pre‑handshake timeout)                                                               |
+| Idle >120 s after last request                | Child exits (keep‑alive timeout)                                                                  |
+| Press `q` in server                           | Parent stops accepting, reaps children, exits cleanly                                             |
 
 ---
 

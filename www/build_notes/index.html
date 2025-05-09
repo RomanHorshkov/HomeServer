@@ -1,46 +1,36 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <title>Build Notes</title>
-    <link rel="stylesheet" href="/style.css">
-    <script src="assets/header.js" defer></script>
-    <script src="https://cdn.jsdelivr.net/npm/plantuml-encoder/dist/plantuml-encoder.js"></script>
+  <meta charset="utf-8">
+  <title>Build Notes | C-Server</title>
+  <link rel="stylesheet" href="/style.css">
+  <!-- this will inject your <header> and <footer> -->
+  <script src="/assets/header.js" defer></script>
 </head>
 <body>
-    <header>
-        <h1>Build Notes</h1>
-        <p>Documentation and diagrams for my server project.</p>
-    </header>
-
+  <main>
+    <!-- DIAGRAMS SECTION -->
     <section>
-        <h2>Diagrams</h2>
-        <select id="diagramSelect" onchange="updateDiagram()">
-            <option value="example.puml">Example Diagram</option>
-        </select>
-        <iframe id="diagram" src="" frameborder="0"></iframe>
+      <h2>Diagrams</h2>
+      <select id="diagramSelect"></select>
+      <iframe
+        id="diagram"
+        frameborder="0"
+        style="width:100%; height:400px;"
+        title="PlantUML diagram">
+      </iframe>
     </section>
 
+    <!-- NOTES SECTION -->
     <section>
-        <h2>Notes</h2>
-        <p>Here you can add text descriptions, code snippets, and anything else related to your build process.</p>
+      <h2>Notes</h2>
+      <div id="notesContainer"></div>
     </section>
+  </main>
 
-    <script>
-        function updateDiagram() {
-            const select = document.getElementById("diagramSelect");
-            const file = select.value;
-            fetch(`/build_notes/diagrams/${file}`)
-                .then(response => response.text())
-                .then(data => {
-                    const encoded = plantumlEncoder.encode(data);
-                    const url = `https://www.plantuml.com/plantuml/svg/${encoded}`;
-                    document.getElementById("diagram").src = url;
-                });
-        }
-
-        // Load the first diagram by default
-        updateDiagram();
-    </script>
+  <!-- PlantUML encoder -->
+  <script src="https://cdn.jsdelivr.net/npm/plantuml-encoder/dist/plantuml-encoder.js"></script>
+  <!-- your script that fetches manifest.json, diagrams & notes -->
+  <script src="/build_notes/load-notes.js" defer></script>
 </body>
 </html>
