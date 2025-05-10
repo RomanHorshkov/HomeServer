@@ -31,232 +31,251 @@
       border-color: var(--border);
     }
     canvas { max-width: 100%; margin-bottom: 2rem; }
+    /* shared wrapper for both charts */
+    .chart-wrapper {
+      max-width: 800px;       /* never wider than 800px */
+      width: 100%;            /* but fill 100% of its parent */
+      margin-left: auto;      /* push it to the right */
+      margin-bottom: 2rem;    /* some space below */
+    }
+
+    /* ensure the canvas always scales to its wrapper */
+    .chart-wrapper canvas {
+      display: block;
+      width: 100%;            /* fill the wrapper */
+      height: auto;           /* keep the aspect ratio */
+    }
+
   </style>
 </head>
 <body>
 
-  <h1>Monthly Totals</h1>
-  <canvas id="monthly-chart"></canvas>
+  <!-- =========================
+      1) HTML: date filters + canvases
+    ========================= -->
+  <div id="date-filter" style="margin-bottom:1rem;">
+    <label>
+      Filter:
+      <input id="from-date" type="date">
+    </label>
+    <label>
+      -
+      <input id="to-date"   type="date">
+    </label>
+  </div>
 
-  <h1>By Category</h1>
-  <canvas id="category-chart"></canvas>
+  <div class="chart-wrapper">
+    <canvas id="monthly-chart" height="400"></canvas>
+  </div>
 
-  <h1>All Expenses</h1>
+  <div class="chart-wrapper">
+    <canvas id="category-chart" height="400"></canvas>
+  </div>
+
   <table id="expenses-table">
     <thead>
-      <tr><th>Date</th><th>Category</th><th>Amount</th><th>Comment</th></tr>
+      <tr>
+        <th>Date</th><th>Category</th><th>Amount</th><th>Comment</th>
+      </tr>
     </thead>
     <tbody></tbody>
   </table>
 
   <script>
     document.addEventListener('DOMContentLoaded', async () => {
-  try {
-    // Fetch the list of months from the server
-    const months = await fetch('/api/expenses/months')
-      .then(r => { if(!r.ok) throw r; return r.json() });
+      try {
+        // ───────────────────────────────────────────────────────
+        // 1) LOAD: fetch the list of months, then each month’s JSON
+        // ───────────────────────────────────────────────────────
+        const months = await fetch('/api/expenses/months')
+          .then(r => { if (!r.ok) throw new Error('months list fetch failed'); return r.json(); });
 
-    // Fetch expense data for each month and combine into one array
-    const perMonth = await Promise.all(
-      months.map(m => {
-        const [y, mo] = m.split('-');
-        return fetch(`/expenses/${y}/${mo}.json`).then(r => {
-          if (!r.ok) throw new Error(m);
-          return r.json();
+        /* Fetch each month’s expenses in parallel, then flatten */
+        const perMonth = await Promise.all(
+          months.map(ms => {
+            // ms is "YYYY-MM"
+            const [year, month] = ms.split('-');
+            return fetch(`/expenses/${year}/${month}.json`)
+              .then(r => { if (!r.ok) throw new Error(`failed ${ms}`); return r.json(); });
+          })
+        );
+        const all = perMonth.flat();
+
+        // ───────────────────────────────────────────────────────
+        // 2) PREPROCESS: convert string dates → JS Date objects
+        //    so we can filter by < and > easily
+        // ───────────────────────────────────────────────────────
+        all.forEach(e => {
+          const [d, m, y] = e.date.split('/').map(Number);
+          // JS Date: months are 0–11
+          e.dateObj = new Date(y, m - 1, d);
         });
-      })
-    );
 
-    // Flatten the monthly data into a single array of expenses
-    const all = perMonth.flat();
+        // Grab handles to our two date inputs
+        const fromInput = document.getElementById('from-date');
+        const toInput   = document.getElementById('to-date');
 
-    /* ===============================
-      Monthly Totals - Stacked Bar Chart
-      =============================== */
-    const stackedExpenses = months.map((m, i) => {
-      const expenses = perMonth[i];
-      const categories = {};
-      
-      // Organize expenses by category for each month
-      expenses.forEach(e => {
-        if (!categories[e.category]) {
-          categories[e.category] = [];
+        // ───────────────────────────────────────────────────────
+        // 3) RENDER FUNCTION: builds charts + table from any
+        //    passed-in list of expense objects
+        // ───────────────────────────────────────────────────────
+        function renderExpenses(expenses) {
+          // --- A) MONTHLY STACKED-BAR DATASET ---
+          // 1. Recompute unique month labels from filtered data
+          const monthMap = {};
+          expenses.forEach(e => {
+            const key = e.dateObj.getFullYear() + '-' +
+                        String(e.dateObj.getMonth()+1).padStart(2,'0');
+            (monthMap[key] ||= []).push(e);
+          });
+          const filteredMonths = Object.keys(monthMap).sort();
+
+          // 2. Collect categories across all filtered months
+          const categories = new Set();
+          filteredMonths.forEach(mo => {
+            monthMap[mo].forEach(e => categories.add(e.category));
+          });
+          const catList = Array.from(categories);
+
+          // 3. Build Chart.js datasets: one per category
+          const barDatasets = catList.map((cat, idx) => {
+            // For each month, sum amounts for this category
+            const data = filteredMonths.map(mo =>
+              monthMap[mo]
+                .filter(e => e.category === cat)
+                .reduce((sum, e) => sum + e.amount, 0)
+            );
+            // HSL color so each cat has a distinct hue
+            const hue = (idx * 70) % 360;
+            return {
+              label: cat,
+              data,
+              backgroundColor: `hsl(${hue},70%,60%)`,
+              borderColor:   '#111',
+              borderWidth:   1,
+              hoverBorderColor: '#fff'
+            };
+          });
+
+          // Update bar chart
+          barChart.data.labels   = filteredMonths;
+          barChart.data.datasets = barDatasets;
+          barChart.update();
+
+          // --- B) PIE CHART: total per category over all filtered expenses ---
+          const totalsByCat = {};
+          expenses.forEach(e => {
+            totalsByCat[e.category] = (totalsByCat[e.category] || 0) + e.amount;
+          });
+          const pieLabels = Object.keys(totalsByCat);
+          const pieData   = pieLabels.map(l => totalsByCat[l]);
+          const pieColors = pieLabels.map((_, i) => {
+            const hue = (i * 60) % 360;
+            return `hsl(${hue},70%,60%)`;
+          });
+
+          pieChart.data.labels = pieLabels;
+          pieChart.data.datasets[0].data            = pieData;
+          pieChart.data.datasets[0].backgroundColor = pieColors;
+          pieChart.update();
+
+          // --- C) TABLE: rebuild tbody from filtered expenses ---
+          const tbody = document.querySelector('#expenses-table tbody');
+          tbody.innerHTML = '';  // clear old rows
+          expenses.forEach(e => {
+            const tr = document.createElement('tr');
+            // format back to dd/mm/yyyy string
+            tr.innerHTML = `
+              <td>${e.date}</td>
+              <td>${e.category}</td>
+              <td>€${e.amount.toFixed(2)}</td>
+              <td>${e.comment || ''}</td>
+            `;
+            tbody.appendChild(tr);
+          });
         }
-        categories[e.category].push(e);
-      });
 
-      return categories;
-    });
-
-    // Collect all unique categories across all months
-    const allCategories = new Set();
-    stackedExpenses.forEach(month => {
-      Object.keys(month).forEach(cat => allCategories.add(cat));
-    });
-    const categoryList = Array.from(allCategories);
-
-    // Prepare datasets for the stacked chart
-    const datasets = categoryList.map(cat => {
-      const data = months.map((m, i) => {
-        // Sum all expenses for this category in this month
-        return (stackedExpenses[i][cat] || []).reduce((sum, e) => sum + e.amount, 0);
-      });
-
-      // Generate a unique color for each category
-      const hue = (categoryList.indexOf(cat) * 70) % 360;
-      const color = `hsl(${hue}, 70%, 60%)`;
-
-      return {
-        label: cat,
-        data: data,
-        backgroundColor: color,
-        hoverBorderColor: '#fff',
-        borderWidth: 1,
-        borderColor: '#111'
-      };
-    });
-
-    // Create the stacked bar chart
-    const ctxStacked = document.getElementById('monthly-chart').getContext('2d');
-    new Chart(ctxStacked, {
-      type: 'bar',
-      data: {
-        labels: months,
-        datasets: datasets
-      },
-      options: {
-        responsive: true,
-        plugins: {
-          title: {
-            display: true,
-            text: 'Expenses Totals Composition',
-            color: '#eee',
-            font: {
-              size: 18
-            }
-          },
-          tooltip: {
-            callbacks: {
-              label: function(context) {
-                const expenseAmount = context.raw.toFixed(2);
-                const expenseLabel = context.dataset.label;
-                return `${expenseLabel}: €${expenseAmount}`;
-              }
-            }
-          },
-          legend: {
-            position: 'top',
-            labels: {
-              color: '#ccc'
+        // ───────────────────────────────────────────────────────
+        // 4) INSTANTIATE CHARTS (once), then you’ll just call .update()
+        // ───────────────────────────────────────────────────────
+        const ctxStacked = document.getElementById('monthly-chart').getContext('2d');
+        window.barChart = new Chart(ctxStacked, {
+          type: 'bar',
+          data: { labels: [], datasets: [] },
+          options: {
+            responsive: true,
+            scales: { x:{ stacked:true }, y:{ stacked:true, beginAtZero:true } },
+            plugins: {
+              title: { display:true, text:'Expenses Totals Composition' },
+              legend: { position:'top' }
             }
           }
-        },
-        scales: {
-          y: {
-            beginAtZero: true,
-            stacked: true,
-            ticks: {
-              color: '#ccc'
-            },
-            grid: {
-              color: '#444'
-            }
+        });
+
+        const ctxPie = document.getElementById('category-chart').getContext('2d');
+        window.pieChart = new Chart(ctxPie, {
+          type: 'pie',
+          data: {
+            labels: [],
+            datasets: [{ data: [], backgroundColor: [], hoverOffset:8 }]
           },
-          x: {
-            stacked: true,
-            ticks: {
-              color: '#ccc'
-            },
-            grid: {
-              color: '#444'
+          options: {
+            responsive: true,
+            plugins: {
+              title: { display:true, text:'Expenses by Category' },
+              legend: { position:'right' }
             }
           }
+        });
+
+        // ───────────────────────────────────────────────────────
+        // 5) FILTER HANDLERS: whenever a date changes, re-filter+render
+        // ───────────────────────────────────────────────────────
+        function onFilterChange() {
+          /* parse the "YYYY-MM-DD" strings ourselves, so we get local‐midnight dates */
+          let from = null, to = null;
+
+          if (fromInput.value) {
+            /* e.g. "2025-01-01" → [2025,1,1] */
+            const [y, m, d] = fromInput.value.split('-').map(Number);
+            /* local midnight start of that day */
+            from = new Date(y, m - 1, d, 0, 0, 0, 0);
+          }
+
+          if (toInput.value) {
+            const [y, m, d] = toInput.value.split('-').map(Number);
+            /* local **end** of that day, to make the filter inclusive */
+            to = new Date(y, m - 1, d, 23, 59, 59, 999);
+          }
+
+          /* filter purely by numeric timestamps */
+          const filtered = all.filter(e => {
+            const t = e.dateObj.getTime();  // we built dateObj as new Date(y,m-1,d)
+            if (from && t < from.getTime()) return false;
+            if (to   && t > to.getTime())   return false;
+            return true;
+          });
+
+          /* re-draw charts / table */
+          renderExpenses(filtered);
         }
+
+        fromInput.addEventListener('change', onFilterChange);
+        toInput.addEventListener  ('change', onFilterChange);
+
+        // ───────────────────────────────────────────────────────
+        // 6) INITIAL RENDER with the full dataset
+        // ───────────────────────────────────────────────────────
+        renderExpenses(all);
+
+      } catch (err) {
+        console.error('Error loading expenses data:', err);
+        document.body.insertAdjacentHTML(
+          'afterbegin',
+          `<p style="color:red">Couldn’t load expenses: ${err.message}</p>`
+        );
       }
     });
-
-    /* ===============================
-       Category Distribution - Pie Chart
-       =============================== */
-    const byCat = all.reduce((acc, e) => {
-      acc[e.category] = (acc[e.category] || 0) + (e.amount || 0);
-      return acc;
-    }, {});
-
-    const cats = Object.keys(byCat);
-    const vals = cats.map(c => byCat[c]);
-
-    // Color scheme for categories
-    const colors = cats.map((c, i) => {
-      const hue = (i * 60) % 360;
-      return `hsl(${hue}, 70%, 60%)`;
-    });
-
-    const ctxPie = document.getElementById('category-chart').getContext('2d');
-    new Chart(ctxPie, {
-      type: 'pie',
-      data: {
-        labels: cats,
-        datasets: [{
-          data: vals,
-          backgroundColor: colors,
-          hoverOffset: 8
-        }]
-      },
-      options: {
-        responsive: true,
-        plugins: {
-          title: {
-            display: true,
-            text: 'Expenses by Category',
-            color: '#eee',
-            font: {
-              size: 18
-            }
-          },
-          legend: {
-            display: true,
-            position: 'right',
-            labels: {
-              color: '#ccc'
-            }
-          },
-          tooltip: {
-            callbacks: {
-              label: function(context) {
-                return `${context.label}: €${context.raw.toFixed(2)}`;
-              }
-            }
-          }
-        }
-      }
-    });
-
-    /* ===============================
-       Table of All Expenses
-       =============================== */
-    const tbody = document.querySelector('#expenses-table tbody');
-    all.forEach(e => {
-      const tr = document.createElement('tr');
-      tr.innerHTML = `
-        <td>${e.date}</td>
-        <td>${e.category}</td>
-        <td>€${e.amount.toFixed(2)}</td>
-        <td>${e.comment || ''}</td>
-      `;
-      tbody.appendChild(tr);
-    });
-
-  } catch (err) {
-    // Handle any errors by showing a message on the page
-    console.error(err);
-    document.body.insertAdjacentHTML(
-      'afterbegin',
-      `<p style="color:red">Couldn’t load expenses: ${err.message}</p>`
-    );
-  }
-});
-
   </script>
 </body>
 </html>
