@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Expenses Overview</title>
+  <link rel="stylesheet" href="style.css">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js" defer></script>
+</head>
+<body>
+  <nav>
+    <a href="/">Home</a> |
+    <a href="/expenses">Expenses</a>
+  </nav>
+
+  <h1>Monthly Expenses</h1>
+  <canvas id="chart" width="600" height="400"></canvas>
+
+  <script>
+    document.addEventListener('DOMContentLoaded', () => {
+      fetch('/api/expenses/data')
+        .then(r => r.json())
+        .then(data => {
+          const labels = Object.keys(data);
+          const values = labels.map(k => data[k]);
+          new Chart(
+            document.getElementById('chart'),
+            {
+              type: 'bar',
+              data: {
+                labels,
+                datasets: [{
+                  label: 'Total per Month',
+                  data: values
+                }]
+              }
+            }
+          );
+        })
+        .catch(err => console.error('Failed to load expenses data:', err));
+    });
+  </script>
+</body>
+</html>
