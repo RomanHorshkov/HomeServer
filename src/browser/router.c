@@ -40,6 +40,8 @@
 #define URI_WHOAMI "/whoami"
 #define URI_WHOAMI_API "/api/whoami"
 #define URI_DYNAMIC "/dynamic"
+#define URI_EXPENSES_PAGE "/expenses"
+#define URI_EXPENSES_DATA "/api/expenses/data"
 #define URI_IMAGES_PREFIX "/images/"
 
 /** Content types */
@@ -126,7 +128,9 @@ int router_handle_request(const HttpRequest *request, HttpResponse *response)
         return static_page_serve_file(DYNAMIC_PAGE, CONTENT_HTML, response);
     }
 
-    /* Serve static assets under /images/ */
+    /* ------------------------------------------------------------------
+     * Serve Static assets (under /images)
+     * ------------------------------------------------------------------ */
     if(strncmp(request->path, URI_IMAGES_PREFIX, sizeof(URI_IMAGES_PREFIX) - 1) == 0)
     {
         char file_path[PATH_MAX];
@@ -203,6 +207,23 @@ int router_handle_request(const HttpRequest *request, HttpResponse *response)
 
         return static_page_serve_file(file_path, guess_mime_type(file_path), response);
     }
+
+    /* ─────────────────────────────────────────────────────────────
+     * Expenses feature
+     * ───────────────────────────────────────────────────────────── */
+    if(strcmp(request->path, URI_EXPENSES_PAGE) == 0)
+    {
+        return static_page_serve_file(STATIC_ROOT "/expenses.html", CONTENT_HTML, response);
+    }
+
+    if(strcmp(request->path, URI_EXPENSES_DATA) == 0)
+    {
+        return expenses_data_handler(response);
+    }
+    // if(strcmp(request->path, URI_EXPENSES_ADD) == 0)
+    // {
+    //     return expenses_add_handler(request, response);
+    // }
 
     /* Fallback to 404 Not Found */
     send_404(response);

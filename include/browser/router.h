@@ -6,6 +6,6 @@
 /* Handles the incoming request based on the method and path.
  * Builds the response to send back into the out_response structure.
  */
-int router_handle_request(const HttpRequest* request, HttpResponse* response);
+int router_handle_request(const HttpRequest* req, HttpResponse* res);
 
 #endif /* SERVER_ROUTER_H */
