@@ -1,0 +1,114 @@
+@startuml
+title Expenses Dashboard: Internal Sequence Flow
+
+actor User as Browser
+
+participant "DOMContentLoaded\nListener" as Listener
+participant "Fetch Months API\n(/api/expenses/months)" as MonthsAPI
+participant "Fetch Month JSON API\n(/expenses/YYYY/MM.json)" as MonthAPI
+participant "Data Processor\n(flatt, parse, filter)" as Processor
+participant "Chart.js Bar" as BarChart
+participant "Chart.js Pie" as PieChart
+participant "DOM Table\nRenderer" as Table
+
+Browser -> Listener : DOMContentLoaded\nevent fires
+activate Listener
+
+Listener -> MonthsAPI : fetch('/api/expenses/months')
+activate MonthsAPI
+MonthsAPI --> Listener : rawMonths[] JSON
+deactivate MonthsAPI
+
+note right of Listener
+  1) dedupe rawMonths  
+  2) sort chronologically  
+end note
+
+Listener -> Processor : normalizeMonths(rawMonths)
+activate Processor
+Processor --> Listener : months[] (unique & sorted)
+deactivate Processor
+
+Listener -> MonthAPI : for each month in months[]
+activate MonthAPI
+loop Parallel fetch
+  MonthAPI --> Listener : monthData_i.json
+end
+deactivate MonthAPI
+
+note right of Listener
+  perMonth = Promise.all(...)  
+  allExpenses = perMonth.flat()  
+end note
+
+Listener -> Processor : attachDateObjects(allExpenses)
+activate Processor
+Processor --> Listener : allExpenses with .dateObj
+deactivate Processor
+
+    note over Listener
+    Instantiate empty charts:
+    a) barChart = new Chart(..., type:'bar')
+    b) pieChart = new Chart(..., type:'pie')
+    end note
+
+Listener -> Processor : renderExpenses(allExpenses)
+activate Processor
+
+    note over Processor
+      **renderExpenses** does:
+      a) Group by month → monthMap  
+      b) Build category set  
+      c) Sum per-category per-month → barDatasets  
+      d) Sum per-category overall → pieData  
+      e) Build table rows  
+    end note
+
+    Processor -> Processor : groupByMonth(allExpenses)\n→ monthMap
+    Processor -> Processor : extractCategories(monthMap)\n→ catList
+
+    Processor -> Processor : buildBarDatasets(monthMap, catList)\n→ barDatasets
+    Processor -> BarChart : barChart.data.labels = months[]
+    Processor -> BarChart : barChart.data.datasets = barDatasets
+    BarChart --> Processor : (chart updated)
+
+    Processor -> Processor : buildPieData(allExpenses)\n→ pieLabels, pieData
+    Processor -> PieChart : pieChart.data.labels = pieLabels
+    Processor -> PieChart : pieChart.data.datasets[0].data = pieData
+    PieChart --> Processor : (chart updated)
+
+    Processor -> Table : clear <tbody>
+    loop for each expense in allExpenses
+      Processor -> Table : append <tr> (${e.date}, ${e.category}, €${e.amount}, ${e.comment})
+    end
+
+Processor --> Listener : renderExpenses done
+deactivate Processor
+
+Listener --> Browser : initial dashboard shown
+deactivate Listener
+
+=== User Interacts ===
+
+Browser -> Listener : change event on from/to inputs
+activate Listener
+
+Listener -> Processor : parseDateInputs()\n→ fromDate, toDate
+activate Processor
+Processor --> Listener : fromDateObj, toDateObj
+deactivate Processor
+
+Listener -> Processor : filterExpenses(allExpenses, fromDateObj, toDateObj)
+activate Processor
+Processor -> Processor : filtered = allExpenses.filter(...)
+Processor --> Listener : filteredExpenses[]
+deactivate Processor
+
+Listener -> Processor : renderExpenses(filteredExpenses)
+activate Processor
+Processor --> Listener : renderExpenses done
+deactivate Processor
+
+Listener --> Browser : UI updated
+
+@enduml

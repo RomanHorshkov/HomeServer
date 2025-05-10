@@ -1,11 +1,14 @@
 {
   "diagrams": [
-    "getaddrinfo.puml","start_listener.puml"
+    "getaddrinfo.puml",
+    "start_listener.puml",
+    "expenses.puml"
   ],
   "notes": [
     "intro.md",
     "socket_fundamentals.md",
     "listener_start.md",
-    "getaddrinfo.md"
+    "getaddrinfo.md",
+    "expenses.md"
   ]
 }
