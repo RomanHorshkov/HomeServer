@@ -1,0 +1,32 @@
+[
+  {
+    "date": "01/01/2025",
+    "category": "rent",
+    "amount": 850.00,
+    "comment": ""
+  },
+  {
+    "date": "03/01/2025",
+    "category": "transport",
+    "amount": 7.30,
+    "comment": "bus ticket"
+  },
+  {
+    "date": "04/01/2025",
+    "category": "transport",
+    "amount": 15.70,
+    "comment": "train"
+  },
+  {
+    "date": "05/01/2025",
+    "category": "food",
+    "amount": 12.50,
+    "comment": "lunch"
+  },
+  {
+    "date": "09/01/2025",
+    "category": "groceries",
+    "amount": 45.00,
+    "comment": ""
+  }
+]

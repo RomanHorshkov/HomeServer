@@ -225,6 +225,153 @@ int drive_json_handler(const HttpRequest *req, HttpResponse *resp)
     return 0;
 }
 
+/**
+ * expenses_data_handler()
+ * -----------------------
+ * GET /api/expenses/data
+ * Scans the “expenses/” directory for per-month JSON files and returns:
+ *   {
+ *     "2025-01": 345.60,
+ *     "2025-02": 412.00,
+ *     …
+ *   }
+ */
+int expenses_data_handler(HttpResponse *resp)
+{
+    const char *EXP_ROOT = "www/expenses";
+    DIR *d_year = opendir(EXP_ROOT);
+    if(!d_year)
+    {
+        log_error("expenses: could not open root dir '%s': %s", EXP_ROOT, strerror(errno));
+        // Return empty object instead of error
+        resp->status_code = 200;
+        resp->status_text = "OK";
+        resp->content_type = "application/json";
+        resp->body = strdup("{}");
+        resp->body_length = 2;
+        return 0;
+    }
+
+    cJSON *root = cJSON_CreateObject();
+
+    struct dirent *year_ent;
+    while((year_ent = readdir(d_year)) != NULL)
+    {
+        const char *year = year_ent->d_name;
+        // skip “.”, “..” and non-4-digit names
+        if(year[0] == '.' || strlen(year) != 4) continue;
+        for(int i = 0; i < 4; ++i)
+            if(!isdigit((unsigned char)year[i])) goto next_year;
+
+        {
+            char year_path[PATH_MAX];
+            snprintf(year_path, sizeof year_path, "%s/%s", EXP_ROOT, year);
+
+            struct stat st;
+            if(stat(year_path, &st) < 0 || !S_ISDIR(st.st_mode))
+            {
+                log_info("expenses: skipping non-dir %s", year_path);
+                goto next_year;
+            }
+
+            DIR *d_month = opendir(year_path);
+            if(!d_month)
+            {
+                log_error("expenses: cannot open %s: %s", year_path, strerror(errno));
+                goto next_year;
+            }
+
+            struct dirent *mon_ent;
+            while((mon_ent = readdir(d_month)) != NULL)
+            {
+                const char *fname = mon_ent->d_name;
+                /* look for “MM.json” */
+                const char *ext = strrchr(fname, '.');
+                if(!ext || strcmp(ext, ".json") != 0) continue;
+                if((ext - fname) != 2) continue;
+                if(!isdigit((unsigned char)fname[0]) || !isdigit((unsigned char)fname[1])) continue;
+
+                /* make room for “expenses/YYYY/MM.json” safely */
+                char fullpath[CHILDFULL_MAX];
+                int ret = snprintf(fullpath, sizeof fullpath, "%s/%s", year_path, fname);
+                if(ret < 0 || (size_t)ret >= sizeof fullpath)
+                {
+                    log_error("expenses: fullpath overflow (%d >= %zu)", ret, sizeof fullpath);
+                    continue;
+                }
+
+                /* read entire file */
+                FILE *f = fopen(fullpath, "r");
+                if(!f)
+                {
+                    log_error("expenses: fopen %s failed: %s", fullpath, strerror(errno));
+                    continue;
+                }
+                fseek(f, 0, SEEK_END);
+                long sz = ftell(f);
+                rewind(f);
+                char *buf = malloc(sz + 1);
+                if(!buf)
+                {
+                    fclose(f);
+                    continue;
+                }
+                fread(buf, 1, sz, f);
+                buf[sz] = '\0';
+                fclose(f);
+
+                /* parse JSON array */
+                cJSON *arr = cJSON_Parse(buf);
+                free(buf);
+                if(!arr || !cJSON_IsArray(arr))
+                {
+                    cJSON_Delete(arr);
+                    log_error("expenses: invalid JSON array in %s", fullpath);
+                    continue;
+                }
+
+                /* sum amounts */
+                double total = 0.0;
+                cJSON *item;
+                cJSON_ArrayForEach(item, arr)
+                {
+                    cJSON *amt = cJSON_GetObjectItem(item, "amount");
+                    if(cJSON_IsNumber(amt)) total += amt->valuedouble;
+                }
+                cJSON_Delete(arr);
+
+                /* build key "YYYY-MM" (`year` is exactly 4 digits) */
+                char key[8];
+                ret = snprintf(key, sizeof key, "%.4s-%2.2s", year, fname);
+                if(ret < 0 || ret >= (int)sizeof key)
+                {
+                    log_error("expenses: could not format month key (%d >= %zu)", ret, sizeof key);
+                    continue;
+                }
+
+                cJSON_AddNumberToObject(root, key, total);
+            }
+
+            closedir(d_month);
+        }
+    next_year:;
+    }
+
+    closedir(d_year);
+
+    // serialize and respond
+    char *out = cJSON_PrintUnformatted(root);
+    cJSON_Delete(root);
+
+    resp->status_code = 200;
+    resp->status_text = "OK";
+    resp->content_type = "application/json";
+    resp->body = out;
+    resp->body_length = strlen(out);
+
+    return 0;
+}
+
 /* ---------------------------------------------------------------------------
  * Private helpers
  * -------------------------------------------------------------------------*/
