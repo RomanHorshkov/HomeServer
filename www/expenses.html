@@ -4,40 +4,259 @@
   <meta charset="utf-8">
   <title>Expenses Overview</title>
   <link rel="stylesheet" href="style.css">
+  <script src="assets/header.js" defer></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js" defer></script>
+  <style>
+    /* Responsive table styling */
+    #expenses-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 2rem;
+    }
+    #expenses-table th, #expenses-table td {
+      border: 1px solid #444;
+      padding: 0.75rem 1rem;
+      text-align: left;
+      background-color: var(--surface);
+      color: var(--text);
+    }
+    #expenses-table th {
+      background-color: var(--bg);
+      color: var(--accent);
+      text-transform: uppercase;
+    }
+    #expenses-table tr:nth-child(even) { background-color: #222; }
+    #expenses-table tr:hover { background-color: #333; }
+    #expenses-table td {
+      border-color: var(--border);
+    }
+    canvas { max-width: 100%; margin-bottom: 2rem; }
+  </style>
 </head>
 <body>
-  <nav>
-    <a href="/">Home</a> |
-    <a href="/expenses">Expenses</a>
-  </nav>
 
-  <h1>Monthly Expenses</h1>
-  <canvas id="chart" width="600" height="400"></canvas>
+  <h1>Monthly Totals</h1>
+  <canvas id="monthly-chart"></canvas>
+
+  <h1>By Category</h1>
+  <canvas id="category-chart"></canvas>
+
+  <h1>All Expenses</h1>
+  <table id="expenses-table">
+    <thead>
+      <tr><th>Date</th><th>Category</th><th>Amount</th><th>Comment</th></tr>
+    </thead>
+    <tbody></tbody>
+  </table>
 
   <script>
-    document.addEventListener('DOMContentLoaded', () => {
-      fetch('/api/expenses/data')
-        .then(r => r.json())
-        .then(data => {
-          const labels = Object.keys(data);
-          const values = labels.map(k => data[k]);
-          new Chart(
-            document.getElementById('chart'),
-            {
-              type: 'bar',
-              data: {
-                labels,
-                datasets: [{
-                  label: 'Total per Month',
-                  data: values
-                }]
+    document.addEventListener('DOMContentLoaded', async () => {
+  try {
+    // Fetch the list of months from the server
+    const months = await fetch('/api/expenses/months')
+      .then(r => { if(!r.ok) throw r; return r.json() });
+
+    // Fetch expense data for each month and combine into one array
+    const perMonth = await Promise.all(
+      months.map(m => {
+        const [y, mo] = m.split('-');
+        return fetch(`/expenses/${y}/${mo}.json`).then(r => {
+          if (!r.ok) throw new Error(m);
+          return r.json();
+        });
+      })
+    );
+
+    // Flatten the monthly data into a single array of expenses
+    const all = perMonth.flat();
+
+    /* ===============================
+      Monthly Totals - Stacked Bar Chart
+      =============================== */
+    const stackedExpenses = months.map((m, i) => {
+      const expenses = perMonth[i];
+      const categories = {};
+      
+      // Organize expenses by category for each month
+      expenses.forEach(e => {
+        if (!categories[e.category]) {
+          categories[e.category] = [];
+        }
+        categories[e.category].push(e);
+      });
+
+      return categories;
+    });
+
+    // Collect all unique categories across all months
+    const allCategories = new Set();
+    stackedExpenses.forEach(month => {
+      Object.keys(month).forEach(cat => allCategories.add(cat));
+    });
+    const categoryList = Array.from(allCategories);
+
+    // Prepare datasets for the stacked chart
+    const datasets = categoryList.map(cat => {
+      const data = months.map((m, i) => {
+        // Sum all expenses for this category in this month
+        return (stackedExpenses[i][cat] || []).reduce((sum, e) => sum + e.amount, 0);
+      });
+
+      // Generate a unique color for each category
+      const hue = (categoryList.indexOf(cat) * 70) % 360;
+      const color = `hsl(${hue}, 70%, 60%)`;
+
+      return {
+        label: cat,
+        data: data,
+        backgroundColor: color,
+        hoverBorderColor: '#fff',
+        borderWidth: 1,
+        borderColor: '#111'
+      };
+    });
+
+    // Create the stacked bar chart
+    const ctxStacked = document.getElementById('monthly-chart').getContext('2d');
+    new Chart(ctxStacked, {
+      type: 'bar',
+      data: {
+        labels: months,
+        datasets: datasets
+      },
+      options: {
+        responsive: true,
+        plugins: {
+          title: {
+            display: true,
+            text: 'Expenses Totals Composition',
+            color: '#eee',
+            font: {
+              size: 18
+            }
+          },
+          tooltip: {
+            callbacks: {
+              label: function(context) {
+                const expenseAmount = context.raw.toFixed(2);
+                const expenseLabel = context.dataset.label;
+                return `${expenseLabel}: €${expenseAmount}`;
               }
             }
-          );
-        })
-        .catch(err => console.error('Failed to load expenses data:', err));
+          },
+          legend: {
+            position: 'top',
+            labels: {
+              color: '#ccc'
+            }
+          }
+        },
+        scales: {
+          y: {
+            beginAtZero: true,
+            stacked: true,
+            ticks: {
+              color: '#ccc'
+            },
+            grid: {
+              color: '#444'
+            }
+          },
+          x: {
+            stacked: true,
+            ticks: {
+              color: '#ccc'
+            },
+            grid: {
+              color: '#444'
+            }
+          }
+        }
+      }
     });
+
+    /* ===============================
+       Category Distribution - Pie Chart
+       =============================== */
+    const byCat = all.reduce((acc, e) => {
+      acc[e.category] = (acc[e.category] || 0) + (e.amount || 0);
+      return acc;
+    }, {});
+
+    const cats = Object.keys(byCat);
+    const vals = cats.map(c => byCat[c]);
+
+    // Color scheme for categories
+    const colors = cats.map((c, i) => {
+      const hue = (i * 60) % 360;
+      return `hsl(${hue}, 70%, 60%)`;
+    });
+
+    const ctxPie = document.getElementById('category-chart').getContext('2d');
+    new Chart(ctxPie, {
+      type: 'pie',
+      data: {
+        labels: cats,
+        datasets: [{
+          data: vals,
+          backgroundColor: colors,
+          hoverOffset: 8
+        }]
+      },
+      options: {
+        responsive: true,
+        plugins: {
+          title: {
+            display: true,
+            text: 'Expenses by Category',
+            color: '#eee',
+            font: {
+              size: 18
+            }
+          },
+          legend: {
+            display: true,
+            position: 'right',
+            labels: {
+              color: '#ccc'
+            }
+          },
+          tooltip: {
+            callbacks: {
+              label: function(context) {
+                return `${context.label}: €${context.raw.toFixed(2)}`;
+              }
+            }
+          }
+        }
+      }
+    });
+
+    /* ===============================
+       Table of All Expenses
+       =============================== */
+    const tbody = document.querySelector('#expenses-table tbody');
+    all.forEach(e => {
+      const tr = document.createElement('tr');
+      tr.innerHTML = `
+        <td>${e.date}</td>
+        <td>${e.category}</td>
+        <td>€${e.amount.toFixed(2)}</td>
+        <td>${e.comment || ''}</td>
+      `;
+      tbody.appendChild(tr);
+    });
+
+  } catch (err) {
+    // Handle any errors by showing a message on the page
+    console.error(err);
+    document.body.insertAdjacentHTML(
+      'afterbegin',
+      `<p style="color:red">Couldn’t load expenses: ${err.message}</p>`
+    );
+  }
+});
+
   </script>
 </body>
 </html>
