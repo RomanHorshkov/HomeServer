@@ -7,5 +7,3 @@ Welcome to the C-Server build notes. This document collection will walk you thro
 3. How to extend and customize components
 
 Each subsequent note dives into a specific area—diagrams, code snippets, configuration tips, and more—all organized as self-contained, collapsible entries.
-
-Happy building!

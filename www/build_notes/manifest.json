@@ -1,8 +1,11 @@
 {
   "diagrams": [
-"example.puml"
+    "getaddrinfo.puml","start_listener.puml"
   ],
   "notes": [
-"intro.md","login_flow.md"
+    "intro.md",
+    "socket_fundamentals.md",
+    "listener_start.md",
+    "getaddrinfo.md"
   ]
 }

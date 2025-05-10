@@ -1,5 +1,5 @@
 @startuml
-title Classic TCP server bootstrap (getaddrinfo ➜ accept)
+title Listener setup
 
 ' ---------- general look ----------
 skinparam shadowing false
