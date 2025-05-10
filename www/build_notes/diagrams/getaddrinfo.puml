@@ -1,0 +1,17 @@
+@startuml
+skinparam shadowing false
+skinparam participantPadding 16
+participant "App"  as A
+participant "libc / NSS" as L
+
+== getaddrinfo resolver path ==
+A -> L : parse hints & inputs
+alt numeric‑literal fast‑path
+    L -> L : inet_pton()
+else hostname path
+    L -> L : nss‑dispatch(files → dns → mdns)
+end alt
+L -> L : service lookup (getservbyname_r)
+L -> L : IPv4‑mapped / RFC6724 sort
+L --> A : struct addrinfo *res (linked list)
+@enduml
