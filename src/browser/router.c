@@ -41,7 +41,7 @@
 #define URI_WHOAMI_API "/api/whoami"
 #define URI_DYNAMIC "/dynamic"
 #define URI_EXPENSES_PAGE "/expenses"
-#define URI_EXPENSES_DATA "/api/expenses/data"
+#define URI_EXPENSES_MONTHS "/api/expenses/months"
 #define URI_IMAGES_PREFIX "/images/"
 
 /** Content types */
@@ -87,6 +87,8 @@ static void send_404(HttpResponse *response);
 
 /** Send a 405 Method Not Allowed response */
 static void send_405(HttpResponse *response);
+
+static int has_suffix(const char *str, const char *suffix);
 
 /****************************************************************************
  * @section Public Functions
@@ -211,19 +213,26 @@ int router_handle_request(const HttpRequest *request, HttpResponse *response)
     /* ─────────────────────────────────────────────────────────────
      * Expenses feature
      * ───────────────────────────────────────────────────────────── */
+    /* “list months” API */
+    if(strcmp(request->path, "/api/expenses/months") == 0)
+    {
+        return expenses_months_handler(response);
+    }
+
+    /* Serve raw JSON files under /expenses/YYYY/MM.json */
+    if(strncmp(request->path, "/expenses/", 9) == 0 && has_suffix(request->path, ".json"))
+    {
+        /* build filesystem path: STATIC_ROOT + request->path */
+        char fullpath[PATH_MAX];
+        snprintf(fullpath, sizeof fullpath, STATIC_ROOT "%s", request->path);
+        return static_page_serve_file(fullpath, "application/json", response);
+    }
+
+    /* Serve the HTML page as before: */
     if(strcmp(request->path, URI_EXPENSES_PAGE) == 0)
     {
         return static_page_serve_file(STATIC_ROOT "/expenses.html", CONTENT_HTML, response);
     }
-
-    if(strcmp(request->path, URI_EXPENSES_DATA) == 0)
-    {
-        return expenses_data_handler(response);
-    }
-    // if(strcmp(request->path, URI_EXPENSES_ADD) == 0)
-    // {
-    //     return expenses_add_handler(request, response);
-    // }
 
     /* Fallback to 404 Not Found */
     send_404(response);
@@ -267,4 +276,30 @@ static const char *guess_mime_type(const char *path)
         }
     }
     return "application/octet-stream";
+}
+
+/**
+ * @brief  Check whether `str` ends with `suffix`.
+ * @param  str     The full string to test.
+ * @param  suffix  The ending substring to look for.
+ * @return         1 if `str` ends with `suffix`, 0 otherwise.
+ */
+static int has_suffix(const char *str, const char *suffix)
+{
+    if(!str || !suffix)
+    {
+        return 0;
+    }
+
+    size_t lenstr = strlen(str);
+    size_t lensuffix = strlen(suffix);
+
+    /* suffix longer than string? cannot match */
+    if(lensuffix > lenstr)
+    {
+        return 0;
+    }
+
+    /* compare tail of str with suffix */
+    return strcmp(str + (lenstr - lensuffix), suffix) == 0;
 }
