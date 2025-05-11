@@ -30,7 +30,7 @@ extern "C"
 
 #if !defined(__WINDOWS__) && \
     (defined(WIN32) || defined(WIN64) || defined(_MSC_VER) || defined(_WIN32))
-#define __WINDOWS__
+#    define __WINDOWS__
 #endif
 
 #ifdef __WINDOWS__
@@ -56,31 +56,32 @@ extern "C"
 
     */
 
-#define CJSON_CDECL __cdecl
-#define CJSON_STDCALL __stdcall
+#    define CJSON_CDECL __cdecl
+#    define CJSON_STDCALL __stdcall
 
 /* export symbols by default, this is necessary for copy pasting the C and header file */
-#if !defined(CJSON_HIDE_SYMBOLS) && !defined(CJSON_IMPORT_SYMBOLS) && !defined(CJSON_EXPORT_SYMBOLS)
-#define CJSON_EXPORT_SYMBOLS
-#endif
+#    if !defined(CJSON_HIDE_SYMBOLS) && !defined(CJSON_IMPORT_SYMBOLS) && \
+        !defined(CJSON_EXPORT_SYMBOLS)
+#        define CJSON_EXPORT_SYMBOLS
+#    endif
 
-#if defined(CJSON_HIDE_SYMBOLS)
-#define CJSON_PUBLIC(type) type CJSON_STDCALL
-#elif defined(CJSON_EXPORT_SYMBOLS)
-#define CJSON_PUBLIC(type) __declspec(dllexport) type CJSON_STDCALL
-#elif defined(CJSON_IMPORT_SYMBOLS)
-#define CJSON_PUBLIC(type) __declspec(dllimport) type CJSON_STDCALL
-#endif
+#    if defined(CJSON_HIDE_SYMBOLS)
+#        define CJSON_PUBLIC(type) type CJSON_STDCALL
+#    elif defined(CJSON_EXPORT_SYMBOLS)
+#        define CJSON_PUBLIC(type) __declspec(dllexport) type CJSON_STDCALL
+#    elif defined(CJSON_IMPORT_SYMBOLS)
+#        define CJSON_PUBLIC(type) __declspec(dllimport) type CJSON_STDCALL
+#    endif
 #else /* !__WINDOWS__ */
-#define CJSON_CDECL
-#define CJSON_STDCALL
+#    define CJSON_CDECL
+#    define CJSON_STDCALL
 
-#if(defined(__GNUC__) || defined(__SUNPRO_CC) || defined(__SUNPRO_C)) && \
-    defined(CJSON_API_VISIBILITY)
-#define CJSON_PUBLIC(type) __attribute__((visibility("default"))) type
-#else
-#define CJSON_PUBLIC(type) type
-#endif
+#    if(defined(__GNUC__) || defined(__SUNPRO_CC) || defined(__SUNPRO_C)) && \
+        defined(CJSON_API_VISIBILITY)
+#        define CJSON_PUBLIC(type) __attribute__((visibility("default"))) type
+#    else
+#        define CJSON_PUBLIC(type) type
+#    endif
 #endif
 
 /* project version */
@@ -143,13 +144,13 @@ extern "C"
 /* Limits how deeply nested arrays/objects can be before cJSON rejects to parse them.
  * This is to prevent stack overflows. */
 #ifndef CJSON_NESTING_LIMIT
-#define CJSON_NESTING_LIMIT 1000
+#    define CJSON_NESTING_LIMIT 1000
 #endif
 
 /* Limits the length of circular references can be before cJSON rejects to parse them.
  * This is to prevent stack overflows. */
 #ifndef CJSON_CIRCULAR_LIMIT
-#define CJSON_CIRCULAR_LIMIT 10000
+#    define CJSON_CIRCULAR_LIMIT 10000
 #endif
 
     /* returns the version of cJSON as a string */

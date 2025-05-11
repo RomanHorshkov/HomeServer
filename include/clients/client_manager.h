@@ -19,14 +19,14 @@
 #ifndef SERVER_CLIENT_MANAGER_H
 #define SERVER_CLIENT_MANAGER_H
 
+#include <stddef.h>     /* size_t                       */
+#include <sys/socket.h> /* struct sockaddr_storage      */
+#include <sys/types.h>  /* pid_t                        */
+
 #ifdef __cplusplus
 extern "C"
 {
 #endif
-
-#include <stddef.h>     /* size_t                       */
-#include <sys/socket.h> /* struct sockaddr_storage      */
-#include <sys/types.h>  /* pid_t                        */
 
     /****************************************************************************
      * PUBLIC STRUCTURED VARIABLES DECLARATIONS

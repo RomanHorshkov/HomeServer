@@ -1,5 +1,5 @@
-#ifndef SERVER_STATIC_MANAGER_H
-#define SERVER_STATIC_MANAGER_H
+#ifndef SERVER_STATIC_PAGE_H
+#define SERVER_STATIC_PAGE_H
 
 #include "http_manager.h"
 
@@ -22,4 +22,4 @@
  */
 int static_page_serve_file(const char* filepath, const char* content_type, HttpResponse* response);
 
-#endif /* SERVER_STATIC_MANAGER_H */
+#endif /* SERVER_STATIC_PAGE_H */

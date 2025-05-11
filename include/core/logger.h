@@ -1,6 +1,3 @@
-#ifndef SERVER_LOGGER_H
-#define SERVER_LOGGER_H
-
 /**
  * @file logger.h
  * @brief Logging interface for the server.
@@ -9,6 +6,9 @@
  * and socket address logging. Logs are written to a file (default: `server.log`)
  * and flushed on each write.
  */
+
+#ifndef SERVER_LOGGER_H
+#define SERVER_LOGGER_H
 
 /****************************************************************************
  * PUBLIC INCLUDES
