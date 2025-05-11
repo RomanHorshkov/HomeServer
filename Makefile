@@ -4,7 +4,7 @@ CFLAGS          := -std=c11 -Wall -Werror -Wextra -pedantic -g
 LDLIBS 			+= -Lexternal/llhttp -lllhttp\
                    -Lexternal/cjson -lcjson
 
-INCDIRS 		:= include include/core include/browser external/llhttp external/cjson
+INCDIRS 		:= include include/core include/browser include/clients external/llhttp external/cjson
 SRCDIRS         := src
 BUILDDIR        := build
 OBJDIR          := $(BUILDDIR)/obj
@@ -68,7 +68,7 @@ endif
 lint:
 	@cppcheck --enable=all --inconclusive --std=c11 --language=c --quiet \
 		--suppress=missingIncludeSystem \
-		-Iinclude -Iinclude/core -Iinclude/browser \
+		-Iinclude -Iinclude/core -Iinclude/browser -Iinclude/clients \
 		-Iexternal/cjson -Iexternal/llhttp \
 		src/ \
 
@@ -81,7 +81,7 @@ tidy:
 	clang-tidy \
 		-checks=-clang-analyzer-security.insecureAPI.DeprecatedOrUnsafeBufferHandling \
 		$(shell find src -name '*.c') -p . -- \
-		-Iinclude -Iinclude/core -Iinclude/browser \
+		-Iinclude -Iinclude/core -Iinclude/browser -Iinclude/clients \
 		-Iexternal/cjson -Iexternal/llhttp
 
 	@echo "🧼 Cleaning temporary build files..."

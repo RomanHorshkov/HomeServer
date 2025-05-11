@@ -1,3 +1,8 @@
+
+/**
+ * @file listener.h
+ * @brief APIs for setting up, accepting, and tearing down server listener sockets.
+ */
 #ifndef SERVER_LISTENER_H
 #define SERVER_LISTENER_H
 
@@ -7,11 +12,6 @@
 extern "C"
 {
 #endif
-
-    /**
-     * @file listener.h
-     * @brief APIs for setting up, accepting, and tearing down server listener sockets.
-     */
 
     /****************************************************************************
      * PUBLIC STRUCTURED VARIABLES DECLARATIONS
