@@ -339,6 +339,108 @@ Feel free to extend the hook with `make tidy` or unit‑test execution once the 
 
 ---
 
+## Security Concerns
+
+Below is a deep‑dive catalogue of security issues that emerged during the review.
+For each item you will find **the underlying cause**, **the practical impact/attack scenario**, and **actionable mitigations**.
+
+---
+
+### 1. Memory‑ownership mistakes when freeing response bodies
+
+| Aspect     | Details                                                                                                                                                                                                                                                        |
+| ---------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Cause**  | `browser_manage_client_req()` calls `free((void*)response.body)` unconditionally. When helpers like `send_404()` or `send_405()` set `response.body` to a string literal, that literal lives in read‑only program text; freeing it is **undefined behaviour**. |
+| **Impact** | Depending on libc build‑time sanity checks, you get a crash (DoS) or silent heap corruption—an attacker may be able to craft a sequence of requests that hit the literal and then trigger reuse of the freed pointer.                                          |
+| **Fixes**  | ① Add a `needs_free` flag to `HttpResponse`. ② Or always duplicate constant strings with `strdup()` so everything is heap‑owned. ③ Consider a tiny wrapper `http_resp_set_body(HttpResponse*, const char *src, bool copy)`.                                    |
+
+---
+
+### 2. Fork‑per‑client model → resource‑exhaustion DoS
+
+| Aspect     | Details                                                                                                                                                                                                                                             |
+| ---------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Cause**  | Every new TCP connection triggers a `fork()`. On a busy port a malicious user can open thousands of parallel sockets, each consuming a full process image, stack, libc TLS and COW pages.                                                           |
+| **Impact** | Rapid spike in PIDs, context‑switch overhead and memory: easy to hit `/proc/sys/kernel/pid_max` or the soft `ulimit -u`. Legitimate clients start timing‑out.                                                                                       |
+| **Fixes**  | ① Switch to a single‑process event loop (epoll/kqueue) or a fixed worker pool that accepts on a shared socket. ② Add `MaxClients` limit at the accept layer and fail fast with `SO_REUSEPORT`. ③ Use `setrlimit(RLIMIT_NPROC, …)` to self‑throttle. |
+
+---
+
+### 3. Shared log file descriptor across forks
+
+| Aspect     | Details                                                                                                                                                                                                                                         |
+| ---------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Cause**  | Parent and every child inherit the same `FILE *` opened in write‑mode. Writes are **not atomic** at the stdio layer—`fprintf()` buffers can overlap.                                                                                            |
+| **Impact** | Garbled or truncated log lines break forensic value. Attackers could exploit predictable interleaving to obscure traces.                                                                                                                        |
+| **Fixes**  | ① Re‑open the log in each child **after** `fork()` with `O_APPEND`. ② Or call `setvbuf(log_file,NULL,_IONBF,0)` to disable buffering (still risk torn writes). ③ Or ditch the file and use `syslog()`—the daemon manages serialisation for you. |
+
+---
+
+### 4. Incomplete HTTP frame parsing (pipelining / request‑smuggling)
+
+| Aspect     | Details                                                                                                                                                                |
+| ---------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Cause**  | You pass the whole `recv()` buffer to `llhttp` once and ignore `parser.off`. If two requests arrive back‑to‑back (pipelined) the surplus bytes are silently discarded. |
+| **Impact** | **Request‑smuggling**: an attacker tunnels an extra request through an idle keep‑alive socket; subsequent handler sees stale state or mis‑routes.                      |
+| **Fixes**  | ① Loop while `parsed < n` and feed remaining bytes into a fresh `llhttp_t`. ② Maintain a per‑connection buffer + offset so you can append and parse incrementally.     |
+
+---
+
+### 5. Path traversal guards are bypassable
+
+| Aspect     | Details                                                                                                                                                                                                                   |
+| ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Cause**  | Checks like `if(strstr(path, ".."))` occur **before URL‑decoding** in some branches and don’t cover encoded forms (`..%2f`, `%2e%2e/`).                                                                                   |
+| **Impact** | Classic directory traversal → arbitrary file read, e.g. `GET /assets/..%2f..%2fetc/passwd`.                                                                                                                               |
+| **Fixes**  | ① Always call `url_decode()` **first**. ② Use `realpath()` on the assembled path and verify the result begins with your web‑root prefix. ③ Chroot or drop privileges (`setuid(nobody)`) so escapes are less catastrophic. |
+
+---
+
+### 6. Blocking `send()` enables slow‑loris style attacks
+
+| Aspect     | Details                                                                                                                                                                                     |
+| ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Cause**  | Child sockets remain in blocking mode. A client that ACKs each TCP segment slowly stalls the process inside `send_all()`.                                                                   |
+| **Impact** | Ten malicious sockets → ten hung processes → service freeze despite low network traffic.                                                                                                    |
+| **Fixes**  | ① Set `SO_SNDTIMEO` to a few seconds. ② Or switch sockets to non‑blocking and integrate a `poll()`/`epoll()`‑based write loop with rate limiting. ③ Consider `TCP_NODELAY` + write retries. |
+
+---
+
+### 7. Large‑file integer truncation
+
+| Aspect     | Details                                                                                                                                                                  |
+| ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **Cause**  | `ftell()` returns `long` but you store it in `long` then cast to `size_t`; on 32‑bit or when `_FILE_OFFSET_BITS=32` this truncates >2 GiB.                               |
+| **Impact** | Short reads (partial file leak) or, worse, negative size when cast to `size_t` → huge allocation attempt → crash.                                                        |
+| **Fixes**  | ① Use `struct stat st; fstat(fileno(file), &st); off_t sz = st.st_size;` ② Add an upper bound (e.g. `MAX_STATIC_FILE = 50*1024*1024`) and refuse to serve bigger assets. |
+
+---
+
+### 8. Hard‑coded protocol limits
+
+| Aspect     | Details                                                                                                                                                                                                          |
+| ---------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Cause**  | `HTTP_RECEIVE_BUFFER_LEN` is 4 KiB, `HTTP_MAX_HEADER_COUNT` is 20. Modern browsers can send 10 KiB cookie headers easily.                                                                                        |
+| **Impact** | Oversized request truncates in the middle of a header → parse error → vague 400 or crash → trivial DoS.                                                                                                          |
+| **Fixes**  | ① Grow the buffer dynamically (`realloc`) until a sane max (e.g. 64 KiB). ② If limit is hit, reply `431 Request Header Fields Too Large` not just close. ③ Stream‑parse with `llhttp_execute()` as bytes arrive. |
+
+---
+
+### 9. Missing transport‑layer security & privilege separation *(defence‑in‑depth)*
+
+Although out‑of‑scope for localhost demos, real deployment must run behind TLS (nginx/Caddy) and as an **unprivileged UID** inside a chroot/container.  Combine with `seccomp()` or `landlock` to sandbox file system access.
+
+---
+
+### 10. Future counter‑measures checklist
+
+* Enable **ASLR, RELRO, PIE** at compile time (`-fPIE -pie -Wl,-z,relro,-z,now`).
+* Ship a **Content‑Security‑Policy** header in every HTML response to curb XSS.
+* Add **rate‑limiting** (token bucket per‑IP) on the accept loop to blunt brute‑force traffic.
+* Write unit tests that fuzz‑feed headers and URLs through `http_parse_request()` under AddressSanitizer and UndefinedBehaviourSanitizer.
+
+
+
 ## Future work
 
 * Chunked‑encoding & streamed responses
