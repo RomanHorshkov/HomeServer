@@ -2,7 +2,8 @@
   "diagrams": [
     "getaddrinfo.puml",
     "start_listener.puml",
-    "expenses.puml"
+    "expenses.puml",
+    "accept_connecting_socket.puml"
   ],
   "notes": [
     "intro.md",
