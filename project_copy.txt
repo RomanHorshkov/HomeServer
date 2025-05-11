@@ -1,0 +1,4518 @@
+===== Makefile =====
+# ------ Build configuration ------
+CC              := gcc
+CFLAGS          := -std=c11 -Wall -Werror -Wextra -pedantic -g
+LDLIBS 			+= -Lexternal/llhttp -lllhttp\
+                   -Lexternal/cjson -lcjson
+
+INCDIRS 		:= include include/core include/browser external/llhttp external/cjson
+SRCDIRS         := src
+BUILDDIR        := build
+OBJDIR          := $(BUILDDIR)/obj
+BINDIR          := $(BUILDDIR)/bin
+TARGET          := server
+
+# Expand include flags
+INCLUDES        := $(foreach dir,$(INCDIRS),-I$(dir))
+
+# ------ Source & object lists ------
+SOURCES 		:= $(shell find $(SRCDIRS) -name '*.c')
+OBJECTS 		:= $(patsubst %.c,$(OBJDIR)/%.o,$(SOURCES))
+DEPS            := $(OBJECTS:.o=.d)
+
+# ─── Build a manifest of all .puml diagrams and .md/.txt notes ───
+NOTES_DIR := www/build_notes/notes
+DIAG_DIR  := www/build_notes/diagrams
+MANIFEST  := www/build_notes/manifest.json
+
+# ------ Phony targets ------
+.PHONY: all clean run debug release tidy lint format notes
+
+# ------ Default build ------
+all: $(BINDIR)/$(TARGET)
+
+# Link step ---------------------------------------------------------------
+$(BINDIR)/$(TARGET): $(OBJECTS)
+	@mkdir -p $(BINDIR)
+	$(CC) $(CFLAGS) $^ $(LDLIBS) -o $@
+
+# Compile step -------------------------------------------------------------
+$(OBJDIR)/%.o: %.c
+	@mkdir -p $(dir $@)
+	$(CC) $(CFLAGS) $(INCLUDES) -MMD -MP -c $< -o $@
+
+# Create the object directory only when needed-----------------------------
+$(OBJDIR):
+	@mkdir -p $(OBJDIR)
+
+# Convenience helpers ------------------------------------------------------
+run: all
+	@./$(BINDIR)/$(TARGET)
+
+debug: export CFLAGS += -O0
+debug: all
+
+release: export CFLAGS += -O2 -DNDEBUG
+release: all
+
+# Auto formatting ---------------------------------------------------------
+format:
+ifndef FILES
+	@echo "🛠  Formatting all .c/.h files in the project..."
+	@find . -regex '.*\.\(c\|h\)' -exec clang-format -i {} +
+else
+	@echo "🛠  Formatting staged files: $(FILES)"
+	@clang-format -i $(FILES)
+endif
+
+# Static analysis ----------------------------------------------------------
+lint:
+	@cppcheck --enable=all --inconclusive --std=c11 --language=c --quiet \
+		--suppress=missingIncludeSystem \
+		-Iinclude -Iinclude/core -Iinclude/browser \
+		-Iexternal/cjson -Iexternal/llhttp \
+		src/ \
+
+# Better Static analysis
+tidy:
+	@echo "🐻 Generating compile_commands.json using bear..."
+	bear -- make -B > /dev/null
+
+	@echo "🧠 Running clang-tidy (suppressing C11 unsafe API warnings)..."
+	clang-tidy \
+		-checks=-clang-analyzer-security.insecureAPI.DeprecatedOrUnsafeBufferHandling \
+		$(shell find src -name '*.c') -p . -- \
+		-Iinclude -Iinclude/core -Iinclude/browser \
+		-Iexternal/cjson -Iexternal/llhttp
+
+	@echo "🧼 Cleaning temporary build files..."
+	rm -f *.o */*.o */*/*.o
+
+# rm -f compile_commands.json // keep for now the compile_commands
+	rm -f *.o */*.o */*/*.o
+
+notes:
+	@echo "Generating $(MANIFEST)…"
+	@mkdir -p $(dir $(MANIFEST))
+	@echo "{"                                                          >  $(MANIFEST)
+	@echo '  "diagrams": ['                                           >> $(MANIFEST)
+	@find $(DIAG_DIR) -maxdepth 1 -type f -name '*.puml' \
+	  | sed -e 's@.*/\(.*\)$$@"\1"@' \
+	  | paste -sd ",\n    " -                                        >> $(MANIFEST)
+	@echo '  ],'                                                      >> $(MANIFEST)
+	@echo '  "notes": ['                                              >> $(MANIFEST)
+	@find $(NOTES_DIR) -maxdepth 1 -type f \( -name '*.md' -o -name '*.txt' \) \
+	  | sed -e 's@.*/\(.*\)$$@"\1"@' \
+	  | paste -sd ",\n    " -                                        >> $(MANIFEST)
+	@echo '  ]'                                                       >> $(MANIFEST)
+	@echo "}"                                                         >> $(MANIFEST)
+	@echo "$(MANIFEST) updated."
+
+
+clean:
+	rm -rf $(BUILDDIR) server.log
+
+# Auto‑generated dependency files -----------------------------------------
+-include $(DEPS)
+
+
+
+===== include/browser/browser.h =====
+#ifndef SERVER_BROWSER_H
+#define SERVER_BROWSER_H
+
+/****************************************************************************
+ * PRIVATE INCLUDES
+ ****************************************************************************
+ */
+
+#include "http_manager.h"
+
+/****************************************************************************
+ * PUBLIC FUNCTIONS DECLARATIONS
+ ****************************************************************************
+ */
+
+ssize_t browser_manage_client_req(int fd, const char* recv_buf, size_t n,
+                                  int* client_connection_policy);
+
+#endif /* SERVER_BROWSER_H */
+
+
+===== include/browser/handlers.h =====
+#include "router.h"
+
+int whoami_json_handler(const HttpRequest* req, HttpResponse* res);
+
+int drive_json_handler(const HttpRequest* req, HttpResponse* resp);
+
+int expenses_months_handler(HttpResponse* resp);
+
+// void expenses_add_handler(const HttpRequest*, HttpResponse*);
+
+
+===== include/browser/http_manager.h =====
+#ifndef HTTP_MANAGER_H
+#define HTTP_MANAGER_H
+
+/****************************************************************************
+ * PUBLIC INCLUDES
+ ****************************************************************************
+ */
+#include <stddef.h>  // size_t
+#include <unistd.h>  // ssize_t
+
+#include "server_settings.h"
+
+/****************************************************************************
+ * PUBLIC DEFINES
+ ****************************************************************************
+ */
+/* None */
+
+/****************************************************************************
+ * PUBLIC STRUCTURED VARIABLES DEFINITIONS
+ ****************************************************************************
+ */
+
+typedef struct
+{
+    char method[HTTP_MAX_METHOD_LEN];
+    char path[HTTP_MAX_PATH_LEN];
+    char header_names[HTTP_MAX_HEADER_COUNT][HTTP_MAX_HEADER_NAME_LEN];
+    char header_values[HTTP_MAX_HEADER_COUNT][HTTP_MAX_HEADER_VALUE_LEN];
+    int header_count;
+    int should_close;  // 1 = close after response, 0 = keep alive
+
+} HttpRequest;
+
+typedef struct
+{
+    int status_code;
+    const char* status_text;
+    const char* content_type;
+    const char* body;
+    size_t body_length;
+} HttpResponse;
+
+/* Struct to keep track of actual llhttp parsing state */
+typedef struct
+{
+    HttpRequest* req;
+    char current_field[HTTP_MAX_HEADER_NAME_LEN];
+    char current_value[HTTP_MAX_HEADER_VALUE_LEN];
+    int in_header_field;
+} LlhttpParserContext;
+
+/****************************************************************************
+ * PUBLIC ENUMERATED VARIABLES
+ ****************************************************************************
+ */
+enum HTTPConnectionPolicy
+{
+    HTTP_CONNECTION_KEEP_ALIVE = 0,
+    HTTP_CONNECTION_CLOSE
+};
+
+/****************************************************************************
+ * PUBLIC FUNCTIONS DECLARATIONS
+ ****************************************************************************
+ */
+
+/**
+ * @brief Parse an HTTP/1.1 request into an HttpRequest struct.
+ *
+ * The caller owns @p out and must free it with http_request_destroy().
+ *
+ * @param[in]  buffer   Raw request buffer (NUL‑terminated)
+ * @param[out] out      Newly allocated HttpRequest
+ * @return              0 on success, negative errno on failure
+ */
+int http_parse_request(const char* buffer, size_t buffer_len, HttpRequest* req,
+                       int* client_connection_policy);
+
+/* Build an HTTP response string into a buffer (already formatted) */
+// int http_build_response(const HttpResponse* resp, const int* client_connection_policy,
+//                         char* out_buffer, size_t max_len);
+
+#endif /* HTTP_MANAGER_H */
+
+
+
+===== include/browser/router.h =====
+#ifndef SERVER_ROUTER_H
+#define SERVER_ROUTER_H
+
+#include "http_manager.h"  // for HttpRequest and HttpResponse structs
+
+/* Handles the incoming request based on the method and path.
+ * Builds the response to send back into the out_response structure.
+ */
+int router_handle_request(const HttpRequest* req, HttpResponse* res);
+
+#endif /* SERVER_ROUTER_H */
+
+
+===== include/browser/static_page.h =====
+#ifndef SERVER_STATIC_MANAGER_H
+#define SERVER_STATIC_MANAGER_H
+
+#include "http_manager.h"
+
+/****************************************************************************
+ * PUBLIC FUNCTIONS PROTOTYPES
+ ****************************************************************************
+ */
+
+/**
+ * @brief Serve a static file.
+ *
+ * Opens the given file in binary mode, reads its entire contents into
+ * memory, and sets up the HttpResponse fields accordingly. If any error
+ * occurs, an error is logged and a non-zero result is returned.
+ *
+ * @param filepath     Path to the file on the local filesystem
+ * @param content_type MIME type to set in the response (e.g. "text/html")
+ * @param response     Pointer to an HttpResponse struct to populate
+ * @return 0 on success, non-zero on error
+ */
+int static_page_serve_file(const char* filepath, const char* content_type, HttpResponse* response);
+
+#endif /* SERVER_STATIC_MANAGER_H */
+
+
+===== include/core*.h =====
+
+
+
+===== src/core/client.c =====
+#define _POSIX_C_SOURCE 200112L
+#define _GNU_SOURCE
+
+#include "client.h"
+
+#include <netdb.h>  // socklen_t, NI_MAXHOST, NI_MAXSERV
+
+#include "browser.h"
+// #include "server_settings.h"
+#include <errno.h>  // errno, EADDRINUSE, etc.
+
+#include "logger.h"
+// #include <unistd.h>                 // ssize_t
+#include <stdio.h>       // snprintf(), etc
+#include <stdlib.h>      // malloc(), calloc() etc
+#include <string.h>      // memset(), strcpy(), strlen(), etc.
+#include <sys/socket.h>  // socklen_t, socket(), bind(), setsockopt(), etc.
+#include <sys/time.h>    // struct timeval
+
+/****************************************************************************
+ * PRIVATE DEFINES
+ ****************************************************************************
+ */
+
+/****************************************************************************
+ * PRIVATE STRUCTURED VARIABLES
+ ****************************************************************************
+ */
+
+/* Server's clients structures */
+
+typedef struct
+{
+    int client_fd;             // file descriptor
+    int pid;                   // process id
+    char host[NI_MAXHOST];     // host name
+    char service[NI_MAXSERV];  // service name
+} client_info;
+
+struct clients_pot
+{
+    client_info clients[MAX_CLIENTS];  // all clients
+    int active_clients_no;             // active clients count
+};
+
+/****************************************************************************
+ * PRIVATE FUNCTIONS DECLARATIONS
+ ****************************************************************************
+ */
+
+static int save_client(clients_t **clients, struct sockaddr *client_addr, int *client_fd);
+
+static int set_client_socket_options(int *socket_fd);
+
+static int upgrade_client_socket_options(int *socket_fd);
+
+static void close_all_clients(clients_t **clients);
+
+/****************************************************************************
+ * PUBLIC FUNCTIONS DEFINITIONS
+ ****************************************************************************
+ */
+
+int clients_init(clients_t **clients)
+{
+    /* result value */
+    int res = -1;
+
+    if(clients != NULL)
+    {
+        /* Allocate space for clients */
+        *clients = malloc(sizeof(clients_t));
+
+        if(*clients != NULL)
+        {
+            /* Set everything to 0 */
+            memset(*clients, 0, sizeof(clients_t));
+            /* set return to 0 */
+            res = 0;
+        }
+    }
+
+    return res;
+}
+
+int clients_add_new_client(clients_t **clients, struct sockaddr_storage *client_addr,
+                           int *client_fd)
+{
+    /* return value */
+    int res = 0;
+
+    if((*clients)->active_clients_no >= MAX_CLIENTS)
+    {
+        /* Max no of clients reached, politely decline connection */
+        log_error("Clients: max client No limit reached ", strerror(errno));
+        close(*client_fd);
+        *client_fd = -1;
+        res = -1;
+    }
+
+    /* set client socket options */
+    else if(set_client_socket_options(client_fd) == -1)
+    {
+        log_error("Clients: set client socket options failed: %s", strerror(errno));
+        close(*client_fd);
+        *client_fd = -1;
+        res = -1;
+    }
+
+    /* Save client into clients array */
+    else if(save_client(clients, (struct sockaddr *)client_addr, client_fd) == -1)
+    {
+        log_error("Clients: save client failed: %s", strerror(errno));
+        close(*client_fd);
+        *client_fd = -1;
+        res = -1;
+    }
+
+    return res;
+}
+
+void clients_handle_client(const int *client_fd)
+{
+    /* set a local file descriptor */
+    int fd = *client_fd;
+
+    /* set a connections counter */
+    int received_first_time = 0;
+
+    /* receive buffer */
+    char recv_buff[HTTP_RECEIVE_BUFFER_LEN];
+    /* receive buffer len */
+    ssize_t n;
+
+    /* Client's connection policy over http */
+    int client_connection_policy = -1;
+
+    /* recv is BLOCKING here */
+    while((n = recv(fd, recv_buff, sizeof(recv_buff), 0)) > 0)
+    {
+        log_info("Client [pid %d fd %d]: received, parsing ->", getpid(), fd);
+
+        /* serve the request; if any and respond */
+        if(browser_manage_client_req(fd, recv_buff, (size_t)n, &client_connection_policy) <= 0)
+        {
+            log_error("Client: browser failed to manage request", strerror(errno));
+        }
+
+        /* Check if the client wants the connection to close */
+        else if(client_connection_policy == HTTP_CONNECTION_CLOSE)
+        {
+            /* exit and close the client */
+            log_info("Client [pid %d fd %d]: closes connection", getpid(), fd);
+            break;
+        }
+
+        /* Upgrade after first msg received the client's socket options */
+        else if(!received_first_time && upgrade_client_socket_options(&fd) == 0)
+        {
+            received_first_time = 1;
+            log_info("Upgraded timeout for fd=%d to %ds\n", fd, CLIENT_MAX_TIMEOUT_S_L);
+        }
+    }
+
+    if(n == 0)
+    {
+        log_info("Client fd=%d closed connection.\n", fd);
+    }
+    else if(errno != EAGAIN && errno != EWOULDBLOCK)
+    {
+        log_error("recv: %s", strerror(errno));
+    }
+
+    /* Close client */
+    close(fd);
+
+    log_info("Client handeled; Connection closed.");
+}
+
+void clients_erase_client(clients_t **clients, const pid_t *client_pid)
+{
+    for(int i = 0; i < MAX_CLIENTS; i++)
+    {
+        if((*clients)->clients[i].pid == *client_pid)
+        {
+            log_info("Clients: client reaped: PID %d (fd=%d)", (*clients)->clients[i].pid,
+                     (*clients)->clients[i].client_fd);
+
+            if((*clients)->clients[i].client_fd != -1)
+            {
+                /* if the socket is active close the
+                client and set file descriptor to -1 */
+                close((*clients)->clients[i].client_fd);
+            }
+
+            /* update client's internal values */
+            memset(&(*clients)->clients[i], 0, sizeof((*clients)->clients[i]));
+            (*clients)->clients[i].client_fd = -1;
+            (*clients)->clients[i].pid = 0;  // not necessary but for clarity
+
+            /* decrease client's number */
+            (*clients)->active_clients_no--;
+
+            log_info("Clients: remaining clients: %d", (*clients)->active_clients_no);
+            break;  // no need to look further
+        }
+        else
+        {
+            /* try next client */
+            continue;
+        }
+    }
+}
+
+void clients_set_client_pid(clients_t **clients, pid_t *pid, int *client_fd)
+{
+    /* loop through all clients */
+    for(int i = 0; i < MAX_CLIENTS; i++)
+    {
+        /* if a corresponding found */
+        if((*clients)->clients[i].client_fd == *client_fd)
+        {
+            /* set client's pid */
+            (*clients)->clients[i].pid = *pid;
+
+            log_info("Clients: client started: PID %d; fd %d; host %s; service %s ", *pid,
+                     *client_fd, (*clients)->clients[i].host, (*clients)->clients[i].service);
+
+            break;
+        }
+    }
+}
+
+void clients_shutdown(clients_t **clients)
+{
+    close_all_clients(clients);
+    free(*clients);
+    log_info("Clients: -- shutdown -- ");
+}
+
+/****************************************************************************
+ * PRIVATE FUNCTIONS DEFINITIONS
+ ****************************************************************************
+ */
+
+static int save_client(clients_t **clients, struct sockaddr *client_addr, int *client_fd)
+{
+    /* return value */
+    int res = -1;
+
+    /* input length */
+    socklen_t addr_len = sizeof(*client_addr);
+
+    /* host client's info */
+    char host[NI_MAXHOST];
+
+    /* service client's info */
+    char service[NI_MAXSERV];
+
+    /* get all client's info */
+    int gni = getnameinfo(client_addr, addr_len, host, sizeof(host), service, sizeof(service),
+                          NI_NUMERICHOST | NI_NUMERICSERV);
+
+    if(gni != 0)
+    {
+        /* Could not resolve client info, fallback to unknown client */
+        snprintf(host, sizeof(host), "unknown");
+        snprintf(service, sizeof(service), "unknown");
+
+        log_info("Client (fd=%d) accepted, but getnameinfo failed: %s", *client_fd,
+                 gai_strerror(gni));
+    }
+
+    /* save the client */
+    /* space is already allocated in clients_init */
+    /* loop through all clients and find empty space */
+    for(int i = 0; i < MAX_CLIENTS; i++)
+    {
+        if((*clients)->clients[i].client_fd <= 0)
+        {
+            /* if the i-th client slot is available (free) */
+            (*clients)->clients[i].client_fd = *client_fd;
+            memcpy((*clients)->clients[i].host, host, NI_MAXHOST);
+            memcpy((*clients)->clients[i].service, service, NI_MAXSERV);
+
+            /* increment active clients amount */
+            (*clients)->active_clients_no++;
+
+            /* set return value to success */
+            res = 0;
+
+            log_info("Clients: client accepted from %s:%s (fd=%d)", host, service, *client_fd);
+            log_info("Clients: active clients %d", (*clients)->active_clients_no);
+
+            /* stop after one client saved */
+            break;
+        }
+        else
+        {
+            /* check next available slot */
+            continue;
+        }
+    }
+
+    return res;
+}
+
+static int set_client_socket_options(int *socket_fd)
+{
+    /* return value */
+    int res = -1;
+
+    /* Timeout */
+    struct timeval timeout = {CLIENT_MAX_TIMEOUT_S, CLIENT_MAX_TIMEOUT_MS};
+
+    if(setsockopt(*socket_fd, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout)) < 0)
+    {
+        /* log error if set sock opt fails and return -1 */
+        log_error("setsockopt timeout: %s\n", strerror(errno));
+    }
+    else
+    {
+        res = 0;
+    }
+
+    return res;
+}
+
+static int upgrade_client_socket_options(int *socket_fd)
+{
+    /* return value */
+    int res = -1;
+
+    /* Timeout */
+    struct timeval timeout = {CLIENT_MAX_TIMEOUT_S_L, CLIENT_MAX_TIMEOUT_MS};
+
+    if(setsockopt(*socket_fd, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout)) < 0)
+    {
+        log_error("setsockopt timeout: %s\n", strerror(errno));
+    }
+    else
+    {
+        res = 0;
+    }
+    return res;
+}
+
+static void close_all_clients(clients_t **clients)
+{
+    /* set active clients amount to 0 */
+    (*clients)->active_clients_no = 0;
+
+    /* loop through all clients */
+    for(int i = 0; i < MAX_CLIENTS; i++)
+    {
+        if((*clients)->clients[i].client_fd > 0)
+        {
+            /* close the client */
+            close((*clients)->clients[i].client_fd);
+
+            /* leave the internal values for main process
+            clients handling. Close is needed to close the
+            connection but from this process never delete
+            data about the client's socket fd */
+
+            // /* update client's internal values */
+            // (*clients)->clients[i].client_fd = 0;
+            // (*clients)->clients[i].pid = -1;
+            // memcpy((*clients)->clients[i].host,    NULL, NI_MAXHOST);
+            // memcpy((*clients)->clients[i].service, NULL, NI_MAXSERV);
+        }
+        else
+        {
+            /* client not active */
+            continue;
+        }
+    }
+}
+
+
+===== src/core/core.c =====
+#define _GNU_SOURCE
+
+#include "core.h"
+
+#include <errno.h>       // errno, EADDRINUSE, etc.
+#include <netdb.h>       // socklen_t
+#include <stdlib.h>      // malloc(), calloc(), NULL etc
+#include <string.h>      // memset(), strcpy(), strlen(), etc.
+#include <sys/socket.h>  // socklen_t, socket(), bind(), setsockopt(), etc.
+#include <sys/time.h>    // struct timeval
+#include <sys/wait.h>    // wait, who hang, pid_t
+#include <time.h>        // nanosleep()
+#include <unistd.h>      // fork(), close()
+
+#include "client.h"
+#include "listener.h"
+#include "logger.h"
+#include "server_input.h"
+#include "server_settings.h"
+
+/****************************************************************************
+ * PRIVATE STRUCTURED TYPES
+ ****************************************************************************
+ */
+/* None */
+
+/****************************************************************************
+ * PRIVATE VARIABLES DEFINITIONS
+ ****************************************************************************
+ */
+
+/* Server's listener */
+static Listener_t *listener = NULL;
+
+/* Server's clients */
+static clients_t *clients = NULL;
+
+/****************************************************************************
+ * PRIVATE FUNCTIONS DECLARATIONS
+ ****************************************************************************
+ */
+
+static int accept_client(void);
+
+static void reap_zombies(void);
+
+/****************************************************************************
+ * PUBLIC FUNCTIONS DEFINITIONS
+ ****************************************************************************
+ */
+
+int server_init(const char *port)
+{
+    /* return value */
+    int ret = -1;
+
+    /* Start the logger */
+    logger_init("server.log");
+
+    /* Initialize the listener */
+    if(listener_init(&listener, port) == -1)
+    {
+        log_error("CORE: listener failed to init.", strerror(errno));
+    }
+    /* Initialize the clients */
+    else if(clients_init(&clients) == -1)
+    {
+        log_error("CORE: clients failed to init.", strerror(errno));
+    }
+    /* Successful initialization */
+    else
+    {
+        log_info("🚀 C Server running on http://localhost:%s\n", port);
+        ret = 0;
+    }
+
+    return ret;
+}
+
+void server_run(void)
+{
+    /* process id for fork() */
+    pid_t pid;
+
+    while(check_stdin_for_exit() != 0)
+    {
+        int client_fd = accept_client(/* an all listeners */);
+
+        if(client_fd != -1)
+        {
+            /* Fork for a new client */
+            pid = fork();
+
+            if(pid == 0)
+            {
+                /*
+                Child process:
+                */
+
+                /* Close all listeners, no need for them in this process */
+                listener_close(&listener);
+
+                /* Handle client: blocking function */
+                clients_handle_client(&client_fd);
+
+                /* Exit */
+                _exit(0);
+            }
+            else if(pid > 0)
+            {
+                /*
+                Parent process:
+                */
+
+                /* Set client's process id */
+                clients_set_client_pid(&clients, &pid, &client_fd);
+
+                /* close all clients to keep the
+                parent clean just with listeners */
+                // close(client_fd);
+                // clients_close_client(&clients, &client_fd);
+            }
+            else
+            {
+                log_error("CORE: fork failure: %s", strerror(errno));
+                /* maybe should close the last client */
+            }
+        }
+        else
+        {
+            struct timespec ts;
+            ts.tv_sec = SERVER_SLEEP_TIME_S;
+            ts.tv_nsec = SERVER_SLEEP_TIME_NS;
+            /* No new client incoming, usleep and keep checking */
+            nanosleep(&ts, NULL);
+        }
+
+        /* Reap zombie processes */
+        reap_zombies();
+    }
+}
+
+void server_shutdown(void)
+{
+    listener_shutdown(&listener);
+    clients_shutdown(&clients);
+    logger_close();
+}
+
+/****************************************************************************
+ * PRIVATE FUNCTIONS DEFINITIONS
+ ****************************************************************************
+ */
+
+static int accept_client(void)
+{
+    /* return value */
+    int client_fd = -1;
+
+    /* helper structures */
+    struct sockaddr_storage client_addr;
+
+    if(listener_check_incoming_clients(&listener, &client_addr, &client_fd) == -1)
+    {
+        // do nothing, no incoming clients
+    }
+
+    /* save and manage new client */
+    else if(clients_add_new_client(&clients, &client_addr, &client_fd) == -1)
+    {
+        // do nothing
+    }
+
+    return client_fd;
+}
+
+static void reap_zombies(void)
+{
+    pid_t reaped_pid;
+
+    /* -1 to check any child,
+    WHOHANG doesn't block if no child dead,
+    returns:
+    child's PID if any dies, 0 if none, -1 if error */
+    while((reaped_pid = waitpid(-1, NULL, WNOHANG)) > 0)
+    {
+        clients_erase_client(&clients, &reaped_pid);
+    }
+}
+
+
+
+===== src/core/listener.c =====
+#define _POSIX_C_SOURCE 200112L
+#define _GNU_SOURCE
+#include "listener.h"  //  listener
+
+#include <errno.h>   // errno, EADDRINUSE, etc.
+#include <fcntl.h>   // fcntl(), F_GETFL, F_SETFL, O_NONBLOCK
+#include <netdb.h>   // getaddrinfo(), addrinfo, gai_strerror()
+#include <stdlib.h>  // malloc(), calloc() etc
+#include <string.h>  // memset(), strcpy(), strlen(), etc.
+#include <unistd.h>  // fork(), close(), read(), write(), etc.
+
+#include "logger.h"           // logger
+#include "server_settings.h"  // settings
+
+/****************************************************************************
+ * PUBLIC STUCTURED VARIABLES
+ ****************************************************************************
+ */
+
+struct Listener
+{
+    int listeners_fds[MAX_LISTENERS];
+    int active_listeners_no;
+};
+
+/****************************************************************************
+ * PRIVATE VARIABLE DECLARATIONS
+ ****************************************************************************
+ */
+/* None */
+
+/****************************************************************************
+ * PRIVATE FUNCTIONS DECLARATIONS
+ ****************************************************************************
+ */
+
+static int start_listener(struct addrinfo *server_info_out, Listener_t **listener_ptr);
+
+static int init_memory(Listener_t **listener_ptr);
+
+static int set_socket_hints(struct addrinfo *hints);
+
+static int set_listener_socket_reusability(const int *socket_fd);
+
+static int set_listener_socket_restartability(const int *socket_fd);
+
+static int set_listener_socket_non_blocking(const int *socket_fd);
+
+static int set_listener_socket_options(const int *listener_socket_fd, const int32_t *ai_family);
+
+/****************************************************************************
+ * PUBLIC FUNCTIONS DEFINITIONS
+ ****************************************************************************
+ */
+
+int listener_init(Listener_t **listener_ptr, const char *port)
+{
+    /* return value of the function */
+    int res = -1;
+
+    /* Hints for getaddrinfo research */
+    struct addrinfo hints;
+
+    /* getaddrinfo output info */
+    struct addrinfo *server_info_out = NULL;
+
+    /* check if memory properly initialised */
+    if(init_memory(listener_ptr) == -1)
+    {
+        log_error("listener memory initialization failed ", strerror(errno));
+    }
+
+    /* check if socket hints for getaddr are created */
+    else if(set_socket_hints(&hints) == -1)
+    {
+        log_error("listener socket hints failed ", strerror(errno));
+    }
+
+    /* check if getaddrinfo obtains some sockets */
+    else if(getaddrinfo(NULL, port, &hints, &server_info_out) != 0)
+    {
+        log_error("listener getaddrinfo failed ", strerror(errno));
+    }
+
+    /* check if listener starts */
+    else if(start_listener(server_info_out, listener_ptr) == -1)
+    {
+        log_error("listener start failed ", strerror(errno));
+    }
+
+    /* Print info */
+    else
+    {
+        log_info("getaddrinfo succeeded. Printing address info list results:\n");
+        log_addrinfo_list(server_info_out);
+        res = 0;
+    }
+
+    /* now can freeup the memory allocated in server_info out */
+    freeaddrinfo(server_info_out);
+    return res;
+}
+
+int listener_check_incoming_clients(Listener_t **listener_ptr, struct sockaddr_storage *client_addr,
+                                    int *client_fd)
+{
+    /* TO DO:
+    try to loop through just active_listeners
+    but be sure they're always at the beginning */
+
+    /* result value */
+    int res = -1;
+
+    /* temporary client_fd */
+    int client_fd_tmp;
+
+    /* input length */
+    socklen_t addr_len = sizeof(*client_addr);
+
+    /* Loop through all the listeners */
+    for(int i = 0; i < MAX_LISTENERS; i++)
+    {
+        /* Check if listener on */
+        if((*listener_ptr)->listeners_fds[i] <= 0)
+        {
+            /* the listener is not active */
+            continue;
+        }
+
+        /* Accept incoming client request if any */
+        client_fd_tmp =
+            accept((*listener_ptr)->listeners_fds[i], (struct sockaddr *)client_addr, &addr_len);
+
+        /* accept is set to not blocking:
+        will return errno EAGAIN or EWOULDBLOCK if no incoming connections */
+
+        /* if a valid client_fd was obtained */
+        if(client_fd_tmp != -1)
+        {
+            /* set return value to success */
+            res = 0;
+
+            /* set [in] client_fd */
+            *client_fd = client_fd_tmp;
+
+            break;
+        }
+        else
+        {
+            /* An error occurred */
+            if(errno != EAGAIN && errno != EWOULDBLOCK)
+            {
+                /* Real error: close and log client_fd */
+                close(client_fd_tmp);
+                log_error("Listener: accept() client failed %s", strerror(errno));
+            }
+            else
+            {
+                /* No pending client connections, continue */
+            }
+        }
+    }
+
+    return res;
+}
+
+void listener_close(Listener_t **listener_ptr)
+{
+    log_info("Listener: closing listeners' sockets");
+
+    /* loop through all possible listeners */
+    for(int i = 0; i < MAX_LISTENERS; i++)
+    {
+        /* check if listener is active */
+        if((*listener_ptr)->listeners_fds[i] > 0)
+        {
+            /* close listener file descriptor */
+            close((*listener_ptr)->listeners_fds[i]);
+
+            /* reset to 0 */
+            (*listener_ptr)->listeners_fds[i] = 0;
+
+            /* decrease listener number */
+            (*listener_ptr)->active_listeners_no--;
+        }
+        else
+        {
+            continue;
+        }
+    }
+}
+
+void listener_shutdown(Listener_t **listener_ptr)
+{
+    log_info("Listeners: -- shutdown -- ");
+    listener_close(listener_ptr);
+    free(*listener_ptr);
+}
+
+/****************************************************************************
+ * PRIVATE FUNCTIONS DEFINITIONS
+ ****************************************************************************
+ */
+
+static int start_listener(struct addrinfo *server_info_out, Listener_t **listener_ptr)
+{
+    /* return value */
+    int res = -1;
+
+    /* loop through all the getaddrinfo output results */
+    while(server_info_out != NULL)
+    {
+        /* Create a socket */
+        int listener_socket_fd = socket(server_info_out->ai_family, server_info_out->ai_socktype,
+                                        server_info_out->ai_protocol);
+
+        if(listener_socket_fd == -1)
+        {
+            log_error("socket creation failed: %s\n", strerror(errno));
+        }
+
+        /* Set socket options */
+        else if(set_listener_socket_options(&listener_socket_fd, &server_info_out->ai_family) == -1)
+        {
+            log_error("setsockopt failed: %s\n", strerror(errno));
+            /* delete the socket */
+            close(listener_socket_fd);
+        }
+
+        /* Bind the socket */
+        else if(bind(listener_socket_fd, server_info_out->ai_addr, server_info_out->ai_addrlen) ==
+                -1)
+        {
+            log_error("bind failed: %s\n", strerror(errno));
+            /* delete the socket */
+            close(listener_socket_fd);
+        }
+
+        /* Start listening */
+        else if(listen(listener_socket_fd, MAX_PENDING_CONNECTIONS) == -1)
+        {
+            log_error("listen failed: %s\n", strerror(errno));
+            /* delete the socket */
+            close(listener_socket_fd);
+        }
+
+        /* If all worked fine */
+        else
+        {
+            /* Put the socket in the listener and increase the counter */
+            (*listener_ptr)->listeners_fds[(*listener_ptr)->active_listeners_no++] =
+                listener_socket_fd;
+
+            /* Set return value to success */
+            res = 0;
+        }
+
+        server_info_out = server_info_out->ai_next;
+    }
+
+    return res;
+}
+
+static int init_memory(Listener_t **listener_ptr)
+{
+    /* return value */
+    int res = -1;
+
+    /* free listener's memory */
+    if(*listener_ptr)
+    {
+        free(*listener_ptr);
+    }
+    *listener_ptr = NULL;
+
+    /* allocate fresh memory for the listener */
+    *listener_ptr = (Listener_t *)malloc(sizeof(Listener_t));
+
+    if(*listener_ptr != NULL)
+    {
+        /* Set listeners to 0 */
+        memset(*listener_ptr, 0, sizeof(Listener_t));
+        if(*listener_ptr != NULL)
+        {
+            res = 0;
+        }
+        else
+        {
+            log_error("listener memory zeroing failed", strerror(errno));
+        }
+    }
+    else
+    {
+        log_error("listener memory allocation failed", strerror(errno));
+    }
+
+    return res;
+}
+
+static int set_socket_hints(struct addrinfo *hints)
+{
+    /* return value */
+    int res = -1;
+
+    if(hints)
+    {
+        /* make sure hints setted to 0 */
+        memset(hints, 0, sizeof(struct addrinfo));
+
+        /* AF_UNSPEC allows IPv4 or IPv6 */
+        hints->ai_family = AF_UNSPEC;
+
+        /* The sockettype will automatically set the ai_protocol to
+        IPPROTO_TCP 6 with SOCK_STREAM or IPPROTO_UDP 17 with SOCK_DGRAM */
+        hints->ai_socktype = SOCK_STREAM;  // TCP
+
+        /* Use my IP automatically */
+        hints->ai_flags = AI_PASSIVE;
+
+        res = 0;
+    }
+
+    return res;
+}
+
+static int set_listener_socket_reusability(const int *socket_fd)
+{
+    /* return value */
+    int res = -1;
+
+    /* Allow reuse of address (critical for restarts) */
+    int yes = 1;
+
+    if(setsockopt(*socket_fd, SOL_SOCKET, SO_REUSEADDR, &yes, sizeof(yes)) != -1)
+    {
+        res = 0;
+    }
+    else
+    {
+        log_error("listener socket reusability failed to set: %s", strerror(errno));
+    }
+
+    return res;
+}
+
+static int set_listener_socket_restartability(const int *socket_fd)
+{
+    /* return value */
+    int res = -1;
+
+    /* Options for restart: Just kill it. Don’t wait. Don’t flush data.
+    These options are ok for listeners. */
+    struct linger sl;
+    sl.l_onoff = 1;
+    sl.l_linger = 0;
+    if(setsockopt(*socket_fd, SOL_SOCKET, SO_LINGER, &sl, sizeof(sl)) != -1)
+    {
+        res = 0;
+    }
+    else
+    {
+        log_error("listener socket restartability failed to set: %s", strerror(errno));
+    }
+
+    return res;
+}
+
+static int set_listener_socket_non_blocking(const int *socket_fd)
+{
+    /* return value */
+    int res = -1;
+
+    int flags = fcntl(*socket_fd, F_GETFL, 0);
+    if(flags != -1)
+    {
+        if(fcntl(*socket_fd, F_SETFL, flags | O_NONBLOCK) != -1)
+        {
+            res = 0;
+        }
+        else
+        {
+            log_error("fcntl set listener flags failed: %s\n", strerror(errno));
+        }
+    }
+    else
+    {
+        log_error("fcntl get listener flags failed: %s\n", strerror(errno));
+    }
+
+    return res;
+}
+
+static int set_listener_socket_options(const int *listener_socket_fd, const int32_t *ai_family)
+{
+    /* return value */
+    int ret = -1;
+    /* yes value */
+    int yes = 1;
+
+    if(set_listener_socket_reusability(listener_socket_fd) != -1)
+    {
+        if(set_listener_socket_restartability(listener_socket_fd) != -1)
+        {
+            if(set_listener_socket_non_blocking(listener_socket_fd) != -1)
+            {
+                /* Set the return to 0 */
+                ret = 0;
+                /* restrict the socket to only ipv6 if socket for ipv6 */
+                if(*ai_family == AF_INET6)
+                {
+                    if(setsockopt(*listener_socket_fd, IPPROTO_IPV6, IPV6_V6ONLY, &yes,
+                                  sizeof(yes)) == -1)
+                    {
+                        ret = -1;
+                        log_error("Socket ipv6 opts failed: %s\n", strerror(errno));
+                    }
+                }
+            }
+        }
+    }
+
+    return ret;
+}
+
+
+===== src/core/logger.c =====
+#define _GNU_SOURCE
+#include "logger.h"
+
+#include <arpa/inet.h>  // inet_ntop(), inet_pton()
+#include <netdb.h>      // getaddrinfo(), addrinfo, gai_strerror()
+#include <stdarg.h>     // varg
+#include <stdio.h>      // FILE
+#include <stdlib.h>     // exit(), malloc(), free()
+#include <time.h>       // For timestamps
+
+/****************************************************************************
+ * PRIVATE VARIABLES DEFINITIONS
+ ****************************************************************************
+ */
+static FILE *log_file = NULL;
+
+/****************************************************************************
+ * PRIVATE FUNCTIONS DECLARATIONS
+ ****************************************************************************
+ */
+
+/**
+ * @brief Print current timestamp in `[YYYY-MM-DD HH:MM:SS]` format.
+ *
+ * Used internally before every log entry.
+ */
+static void log_timestamp();
+
+/**
+ * @brief Internal logging implementation.
+ *
+ * @param level "INFO", "ERROR", etc.
+ * @param fmt Format string
+ * @param args Variadic arguments
+ */
+static void log_internal_va(const char *level, const char *fmt, va_list args);
+
+/****************************************************************************
+ * PUBLIC FUNCTIONS DEFINITIONS
+ ****************************************************************************
+ */
+
+void logger_init(const char *filename)
+{
+    /* check if file not yet opened */
+    if(log_file == NULL)
+    {
+        /* "w" = overwrite on server restart */
+        log_file = fopen(filename, "w");
+        if(!log_file)
+        {
+            perror("Failed to open log file");
+            log_file = stdout;  // fallback
+        }
+    }
+}
+
+void logger_close()
+{
+    if(log_file && log_file != stdout)
+    {
+        fclose(log_file);
+        log_file = NULL;
+    }
+}
+
+void log_info(const char *fmt, ...)
+{
+    va_list args;
+    va_start(args, fmt);
+    log_internal_va("INFO", fmt, args);
+    va_end(args);
+}
+
+void log_error(const char *fmt, ...)
+{
+    va_list args;
+    va_start(args, fmt);
+    log_internal_va("ERROR", fmt, args);
+    va_end(args);
+}
+
+void log_addrinfo_list(const struct addrinfo *ai)
+{
+    int index = 0;
+    char ip_str[INET6_ADDRSTRLEN];
+
+    for(; ai != NULL; ai = ai->ai_next, ++index)
+    {
+        void *addr;
+        const char *ipver;
+
+        if(ai->ai_family == AF_INET)
+        {
+            struct sockaddr_in *ipv4 = (struct sockaddr_in *)ai->ai_addr;
+            addr = &(ipv4->sin_addr);
+            ipver = "IPv4";
+        }
+        else if(ai->ai_family == AF_INET6)
+        {
+            struct sockaddr_in6 *ipv6 = (struct sockaddr_in6 *)ai->ai_addr;
+            addr = &(ipv6->sin6_addr);
+            ipver = "IPv6";
+        }
+        else
+        {
+            log_info("[%d] Unknown address family: %d\n", index, ai->ai_family);
+            continue;
+        }
+
+        /* Convert the IP to a string */
+        inet_ntop(ai->ai_family, addr, ip_str, sizeof ip_str);
+
+        /* Resolve protocol name */
+        char protocol_name[NI_MAXSERV];
+
+        if(ai->ai_protocol == IPPROTO_TCP)
+        {
+            strcpy(protocol_name, "TCP");
+        }
+        else if(ai->ai_protocol == IPPROTO_UDP)
+        {
+            strcpy(protocol_name, "UDP");
+        }
+        else
+        {
+            strcpy(protocol_name, "UNKNOWN");
+        }
+
+        log_info("[%d] %s address: %s | socktype: %d | protocol: %s | flags: 0x%x\n", index, ipver,
+                 ip_str, ai->ai_socktype, protocol_name, ai->ai_flags);
+    }
+}
+
+/****************************************************************************
+ * PRIVATE FUNCTIONS DEFINITIONS
+ ****************************************************************************/
+
+static void log_timestamp()
+{
+    static time_t now;
+    static struct tm *tm_info;
+    char buffer[32];
+    now = time(NULL);
+    tm_info = localtime(&now);
+    strftime(buffer, sizeof(buffer), "[%Y-%m-%d %H:%M:%S]", tm_info);
+    fprintf(log_file, "%s ", buffer);
+}
+
+static void log_internal_va(const char *level, const char *fmt, va_list args)
+{
+    if(log_file != NULL)
+    {
+        log_timestamp();
+        fprintf(log_file, "[%s] ", level);
+        vfprintf(log_file, fmt, args);
+        fprintf(log_file, "\n");
+        fflush(log_file);
+    }
+}
+
+
+
+===== src/core/server.c =====
+/**
+ * Server TCP implementation
+ */
+
+#include "core.h"  // server's core, main brain
+
+/****************************************************************************
+ * PUBLIC FUNCTIONS DEFINITIONS
+ ****************************************************************************
+ */
+
+int main()
+{
+    /* server's listening port */
+    const char *port = "3490";
+
+    if(server_init(port) == -1)
+    {
+        /* ensure cleanup even on failure */
+        /* This process has to be properly memory-controlled */
+        // server_shutdown();
+    }
+    else
+    {
+        server_run();
+        server_shutdown();
+    }
+
+    return 0;
+}
+
+
+===== src/core/server_input.c =====
+#include "server_input.h"
+
+#include <fcntl.h>  // For non-blocking stdin
+#include <string.h>
+#include <unistd.h>  // STDIN_FILENO and ssize_t
+
+#include "logger.h"
+
+/****************************************************************************
+ * PRIVATE VARIABLES DEFINITIONS
+ ****************************************************************************
+ */
+
+/* hold for first start */
+static int first_start = -1;
+
+/****************************************************************************
+ * PUBLIC FUNCTIONS DEFINITIONS
+ ****************************************************************************
+ */
+
+int check_stdin_for_exit(void)
+{
+    int res = -1;
+    char buf[16];
+
+    /* On first call, make stdin non-blocking */
+    if(first_start == -1)
+    {
+        /* Set read from terminal to not blocking */
+        int flags = fcntl(STDIN_FILENO, F_GETFL, 0);
+        fcntl(STDIN_FILENO, F_SETFL, flags | O_NONBLOCK);
+        first_start = 0;
+    }
+
+    /* Read from stdin if anything was typed */
+    ssize_t n = read(STDIN_FILENO, buf, sizeof(buf) - 1);
+
+    if(n > 0)
+    {
+        buf[n] = '\0';
+
+        /* If user typed 'q', trigger shutdown */
+        if(strchr(buf, 'q') != NULL)
+        {
+            log_info("Received 'q' from stdin. Exiting server...");
+            res = 0;  // signal exit
+        }
+    }
+
+    return res;
+}
+
+
+===== src/browser*.c =====
+
+
+
+===== Makefile =====
+# ------ Build configuration ------
+CC              := gcc
+CFLAGS          := -std=c11 -Wall -Werror -Wextra -pedantic -g
+LDLIBS 			+= -Lexternal/llhttp -lllhttp\
+                   -Lexternal/cjson -lcjson
+
+INCDIRS 		:= include include/core include/browser external/llhttp external/cjson
+SRCDIRS         := src
+BUILDDIR        := build
+OBJDIR          := $(BUILDDIR)/obj
+BINDIR          := $(BUILDDIR)/bin
+TARGET          := server
+
+# Expand include flags
+INCLUDES        := $(foreach dir,$(INCDIRS),-I$(dir))
+
+# ------ Source & object lists ------
+SOURCES 		:= $(shell find $(SRCDIRS) -name '*.c')
+OBJECTS 		:= $(patsubst %.c,$(OBJDIR)/%.o,$(SOURCES))
+DEPS            := $(OBJECTS:.o=.d)
+
+# ─── Build a manifest of all .puml diagrams and .md/.txt notes ───
+NOTES_DIR := www/build_notes/notes
+DIAG_DIR  := www/build_notes/diagrams
+MANIFEST  := www/build_notes/manifest.json
+
+# ------ Phony targets ------
+.PHONY: all clean run debug release tidy lint format notes
+
+# ------ Default build ------
+all: $(BINDIR)/$(TARGET)
+
+# Link step ---------------------------------------------------------------
+$(BINDIR)/$(TARGET): $(OBJECTS)
+	@mkdir -p $(BINDIR)
+	$(CC) $(CFLAGS) $^ $(LDLIBS) -o $@
+
+# Compile step -------------------------------------------------------------
+$(OBJDIR)/%.o: %.c
+	@mkdir -p $(dir $@)
+	$(CC) $(CFLAGS) $(INCLUDES) -MMD -MP -c $< -o $@
+
+# Create the object directory only when needed-----------------------------
+$(OBJDIR):
+	@mkdir -p $(OBJDIR)
+
+# Convenience helpers ------------------------------------------------------
+run: all
+	@./$(BINDIR)/$(TARGET)
+
+debug: export CFLAGS += -O0
+debug: all
+
+release: export CFLAGS += -O2 -DNDEBUG
+release: all
+
+# Auto formatting ---------------------------------------------------------
+format:
+ifndef FILES
+	@echo "🛠  Formatting all .c/.h files in the project..."
+	@find . -regex '.*\.\(c\|h\)' -exec clang-format -i {} +
+else
+	@echo "🛠  Formatting staged files: $(FILES)"
+	@clang-format -i $(FILES)
+endif
+
+# Static analysis ----------------------------------------------------------
+lint:
+	@cppcheck --enable=all --inconclusive --std=c11 --language=c --quiet \
+		--suppress=missingIncludeSystem \
+		-Iinclude -Iinclude/core -Iinclude/browser \
+		-Iexternal/cjson -Iexternal/llhttp \
+		src/ \
+
+# Better Static analysis
+tidy:
+	@echo "🐻 Generating compile_commands.json using bear..."
+	bear -- make -B > /dev/null
+
+	@echo "🧠 Running clang-tidy (suppressing C11 unsafe API warnings)..."
+	clang-tidy \
+		-checks=-clang-analyzer-security.insecureAPI.DeprecatedOrUnsafeBufferHandling \
+		$(shell find src -name '*.c') -p . -- \
+		-Iinclude -Iinclude/core -Iinclude/browser \
+		-Iexternal/cjson -Iexternal/llhttp
+
+	@echo "🧼 Cleaning temporary build files..."
+	rm -f *.o */*.o */*/*.o
+
+# rm -f compile_commands.json // keep for now the compile_commands
+	rm -f *.o */*.o */*/*.o
+
+notes:
+	@echo "Generating $(MANIFEST)…"
+	@mkdir -p $(dir $(MANIFEST))
+	@echo "{"                                                          >  $(MANIFEST)
+	@echo '  "diagrams": ['                                           >> $(MANIFEST)
+	@find $(DIAG_DIR) -maxdepth 1 -type f -name '*.puml' \
+	  | sed -e 's@.*/\(.*\)$$@"\1"@' \
+	  | paste -sd ",\n    " -                                        >> $(MANIFEST)
+	@echo '  ],'                                                      >> $(MANIFEST)
+	@echo '  "notes": ['                                              >> $(MANIFEST)
+	@find $(NOTES_DIR) -maxdepth 1 -type f \( -name '*.md' -o -name '*.txt' \) \
+	  | sed -e 's@.*/\(.*\)$$@"\1"@' \
+	  | paste -sd ",\n    " -                                        >> $(MANIFEST)
+	@echo '  ]'                                                       >> $(MANIFEST)
+	@echo "}"                                                         >> $(MANIFEST)
+	@echo "$(MANIFEST) updated."
+
+
+clean:
+	rm -rf $(BUILDDIR) server.log
+
+# Auto‑generated dependency files -----------------------------------------
+-include $(DEPS)
+
+
+
+===== include/browser/browser.h =====
+#ifndef SERVER_BROWSER_H
+#define SERVER_BROWSER_H
+
+/****************************************************************************
+ * PRIVATE INCLUDES
+ ****************************************************************************
+ */
+
+#include "http_manager.h"
+
+/****************************************************************************
+ * PUBLIC FUNCTIONS DECLARATIONS
+ ****************************************************************************
+ */
+
+ssize_t browser_manage_client_req(int fd, const char* recv_buf, size_t n,
+                                  int* client_connection_policy);
+
+#endif /* SERVER_BROWSER_H */
+
+
+===== include/browser/handlers.h =====
+#include "router.h"
+
+int whoami_json_handler(const HttpRequest* req, HttpResponse* res);
+
+int drive_json_handler(const HttpRequest* req, HttpResponse* resp);
+
+int expenses_months_handler(HttpResponse* resp);
+
+// void expenses_add_handler(const HttpRequest*, HttpResponse*);
+
+
+===== include/browser/http_manager.h =====
+#ifndef HTTP_MANAGER_H
+#define HTTP_MANAGER_H
+
+/****************************************************************************
+ * PUBLIC INCLUDES
+ ****************************************************************************
+ */
+#include <stddef.h>  // size_t
+#include <unistd.h>  // ssize_t
+
+#include "server_settings.h"
+
+/****************************************************************************
+ * PUBLIC DEFINES
+ ****************************************************************************
+ */
+/* None */
+
+/****************************************************************************
+ * PUBLIC STRUCTURED VARIABLES DEFINITIONS
+ ****************************************************************************
+ */
+
+typedef struct
+{
+    char method[HTTP_MAX_METHOD_LEN];
+    char path[HTTP_MAX_PATH_LEN];
+    char header_names[HTTP_MAX_HEADER_COUNT][HTTP_MAX_HEADER_NAME_LEN];
+    char header_values[HTTP_MAX_HEADER_COUNT][HTTP_MAX_HEADER_VALUE_LEN];
+    int header_count;
+    int should_close;  // 1 = close after response, 0 = keep alive
+
+} HttpRequest;
+
+typedef struct
+{
+    int status_code;
+    const char* status_text;
+    const char* content_type;
+    const char* body;
+    size_t body_length;
+} HttpResponse;
+
+/* Struct to keep track of actual llhttp parsing state */
+typedef struct
+{
+    HttpRequest* req;
+    char current_field[HTTP_MAX_HEADER_NAME_LEN];
+    char current_value[HTTP_MAX_HEADER_VALUE_LEN];
+    int in_header_field;
+} LlhttpParserContext;
+
+/****************************************************************************
+ * PUBLIC ENUMERATED VARIABLES
+ ****************************************************************************
+ */
+enum HTTPConnectionPolicy
+{
+    HTTP_CONNECTION_KEEP_ALIVE = 0,
+    HTTP_CONNECTION_CLOSE
+};
+
+/****************************************************************************
+ * PUBLIC FUNCTIONS DECLARATIONS
+ ****************************************************************************
+ */
+
+/**
+ * @brief Parse an HTTP/1.1 request into an HttpRequest struct.
+ *
+ * The caller owns @p out and must free it with http_request_destroy().
+ *
+ * @param[in]  buffer   Raw request buffer (NUL‑terminated)
+ * @param[out] out      Newly allocated HttpRequest
+ * @return              0 on success, negative errno on failure
+ */
+int http_parse_request(const char* buffer, size_t buffer_len, HttpRequest* req,
+                       int* client_connection_policy);
+
+/* Build an HTTP response string into a buffer (already formatted) */
+// int http_build_response(const HttpResponse* resp, const int* client_connection_policy,
+//                         char* out_buffer, size_t max_len);
+
+#endif /* HTTP_MANAGER_H */
+
+
+
+===== include/browser/router.h =====
+#ifndef SERVER_ROUTER_H
+#define SERVER_ROUTER_H
+
+#include "http_manager.h"  // for HttpRequest and HttpResponse structs
+
+/* Handles the incoming request based on the method and path.
+ * Builds the response to send back into the out_response structure.
+ */
+int router_handle_request(const HttpRequest* req, HttpResponse* res);
+
+#endif /* SERVER_ROUTER_H */
+
+
+===== include/browser/static_page.h =====
+#ifndef SERVER_STATIC_MANAGER_H
+#define SERVER_STATIC_MANAGER_H
+
+#include "http_manager.h"
+
+/****************************************************************************
+ * PUBLIC FUNCTIONS PROTOTYPES
+ ****************************************************************************
+ */
+
+/**
+ * @brief Serve a static file.
+ *
+ * Opens the given file in binary mode, reads its entire contents into
+ * memory, and sets up the HttpResponse fields accordingly. If any error
+ * occurs, an error is logged and a non-zero result is returned.
+ *
+ * @param filepath     Path to the file on the local filesystem
+ * @param content_type MIME type to set in the response (e.g. "text/html")
+ * @param response     Pointer to an HttpResponse struct to populate
+ * @return 0 on success, non-zero on error
+ */
+int static_page_serve_file(const char* filepath, const char* content_type, HttpResponse* response);
+
+#endif /* SERVER_STATIC_MANAGER_H */
+
+
+===== include/core/client.h =====
+#ifndef SERVER_CLIENT_H
+#define SERVER_CLIENT_H
+
+/****************************************************************************
+ * PUBLIC STRUCTURED VARIABLES DECLARATIONS
+ ****************************************************************************
+ */
+struct sockaddr_storage;
+typedef int pid_t;
+typedef struct clients_pot clients_t;
+
+/****************************************************************************
+ * PUBLIC FUNCTIONS DECLARATIONS
+ ****************************************************************************
+ */
+
+int clients_init(clients_t **clients);
+
+int clients_add_new_client(clients_t **clients, struct sockaddr_storage *client_addr,
+                           int *client_fd);
+
+void clients_handle_client(const int *client_fd);
+
+void clients_erase_client(clients_t **clients, const pid_t *client_pid);
+
+void clients_set_client_pid(clients_t **clients, pid_t *pid, int *client_fd);
+
+void clients_shutdown(clients_t **clients);
+
+#endif /* SERVER_CLIENT_H */
+
+
+
+===== include/core/core.h =====
+#ifndef SERVER_CORE_H
+#define SERVER_CORE_H
+
+/****************************************************************************
+ * PUBLIC FUNCTIONS DECLARATIONS
+ ****************************************************************************
+ */
+
+int server_init(const char *port);
+
+void server_run(void);
+
+void server_shutdown(void);
+
+#endif /* SERVER_CORE_H */
+
+
+===== include/core/listener.h =====
+#ifndef SERVER_LISTENER_H
+#define SERVER_LISTENER_H
+
+#include <sys/socket.h>  // defines struct sockaddr_storage, socklen_t, accept(), etc.
+
+// #ifdef __cplusplus
+// extern "C" {
+// #endif
+
+/**
+ * @file listener.h
+ * @brief APIs for setting up, accepting, and tearing down server listener sockets.
+ */
+
+/****************************************************************************
+ * PUBLIC STRUCTURED VARIABLES DECLARATIONS
+ ****************************************************************************
+ */
+
+typedef struct Listener Listener_t;
+
+/****************************************************************************
+ * PUBLIC FUNCTIONS DECLARATIONS
+ ****************************************************************************
+ */
+
+int listener_init(Listener_t **listener_ptr, const char *port);
+
+int listener_check_incoming_clients(Listener_t **listener_ptr, struct sockaddr_storage *client_addr,
+                                    int *client_fd);
+
+void listener_close(Listener_t **listener_ptr);
+
+void listener_shutdown(Listener_t **listener_ptr);
+
+// #ifdef __cplusplus
+// }
+// #endif
+
+#endif /* SERVER_LISTENER_H */
+
+
+
+===== include/core/logger.h =====
+#ifndef SERVER_LOGGER_H
+#define SERVER_LOGGER_H
+
+/**
+ * @file logger.h
+ * @brief Logging interface for the server.
+ *
+ * Provides simple timestamped logging with support for info/error levels
+ * and socket address logging. Logs are written to a file (default: `server.log`)
+ * and flushed on each write.
+ */
+
+/****************************************************************************
+ * PUBLIC INCLUDES
+ ****************************************************************************
+ */
+#include <errno.h>   // errno, EADDRINUSE, etc.
+#include <string.h>  // memset(), strcpy(), strlen(), strerror(), etc.
+
+/****************************************************************************
+ * PUBLIC STRUCTURED VARIABLES DECLARATIONS
+ ****************************************************************************
+ */
+
+struct addrinfo;
+
+/****************************************************************************
+ * PUBLIC FUNCTIONS DECLARATIONS
+ ****************************************************************************
+ */
+
+/**
+ * @brief Initialize the logger.
+ *
+ * Opens the given file for writing (overwriting any existing content).
+ * If the file cannot be opened, logging will fallback to `stdout`.
+ *
+ * @param filename The name of the file to log to (e.g., "server.log")
+ */
+void logger_init(const char *filename);
+
+/**
+ * @brief Close the logger.
+ *
+ * Closes the log file if it's not stdout. Safe to call even if the logger
+ * was not successfully initialized.
+ */
+void logger_close();
+
+/**
+ * @brief Log an informational message.
+ *
+ * Accepts a `printf`-style format string with optional variadic arguments.
+ * The message is timestamped and prefixed with `[INFO]`.
+ *
+ * @param fmt Format string (like `printf`)
+ * @param ... Optional arguments
+ */
+void log_info(const char *fmt, ...);
+
+/**
+ * @brief Log an error message.
+ *
+ * Accepts a `printf`-style format string with optional variadic arguments.
+ * The message is timestamped and prefixed with `[ERROR]`.
+ *
+ * @param fmt Format string (like `printf`)
+ * @param ... Optional arguments
+ */
+void log_error(const char *fmt, ...);
+
+/**
+ * @brief Log a list of socket addresses.
+ *
+ * Iterates over a linked list of `addrinfo` results (e.g., from `getaddrinfo`)
+ * and prints out address, protocol, socket type, and flags.
+ *
+ * @param ai Pointer to the first element of the `addrinfo` linked list
+ */
+void log_addrinfo_list(const struct addrinfo *ai);
+
+#endif /* SERVER_LOGGER_H */
+
+
+===== include/core/server_input.h =====
+#ifndef SERVER_INPUT_H
+#define SERVER_INPUT_H
+
+/**
+ * @file server_input.h
+ * @brief Terminal input utility for server shutdown.
+ *
+ * Provides a non-blocking check for keyboard input on `stdin`, allowing
+ * graceful shutdown when the user types `'q' + ENTER'` during server runtime.
+ */
+
+/**
+ * @brief Check for user input on stdin and detect `'q'` command.
+ *
+ * This function sets `stdin` to non-blocking mode (only once),
+ * then reads input from the terminal and checks if the letter `'q'`
+ * was entered. If so, it logs the event and returns `0` to signal exit.
+ *
+ * @return 0 if `'q'` was detected, -1 otherwise
+ */
+int check_stdin_for_exit(void);
+
+#endif /* SERVER_INPUT_H */
+
+
+===== include/core/server_settings.h =====
+#ifndef SERVER_SETTINGS_H
+#define SERVER_SETTINGS_H
+
+/****************************************************************************
+ * PUBLIC DEFINES
+ ****************************************************************************
+ */
+
+/****************************************************************************
+ * SERVER PROPERTIES
+ ****************************************************************************
+ */
+
+/* Max listeners amount */
+#define MAX_LISTENERS 2
+
+/* Max clients amount */
+#define MAX_CLIENTS 10
+
+/* Max pending connections amount */
+#define MAX_PENDING_CONNECTIONS 10
+
+/* Sleep time */
+#define SERVER_SLEEP_TIME_S 0
+#define SERVER_SLEEP_TIME_MS 50
+#define SERVER_SLEEP_TIME_US ((SERVER_SLEEP_TIME_MS) * 1000)
+#define SERVER_SLEEP_TIME_NS ((SERVER_SLEEP_TIME_US) * 1000)
+
+/****************************************************************************
+ * SOCKET PROPERTIES
+ ****************************************************************************
+ */
+
+/* Client short timeout [s] */
+#define CLIENT_MAX_TIMEOUT_S 5
+
+/* Client long timeout [s] */
+#define CLIENT_MAX_TIMEOUT_S_L 120
+
+/* Client short timeout [ms] */
+#define CLIENT_MAX_TIMEOUT_MS 0
+
+/****************************************************************************
+ * HTTP PROPERTIES
+ ****************************************************************************
+ */
+
+#define HTTP_RECEIVE_BUFFER_LEN 4096
+#define HTTP_SEND_BUFFER_LEN 8192
+
+#define HTTP_MAX_METHOD_LEN 8
+#define HTTP_MAX_PATH_LEN 1024
+#define HTTP_MAX_HEADER_COUNT 20
+#define HTTP_MAX_HEADER_NAME_LEN 64
+#define HTTP_MAX_HEADER_VALUE_LEN 256
+
+#endif /* SERVER_SETTINGS_H */
+
+
+===== src/core/client.c =====
+#define _POSIX_C_SOURCE 200112L
+#define _GNU_SOURCE
+
+#include "client.h"
+
+#include <netdb.h>  // socklen_t, NI_MAXHOST, NI_MAXSERV
+
+#include "browser.h"
+// #include "server_settings.h"
+#include <errno.h>  // errno, EADDRINUSE, etc.
+
+#include "logger.h"
+// #include <unistd.h>                 // ssize_t
+#include <stdio.h>       // snprintf(), etc
+#include <stdlib.h>      // malloc(), calloc() etc
+#include <string.h>      // memset(), strcpy(), strlen(), etc.
+#include <sys/socket.h>  // socklen_t, socket(), bind(), setsockopt(), etc.
+#include <sys/time.h>    // struct timeval
+
+/****************************************************************************
+ * PRIVATE DEFINES
+ ****************************************************************************
+ */
+
+/****************************************************************************
+ * PRIVATE STRUCTURED VARIABLES
+ ****************************************************************************
+ */
+
+/* Server's clients structures */
+
+typedef struct
+{
+    int client_fd;             // file descriptor
+    int pid;                   // process id
+    char host[NI_MAXHOST];     // host name
+    char service[NI_MAXSERV];  // service name
+} client_info;
+
+struct clients_pot
+{
+    client_info clients[MAX_CLIENTS];  // all clients
+    int active_clients_no;             // active clients count
+};
+
+/****************************************************************************
+ * PRIVATE FUNCTIONS DECLARATIONS
+ ****************************************************************************
+ */
+
+static int save_client(clients_t **clients, struct sockaddr *client_addr, int *client_fd);
+
+static int set_client_socket_options(int *socket_fd);
+
+static int upgrade_client_socket_options(int *socket_fd);
+
+static void close_all_clients(clients_t **clients);
+
+/****************************************************************************
+ * PUBLIC FUNCTIONS DEFINITIONS
+ ****************************************************************************
+ */
+
+int clients_init(clients_t **clients)
+{
+    /* result value */
+    int res = -1;
+
+    if(clients != NULL)
+    {
+        /* Allocate space for clients */
+        *clients = malloc(sizeof(clients_t));
+
+        if(*clients != NULL)
+        {
+            /* Set everything to 0 */
+            memset(*clients, 0, sizeof(clients_t));
+            /* set return to 0 */
+            res = 0;
+        }
+    }
+
+    return res;
+}
+
+int clients_add_new_client(clients_t **clients, struct sockaddr_storage *client_addr,
+                           int *client_fd)
+{
+    /* return value */
+    int res = 0;
+
+    if((*clients)->active_clients_no >= MAX_CLIENTS)
+    {
+        /* Max no of clients reached, politely decline connection */
+        log_error("Clients: max client No limit reached ", strerror(errno));
+        close(*client_fd);
+        *client_fd = -1;
+        res = -1;
+    }
+
+    /* set client socket options */
+    else if(set_client_socket_options(client_fd) == -1)
+    {
+        log_error("Clients: set client socket options failed: %s", strerror(errno));
+        close(*client_fd);
+        *client_fd = -1;
+        res = -1;
+    }
+
+    /* Save client into clients array */
+    else if(save_client(clients, (struct sockaddr *)client_addr, client_fd) == -1)
+    {
+        log_error("Clients: save client failed: %s", strerror(errno));
+        close(*client_fd);
+        *client_fd = -1;
+        res = -1;
+    }
+
+    return res;
+}
+
+void clients_handle_client(const int *client_fd)
+{
+    /* set a local file descriptor */
+    int fd = *client_fd;
+
+    /* set a connections counter */
+    int received_first_time = 0;
+
+    /* receive buffer */
+    char recv_buff[HTTP_RECEIVE_BUFFER_LEN];
+    /* receive buffer len */
+    ssize_t n;
+
+    /* Client's connection policy over http */
+    int client_connection_policy = -1;
+
+    /* recv is BLOCKING here */
+    while((n = recv(fd, recv_buff, sizeof(recv_buff), 0)) > 0)
+    {
+        log_info("Client [pid %d fd %d]: received, parsing ->", getpid(), fd);
+
+        /* serve the request; if any and respond */
+        if(browser_manage_client_req(fd, recv_buff, (size_t)n, &client_connection_policy) <= 0)
+        {
+            log_error("Client: browser failed to manage request", strerror(errno));
+        }
+
+        /* Check if the client wants the connection to close */
+        else if(client_connection_policy == HTTP_CONNECTION_CLOSE)
+        {
+            /* exit and close the client */
+            log_info("Client [pid %d fd %d]: closes connection", getpid(), fd);
+            break;
+        }
+
+        /* Upgrade after first msg received the client's socket options */
+        else if(!received_first_time && upgrade_client_socket_options(&fd) == 0)
+        {
+            received_first_time = 1;
+            log_info("Upgraded timeout for fd=%d to %ds\n", fd, CLIENT_MAX_TIMEOUT_S_L);
+        }
+    }
+
+    if(n == 0)
+    {
+        log_info("Client fd=%d closed connection.\n", fd);
+    }
+    else if(errno != EAGAIN && errno != EWOULDBLOCK)
+    {
+        log_error("recv: %s", strerror(errno));
+    }
+
+    /* Close client */
+    close(fd);
+
+    log_info("Client handeled; Connection closed.");
+}
+
+void clients_erase_client(clients_t **clients, const pid_t *client_pid)
+{
+    for(int i = 0; i < MAX_CLIENTS; i++)
+    {
+        if((*clients)->clients[i].pid == *client_pid)
+        {
+            log_info("Clients: client reaped: PID %d (fd=%d)", (*clients)->clients[i].pid,
+                     (*clients)->clients[i].client_fd);
+
+            if((*clients)->clients[i].client_fd != -1)
+            {
+                /* if the socket is active close the
+                client and set file descriptor to -1 */
+                close((*clients)->clients[i].client_fd);
+            }
+
+            /* update client's internal values */
+            memset(&(*clients)->clients[i], 0, sizeof((*clients)->clients[i]));
+            (*clients)->clients[i].client_fd = -1;
+            (*clients)->clients[i].pid = 0;  // not necessary but for clarity
+
+            /* decrease client's number */
+            (*clients)->active_clients_no--;
+
+            log_info("Clients: remaining clients: %d", (*clients)->active_clients_no);
+            break;  // no need to look further
+        }
+        else
+        {
+            /* try next client */
+            continue;
+        }
+    }
+}
+
+void clients_set_client_pid(clients_t **clients, pid_t *pid, int *client_fd)
+{
+    /* loop through all clients */
+    for(int i = 0; i < MAX_CLIENTS; i++)
+    {
+        /* if a corresponding found */
+        if((*clients)->clients[i].client_fd == *client_fd)
+        {
+            /* set client's pid */
+            (*clients)->clients[i].pid = *pid;
+
+            log_info("Clients: client started: PID %d; fd %d; host %s; service %s ", *pid,
+                     *client_fd, (*clients)->clients[i].host, (*clients)->clients[i].service);
+
+            break;
+        }
+    }
+}
+
+void clients_shutdown(clients_t **clients)
+{
+    close_all_clients(clients);
+    free(*clients);
+    log_info("Clients: -- shutdown -- ");
+}
+
+/****************************************************************************
+ * PRIVATE FUNCTIONS DEFINITIONS
+ ****************************************************************************
+ */
+
+static int save_client(clients_t **clients, struct sockaddr *client_addr, int *client_fd)
+{
+    /* return value */
+    int res = -1;
+
+    /* input length */
+    socklen_t addr_len = sizeof(*client_addr);
+
+    /* host client's info */
+    char host[NI_MAXHOST];
+
+    /* service client's info */
+    char service[NI_MAXSERV];
+
+    /* get all client's info */
+    int gni = getnameinfo(client_addr, addr_len, host, sizeof(host), service, sizeof(service),
+                          NI_NUMERICHOST | NI_NUMERICSERV);
+
+    if(gni != 0)
+    {
+        /* Could not resolve client info, fallback to unknown client */
+        snprintf(host, sizeof(host), "unknown");
+        snprintf(service, sizeof(service), "unknown");
+
+        log_info("Client (fd=%d) accepted, but getnameinfo failed: %s", *client_fd,
+                 gai_strerror(gni));
+    }
+
+    /* save the client */
+    /* space is already allocated in clients_init */
+    /* loop through all clients and find empty space */
+    for(int i = 0; i < MAX_CLIENTS; i++)
+    {
+        if((*clients)->clients[i].client_fd <= 0)
+        {
+            /* if the i-th client slot is available (free) */
+            (*clients)->clients[i].client_fd = *client_fd;
+            memcpy((*clients)->clients[i].host, host, NI_MAXHOST);
+            memcpy((*clients)->clients[i].service, service, NI_MAXSERV);
+
+            /* increment active clients amount */
+            (*clients)->active_clients_no++;
+
+            /* set return value to success */
+            res = 0;
+
+            log_info("Clients: client accepted from %s:%s (fd=%d)", host, service, *client_fd);
+            log_info("Clients: active clients %d", (*clients)->active_clients_no);
+
+            /* stop after one client saved */
+            break;
+        }
+        else
+        {
+            /* check next available slot */
+            continue;
+        }
+    }
+
+    return res;
+}
+
+static int set_client_socket_options(int *socket_fd)
+{
+    /* return value */
+    int res = -1;
+
+    /* Timeout */
+    struct timeval timeout = {CLIENT_MAX_TIMEOUT_S, CLIENT_MAX_TIMEOUT_MS};
+
+    if(setsockopt(*socket_fd, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout)) < 0)
+    {
+        /* log error if set sock opt fails and return -1 */
+        log_error("setsockopt timeout: %s\n", strerror(errno));
+    }
+    else
+    {
+        res = 0;
+    }
+
+    return res;
+}
+
+static int upgrade_client_socket_options(int *socket_fd)
+{
+    /* return value */
+    int res = -1;
+
+    /* Timeout */
+    struct timeval timeout = {CLIENT_MAX_TIMEOUT_S_L, CLIENT_MAX_TIMEOUT_MS};
+
+    if(setsockopt(*socket_fd, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout)) < 0)
+    {
+        log_error("setsockopt timeout: %s\n", strerror(errno));
+    }
+    else
+    {
+        res = 0;
+    }
+    return res;
+}
+
+static void close_all_clients(clients_t **clients)
+{
+    /* set active clients amount to 0 */
+    (*clients)->active_clients_no = 0;
+
+    /* loop through all clients */
+    for(int i = 0; i < MAX_CLIENTS; i++)
+    {
+        if((*clients)->clients[i].client_fd > 0)
+        {
+            /* close the client */
+            close((*clients)->clients[i].client_fd);
+
+            /* leave the internal values for main process
+            clients handling. Close is needed to close the
+            connection but from this process never delete
+            data about the client's socket fd */
+
+            // /* update client's internal values */
+            // (*clients)->clients[i].client_fd = 0;
+            // (*clients)->clients[i].pid = -1;
+            // memcpy((*clients)->clients[i].host,    NULL, NI_MAXHOST);
+            // memcpy((*clients)->clients[i].service, NULL, NI_MAXSERV);
+        }
+        else
+        {
+            /* client not active */
+            continue;
+        }
+    }
+}
+
+
+===== src/core/core.c =====
+#define _GNU_SOURCE
+
+#include "core.h"
+
+#include <errno.h>       // errno, EADDRINUSE, etc.
+#include <netdb.h>       // socklen_t
+#include <stdlib.h>      // malloc(), calloc(), NULL etc
+#include <string.h>      // memset(), strcpy(), strlen(), etc.
+#include <sys/socket.h>  // socklen_t, socket(), bind(), setsockopt(), etc.
+#include <sys/time.h>    // struct timeval
+#include <sys/wait.h>    // wait, who hang, pid_t
+#include <time.h>        // nanosleep()
+#include <unistd.h>      // fork(), close()
+
+#include "client.h"
+#include "listener.h"
+#include "logger.h"
+#include "server_input.h"
+#include "server_settings.h"
+
+/****************************************************************************
+ * PRIVATE STRUCTURED TYPES
+ ****************************************************************************
+ */
+/* None */
+
+/****************************************************************************
+ * PRIVATE VARIABLES DEFINITIONS
+ ****************************************************************************
+ */
+
+/* Server's listener */
+static Listener_t *listener = NULL;
+
+/* Server's clients */
+static clients_t *clients = NULL;
+
+/****************************************************************************
+ * PRIVATE FUNCTIONS DECLARATIONS
+ ****************************************************************************
+ */
+
+static int accept_client(void);
+
+static void reap_zombies(void);
+
+/****************************************************************************
+ * PUBLIC FUNCTIONS DEFINITIONS
+ ****************************************************************************
+ */
+
+int server_init(const char *port)
+{
+    /* return value */
+    int ret = -1;
+
+    /* Start the logger */
+    logger_init("server.log");
+
+    /* Initialize the listener */
+    if(listener_init(&listener, port) == -1)
+    {
+        log_error("CORE: listener failed to init.", strerror(errno));
+    }
+    /* Initialize the clients */
+    else if(clients_init(&clients) == -1)
+    {
+        log_error("CORE: clients failed to init.", strerror(errno));
+    }
+    /* Successful initialization */
+    else
+    {
+        log_info("🚀 C Server running on http://localhost:%s\n", port);
+        ret = 0;
+    }
+
+    return ret;
+}
+
+void server_run(void)
+{
+    /* process id for fork() */
+    pid_t pid;
+
+    while(check_stdin_for_exit() != 0)
+    {
+        int client_fd = accept_client(/* an all listeners */);
+
+        if(client_fd != -1)
+        {
+            /* Fork for a new client */
+            pid = fork();
+
+            if(pid == 0)
+            {
+                /*
+                Child process:
+                */
+
+                /* Close all listeners, no need for them in this process */
+                listener_close(&listener);
+
+                /* Handle client: blocking function */
+                clients_handle_client(&client_fd);
+
+                /* Exit */
+                _exit(0);
+            }
+            else if(pid > 0)
+            {
+                /*
+                Parent process:
+                */
+
+                /* Set client's process id */
+                clients_set_client_pid(&clients, &pid, &client_fd);
+
+                /* close all clients to keep the
+                parent clean just with listeners */
+                // close(client_fd);
+                // clients_close_client(&clients, &client_fd);
+            }
+            else
+            {
+                log_error("CORE: fork failure: %s", strerror(errno));
+                /* maybe should close the last client */
+            }
+        }
+        else
+        {
+            struct timespec ts;
+            ts.tv_sec = SERVER_SLEEP_TIME_S;
+            ts.tv_nsec = SERVER_SLEEP_TIME_NS;
+            /* No new client incoming, usleep and keep checking */
+            nanosleep(&ts, NULL);
+        }
+
+        /* Reap zombie processes */
+        reap_zombies();
+    }
+}
+
+void server_shutdown(void)
+{
+    listener_shutdown(&listener);
+    clients_shutdown(&clients);
+    logger_close();
+}
+
+/****************************************************************************
+ * PRIVATE FUNCTIONS DEFINITIONS
+ ****************************************************************************
+ */
+
+static int accept_client(void)
+{
+    /* return value */
+    int client_fd = -1;
+
+    /* helper structures */
+    struct sockaddr_storage client_addr;
+
+    if(listener_check_incoming_clients(&listener, &client_addr, &client_fd) == -1)
+    {
+        // do nothing, no incoming clients
+    }
+
+    /* save and manage new client */
+    else if(clients_add_new_client(&clients, &client_addr, &client_fd) == -1)
+    {
+        // do nothing
+    }
+
+    return client_fd;
+}
+
+static void reap_zombies(void)
+{
+    pid_t reaped_pid;
+
+    /* -1 to check any child,
+    WHOHANG doesn't block if no child dead,
+    returns:
+    child's PID if any dies, 0 if none, -1 if error */
+    while((reaped_pid = waitpid(-1, NULL, WNOHANG)) > 0)
+    {
+        clients_erase_client(&clients, &reaped_pid);
+    }
+}
+
+
+
+===== src/core/listener.c =====
+#define _POSIX_C_SOURCE 200112L
+#define _GNU_SOURCE
+#include "listener.h"  //  listener
+
+#include <errno.h>   // errno, EADDRINUSE, etc.
+#include <fcntl.h>   // fcntl(), F_GETFL, F_SETFL, O_NONBLOCK
+#include <netdb.h>   // getaddrinfo(), addrinfo, gai_strerror()
+#include <stdlib.h>  // malloc(), calloc() etc
+#include <string.h>  // memset(), strcpy(), strlen(), etc.
+#include <unistd.h>  // fork(), close(), read(), write(), etc.
+
+#include "logger.h"           // logger
+#include "server_settings.h"  // settings
+
+/****************************************************************************
+ * PUBLIC STUCTURED VARIABLES
+ ****************************************************************************
+ */
+
+struct Listener
+{
+    int listeners_fds[MAX_LISTENERS];
+    int active_listeners_no;
+};
+
+/****************************************************************************
+ * PRIVATE VARIABLE DECLARATIONS
+ ****************************************************************************
+ */
+/* None */
+
+/****************************************************************************
+ * PRIVATE FUNCTIONS DECLARATIONS
+ ****************************************************************************
+ */
+
+static int start_listener(struct addrinfo *server_info_out, Listener_t **listener_ptr);
+
+static int init_memory(Listener_t **listener_ptr);
+
+static int set_socket_hints(struct addrinfo *hints);
+
+static int set_listener_socket_reusability(const int *socket_fd);
+
+static int set_listener_socket_restartability(const int *socket_fd);
+
+static int set_listener_socket_non_blocking(const int *socket_fd);
+
+static int set_listener_socket_options(const int *listener_socket_fd, const int32_t *ai_family);
+
+/****************************************************************************
+ * PUBLIC FUNCTIONS DEFINITIONS
+ ****************************************************************************
+ */
+
+int listener_init(Listener_t **listener_ptr, const char *port)
+{
+    /* return value of the function */
+    int res = -1;
+
+    /* Hints for getaddrinfo research */
+    struct addrinfo hints;
+
+    /* getaddrinfo output info */
+    struct addrinfo *server_info_out = NULL;
+
+    /* check if memory properly initialised */
+    if(init_memory(listener_ptr) == -1)
+    {
+        log_error("listener memory initialization failed ", strerror(errno));
+    }
+
+    /* check if socket hints for getaddr are created */
+    else if(set_socket_hints(&hints) == -1)
+    {
+        log_error("listener socket hints failed ", strerror(errno));
+    }
+
+    /* check if getaddrinfo obtains some sockets */
+    else if(getaddrinfo(NULL, port, &hints, &server_info_out) != 0)
+    {
+        log_error("listener getaddrinfo failed ", strerror(errno));
+    }
+
+    /* check if listener starts */
+    else if(start_listener(server_info_out, listener_ptr) == -1)
+    {
+        log_error("listener start failed ", strerror(errno));
+    }
+
+    /* Print info */
+    else
+    {
+        log_info("getaddrinfo succeeded. Printing address info list results:\n");
+        log_addrinfo_list(server_info_out);
+        res = 0;
+    }
+
+    /* now can freeup the memory allocated in server_info out */
+    freeaddrinfo(server_info_out);
+    return res;
+}
+
+int listener_check_incoming_clients(Listener_t **listener_ptr, struct sockaddr_storage *client_addr,
+                                    int *client_fd)
+{
+    /* TO DO:
+    try to loop through just active_listeners
+    but be sure they're always at the beginning */
+
+    /* result value */
+    int res = -1;
+
+    /* temporary client_fd */
+    int client_fd_tmp;
+
+    /* input length */
+    socklen_t addr_len = sizeof(*client_addr);
+
+    /* Loop through all the listeners */
+    for(int i = 0; i < MAX_LISTENERS; i++)
+    {
+        /* Check if listener on */
+        if((*listener_ptr)->listeners_fds[i] <= 0)
+        {
+            /* the listener is not active */
+            continue;
+        }
+
+        /* Accept incoming client request if any */
+        client_fd_tmp =
+            accept((*listener_ptr)->listeners_fds[i], (struct sockaddr *)client_addr, &addr_len);
+
+        /* accept is set to not blocking:
+        will return errno EAGAIN or EWOULDBLOCK if no incoming connections */
+
+        /* if a valid client_fd was obtained */
+        if(client_fd_tmp != -1)
+        {
+            /* set return value to success */
+            res = 0;
+
+            /* set [in] client_fd */
+            *client_fd = client_fd_tmp;
+
+            break;
+        }
+        else
+        {
+            /* An error occurred */
+            if(errno != EAGAIN && errno != EWOULDBLOCK)
+            {
+                /* Real error: close and log client_fd */
+                close(client_fd_tmp);
+                log_error("Listener: accept() client failed %s", strerror(errno));
+            }
+            else
+            {
+                /* No pending client connections, continue */
+            }
+        }
+    }
+
+    return res;
+}
+
+void listener_close(Listener_t **listener_ptr)
+{
+    log_info("Listener: closing listeners' sockets");
+
+    /* loop through all possible listeners */
+    for(int i = 0; i < MAX_LISTENERS; i++)
+    {
+        /* check if listener is active */
+        if((*listener_ptr)->listeners_fds[i] > 0)
+        {
+            /* close listener file descriptor */
+            close((*listener_ptr)->listeners_fds[i]);
+
+            /* reset to 0 */
+            (*listener_ptr)->listeners_fds[i] = 0;
+
+            /* decrease listener number */
+            (*listener_ptr)->active_listeners_no--;
+        }
+        else
+        {
+            continue;
+        }
+    }
+}
+
+void listener_shutdown(Listener_t **listener_ptr)
+{
+    log_info("Listeners: -- shutdown -- ");
+    listener_close(listener_ptr);
+    free(*listener_ptr);
+}
+
+/****************************************************************************
+ * PRIVATE FUNCTIONS DEFINITIONS
+ ****************************************************************************
+ */
+
+static int start_listener(struct addrinfo *server_info_out, Listener_t **listener_ptr)
+{
+    /* return value */
+    int res = -1;
+
+    /* loop through all the getaddrinfo output results */
+    while(server_info_out != NULL)
+    {
+        /* Create a socket */
+        int listener_socket_fd = socket(server_info_out->ai_family, server_info_out->ai_socktype,
+                                        server_info_out->ai_protocol);
+
+        if(listener_socket_fd == -1)
+        {
+            log_error("socket creation failed: %s\n", strerror(errno));
+        }
+
+        /* Set socket options */
+        else if(set_listener_socket_options(&listener_socket_fd, &server_info_out->ai_family) == -1)
+        {
+            log_error("setsockopt failed: %s\n", strerror(errno));
+            /* delete the socket */
+            close(listener_socket_fd);
+        }
+
+        /* Bind the socket */
+        else if(bind(listener_socket_fd, server_info_out->ai_addr, server_info_out->ai_addrlen) ==
+                -1)
+        {
+            log_error("bind failed: %s\n", strerror(errno));
+            /* delete the socket */
+            close(listener_socket_fd);
+        }
+
+        /* Start listening */
+        else if(listen(listener_socket_fd, MAX_PENDING_CONNECTIONS) == -1)
+        {
+            log_error("listen failed: %s\n", strerror(errno));
+            /* delete the socket */
+            close(listener_socket_fd);
+        }
+
+        /* If all worked fine */
+        else
+        {
+            /* Put the socket in the listener and increase the counter */
+            (*listener_ptr)->listeners_fds[(*listener_ptr)->active_listeners_no++] =
+                listener_socket_fd;
+
+            /* Set return value to success */
+            res = 0;
+        }
+
+        server_info_out = server_info_out->ai_next;
+    }
+
+    return res;
+}
+
+static int init_memory(Listener_t **listener_ptr)
+{
+    /* return value */
+    int res = -1;
+
+    /* free listener's memory */
+    if(*listener_ptr)
+    {
+        free(*listener_ptr);
+    }
+    *listener_ptr = NULL;
+
+    /* allocate fresh memory for the listener */
+    *listener_ptr = (Listener_t *)malloc(sizeof(Listener_t));
+
+    if(*listener_ptr != NULL)
+    {
+        /* Set listeners to 0 */
+        memset(*listener_ptr, 0, sizeof(Listener_t));
+        if(*listener_ptr != NULL)
+        {
+            res = 0;
+        }
+        else
+        {
+            log_error("listener memory zeroing failed", strerror(errno));
+        }
+    }
+    else
+    {
+        log_error("listener memory allocation failed", strerror(errno));
+    }
+
+    return res;
+}
+
+static int set_socket_hints(struct addrinfo *hints)
+{
+    /* return value */
+    int res = -1;
+
+    if(hints)
+    {
+        /* make sure hints setted to 0 */
+        memset(hints, 0, sizeof(struct addrinfo));
+
+        /* AF_UNSPEC allows IPv4 or IPv6 */
+        hints->ai_family = AF_UNSPEC;
+
+        /* The sockettype will automatically set the ai_protocol to
+        IPPROTO_TCP 6 with SOCK_STREAM or IPPROTO_UDP 17 with SOCK_DGRAM */
+        hints->ai_socktype = SOCK_STREAM;  // TCP
+
+        /* Use my IP automatically */
+        hints->ai_flags = AI_PASSIVE;
+
+        res = 0;
+    }
+
+    return res;
+}
+
+static int set_listener_socket_reusability(const int *socket_fd)
+{
+    /* return value */
+    int res = -1;
+
+    /* Allow reuse of address (critical for restarts) */
+    int yes = 1;
+
+    if(setsockopt(*socket_fd, SOL_SOCKET, SO_REUSEADDR, &yes, sizeof(yes)) != -1)
+    {
+        res = 0;
+    }
+    else
+    {
+        log_error("listener socket reusability failed to set: %s", strerror(errno));
+    }
+
+    return res;
+}
+
+static int set_listener_socket_restartability(const int *socket_fd)
+{
+    /* return value */
+    int res = -1;
+
+    /* Options for restart: Just kill it. Don’t wait. Don’t flush data.
+    These options are ok for listeners. */
+    struct linger sl;
+    sl.l_onoff = 1;
+    sl.l_linger = 0;
+    if(setsockopt(*socket_fd, SOL_SOCKET, SO_LINGER, &sl, sizeof(sl)) != -1)
+    {
+        res = 0;
+    }
+    else
+    {
+        log_error("listener socket restartability failed to set: %s", strerror(errno));
+    }
+
+    return res;
+}
+
+static int set_listener_socket_non_blocking(const int *socket_fd)
+{
+    /* return value */
+    int res = -1;
+
+    int flags = fcntl(*socket_fd, F_GETFL, 0);
+    if(flags != -1)
+    {
+        if(fcntl(*socket_fd, F_SETFL, flags | O_NONBLOCK) != -1)
+        {
+            res = 0;
+        }
+        else
+        {
+            log_error("fcntl set listener flags failed: %s\n", strerror(errno));
+        }
+    }
+    else
+    {
+        log_error("fcntl get listener flags failed: %s\n", strerror(errno));
+    }
+
+    return res;
+}
+
+static int set_listener_socket_options(const int *listener_socket_fd, const int32_t *ai_family)
+{
+    /* return value */
+    int ret = -1;
+    /* yes value */
+    int yes = 1;
+
+    if(set_listener_socket_reusability(listener_socket_fd) != -1)
+    {
+        if(set_listener_socket_restartability(listener_socket_fd) != -1)
+        {
+            if(set_listener_socket_non_blocking(listener_socket_fd) != -1)
+            {
+                /* Set the return to 0 */
+                ret = 0;
+                /* restrict the socket to only ipv6 if socket for ipv6 */
+                if(*ai_family == AF_INET6)
+                {
+                    if(setsockopt(*listener_socket_fd, IPPROTO_IPV6, IPV6_V6ONLY, &yes,
+                                  sizeof(yes)) == -1)
+                    {
+                        ret = -1;
+                        log_error("Socket ipv6 opts failed: %s\n", strerror(errno));
+                    }
+                }
+            }
+        }
+    }
+
+    return ret;
+}
+
+
+===== src/core/logger.c =====
+#define _GNU_SOURCE
+#include "logger.h"
+
+#include <arpa/inet.h>  // inet_ntop(), inet_pton()
+#include <netdb.h>      // getaddrinfo(), addrinfo, gai_strerror()
+#include <stdarg.h>     // varg
+#include <stdio.h>      // FILE
+#include <stdlib.h>     // exit(), malloc(), free()
+#include <time.h>       // For timestamps
+
+/****************************************************************************
+ * PRIVATE VARIABLES DEFINITIONS
+ ****************************************************************************
+ */
+static FILE *log_file = NULL;
+
+/****************************************************************************
+ * PRIVATE FUNCTIONS DECLARATIONS
+ ****************************************************************************
+ */
+
+/**
+ * @brief Print current timestamp in `[YYYY-MM-DD HH:MM:SS]` format.
+ *
+ * Used internally before every log entry.
+ */
+static void log_timestamp();
+
+/**
+ * @brief Internal logging implementation.
+ *
+ * @param level "INFO", "ERROR", etc.
+ * @param fmt Format string
+ * @param args Variadic arguments
+ */
+static void log_internal_va(const char *level, const char *fmt, va_list args);
+
+/****************************************************************************
+ * PUBLIC FUNCTIONS DEFINITIONS
+ ****************************************************************************
+ */
+
+void logger_init(const char *filename)
+{
+    /* check if file not yet opened */
+    if(log_file == NULL)
+    {
+        /* "w" = overwrite on server restart */
+        log_file = fopen(filename, "w");
+        if(!log_file)
+        {
+            perror("Failed to open log file");
+            log_file = stdout;  // fallback
+        }
+    }
+}
+
+void logger_close()
+{
+    if(log_file && log_file != stdout)
+    {
+        fclose(log_file);
+        log_file = NULL;
+    }
+}
+
+void log_info(const char *fmt, ...)
+{
+    va_list args;
+    va_start(args, fmt);
+    log_internal_va("INFO", fmt, args);
+    va_end(args);
+}
+
+void log_error(const char *fmt, ...)
+{
+    va_list args;
+    va_start(args, fmt);
+    log_internal_va("ERROR", fmt, args);
+    va_end(args);
+}
+
+void log_addrinfo_list(const struct addrinfo *ai)
+{
+    int index = 0;
+    char ip_str[INET6_ADDRSTRLEN];
+
+    for(; ai != NULL; ai = ai->ai_next, ++index)
+    {
+        void *addr;
+        const char *ipver;
+
+        if(ai->ai_family == AF_INET)
+        {
+            struct sockaddr_in *ipv4 = (struct sockaddr_in *)ai->ai_addr;
+            addr = &(ipv4->sin_addr);
+            ipver = "IPv4";
+        }
+        else if(ai->ai_family == AF_INET6)
+        {
+            struct sockaddr_in6 *ipv6 = (struct sockaddr_in6 *)ai->ai_addr;
+            addr = &(ipv6->sin6_addr);
+            ipver = "IPv6";
+        }
+        else
+        {
+            log_info("[%d] Unknown address family: %d\n", index, ai->ai_family);
+            continue;
+        }
+
+        /* Convert the IP to a string */
+        inet_ntop(ai->ai_family, addr, ip_str, sizeof ip_str);
+
+        /* Resolve protocol name */
+        char protocol_name[NI_MAXSERV];
+
+        if(ai->ai_protocol == IPPROTO_TCP)
+        {
+            strcpy(protocol_name, "TCP");
+        }
+        else if(ai->ai_protocol == IPPROTO_UDP)
+        {
+            strcpy(protocol_name, "UDP");
+        }
+        else
+        {
+            strcpy(protocol_name, "UNKNOWN");
+        }
+
+        log_info("[%d] %s address: %s | socktype: %d | protocol: %s | flags: 0x%x\n", index, ipver,
+                 ip_str, ai->ai_socktype, protocol_name, ai->ai_flags);
+    }
+}
+
+/****************************************************************************
+ * PRIVATE FUNCTIONS DEFINITIONS
+ ****************************************************************************/
+
+static void log_timestamp()
+{
+    static time_t now;
+    static struct tm *tm_info;
+    char buffer[32];
+    now = time(NULL);
+    tm_info = localtime(&now);
+    strftime(buffer, sizeof(buffer), "[%Y-%m-%d %H:%M:%S]", tm_info);
+    fprintf(log_file, "%s ", buffer);
+}
+
+static void log_internal_va(const char *level, const char *fmt, va_list args)
+{
+    if(log_file != NULL)
+    {
+        log_timestamp();
+        fprintf(log_file, "[%s] ", level);
+        vfprintf(log_file, fmt, args);
+        fprintf(log_file, "\n");
+        fflush(log_file);
+    }
+}
+
+
+
+===== src/core/server.c =====
+/**
+ * Server TCP implementation
+ */
+
+#include "core.h"  // server's core, main brain
+
+/****************************************************************************
+ * PUBLIC FUNCTIONS DEFINITIONS
+ ****************************************************************************
+ */
+
+int main()
+{
+    /* server's listening port */
+    const char *port = "3490";
+
+    if(server_init(port) == -1)
+    {
+        /* ensure cleanup even on failure */
+        /* This process has to be properly memory-controlled */
+        // server_shutdown();
+    }
+    else
+    {
+        server_run();
+        server_shutdown();
+    }
+
+    return 0;
+}
+
+
+===== src/core/server_input.c =====
+#include "server_input.h"
+
+#include <fcntl.h>  // For non-blocking stdin
+#include <string.h>
+#include <unistd.h>  // STDIN_FILENO and ssize_t
+
+#include "logger.h"
+
+/****************************************************************************
+ * PRIVATE VARIABLES DEFINITIONS
+ ****************************************************************************
+ */
+
+/* hold for first start */
+static int first_start = -1;
+
+/****************************************************************************
+ * PUBLIC FUNCTIONS DEFINITIONS
+ ****************************************************************************
+ */
+
+int check_stdin_for_exit(void)
+{
+    int res = -1;
+    char buf[16];
+
+    /* On first call, make stdin non-blocking */
+    if(first_start == -1)
+    {
+        /* Set read from terminal to not blocking */
+        int flags = fcntl(STDIN_FILENO, F_GETFL, 0);
+        fcntl(STDIN_FILENO, F_SETFL, flags | O_NONBLOCK);
+        first_start = 0;
+    }
+
+    /* Read from stdin if anything was typed */
+    ssize_t n = read(STDIN_FILENO, buf, sizeof(buf) - 1);
+
+    if(n > 0)
+    {
+        buf[n] = '\0';
+
+        /* If user typed 'q', trigger shutdown */
+        if(strchr(buf, 'q') != NULL)
+        {
+            log_info("Received 'q' from stdin. Exiting server...");
+            res = 0;  // signal exit
+        }
+    }
+
+    return res;
+}
+
+
+===== src/browser/browser.c =====
+/*
+ * browser.c
+ *
+ * Handles incoming client HTTP requests: parses raw data, dispatches to router,
+ * and sends back HTTP responses over a TCP socket in two phases (headers then body).
+ * Supports binary-safe transfers for static files (images, CSS, HTML, etc.).
+ */
+
+#include "browser.h"
+
+#include <errno.h>      /* errno */
+#include <stdio.h>      /* snprintf */
+#include <stdlib.h>     /* free */
+#include <string.h>     /* strerror */
+#include <sys/socket.h> /* send(), recv() */
+#include <unistd.h>     /* ssize_t */
+
+#include "logger.h"          /* log_info, log_error */
+#include "router.h"          /* router_handle_request */
+#include "server_settings.h" /* HTTP constants */
+#include "static_page.h"     /* static_page_serve_file */
+
+/* Private function prototypes */
+
+/*
+ * send_response:
+ *   Build HTTP/1.1 response headers then stream the response body.
+ * Parameters:
+ *   fd - Client socket descriptor
+ *   resp - Pointer to populated HttpResponse structure
+ *   client_connection_policy - HTTP_CONNECTION_CLOSE or KEEP_ALIVE
+ * Returns:
+ *   0 on success, -1 on any failure (logged).
+ */
+static int send_response(int fd, const HttpResponse *resp, int client_connection_policy);
+
+/*
+ * send_all:
+ *   Ensures that exactly 'len' bytes are sent over the socket,
+ *   retrying on partial sends or EINTR.
+ * Parameters:
+ *   fd - Client socket descriptor
+ *   buf - Pointer to data buffer
+ *   len - Number of bytes to send
+ * Returns:
+ *   Total bytes sent (=len) or -1 on unrecoverable error.
+ */
+static ssize_t send_all(int fd, const void *buf, size_t len);
+
+/*
+ * Public: browser_manage_client_req
+ * ---------------------------------
+ * Parses an incoming HTTP request, routes it, and sends the response.
+ * Frees any heap-allocated body after sending.
+ * Parameters:
+ *   fd - Client socket descriptor
+ *   recv_buf - Buffer containing raw HTTP request data
+ *   n - Number of bytes in recv_buf
+ *   client_connection_policy - OUT param set to CONNECTION_CLOSE or KEEP_ALIVE
+ * Returns:
+ *   Number of bytes of body sent on success, -1 on error.
+ */
+ssize_t browser_manage_client_req(int fd, const char *recv_buf, size_t n,
+                                  int *client_connection_policy)
+{
+    HttpRequest request;
+    HttpResponse response;
+    ssize_t result = -1;
+
+    /* 1) Parse raw HTTP request into HttpRequest struct */
+    if(http_parse_request(recv_buf, n, &request, client_connection_policy) < 0)
+    {
+        log_error("browser_manage_client_req: parse failed", strerror(errno));
+        return -1;
+    }
+
+    /* 2) Route request to generate HttpResponse (status, headers, body) */
+    if(router_handle_request(&request, &response) < 0)
+    {
+        log_error("browser_manage_client_req: routing failed", strerror(errno));
+        return -1;
+    }
+
+    /* 3) Send HTTP response over TCP (headers + binary body) */
+    if(send_response(fd, &response, *client_connection_policy) < 0)
+    {
+        log_error("browser_manage_client_req: send_response failed", strerror(errno));
+        result = -1;
+    }
+    else
+    {
+        /* Return the number of body bytes sent (may be 0 for no-body) */
+        result = (ssize_t)response.body_length;
+    }
+
+    /* 4) Free any heap buffer allocated by static_page_serve_file */
+    free((void *)response.body);
+
+    return result;
+}
+
+/*
+ * send_response:
+ *   Phase 1: Build and send the HTTP response headers (status, content-type,
+ *   content-length, connection).
+ *   Phase 2: Send the response body bytes (if any) using send_all().
+ */
+static int send_response(int fd, const HttpResponse *resp, int client_connection_policy)
+{
+    char hdr_buf[1024]; /* stack buffer for headers */
+    int hdr_len;
+
+    /* Build the status line and headers into hdr_buf */
+    hdr_len =
+        snprintf(hdr_buf, sizeof hdr_buf,
+                 "HTTP/1.1 %d %s\r\n"
+                 "Content-Type: %s\r\n"
+                 "Content-Length: %zu\r\n"
+                 "Connection: %s\r\n"
+                 "\r\n",
+                 resp->status_code, resp->status_text, resp->content_type, resp->body_length,
+                 (client_connection_policy == HTTP_CONNECTION_CLOSE) ? "close" : "keep-alive");
+
+    /* Validate header length */
+    if(hdr_len < 0 || hdr_len >= (int)sizeof hdr_buf)
+    {
+        log_error("send_response: headers too large", "");
+        return -1;
+    }
+
+    /* Send all header bytes */
+    if(send_all(fd, hdr_buf, (size_t)hdr_len) < 0)
+    {
+        log_error("send_response: header send failed", strerror(errno));
+        return -1;
+    }
+
+    /* Send response body if present */
+    if(resp->body_length > 0 && resp->body)
+    {
+        if(send_all(fd, resp->body, resp->body_length) < 0)
+        {
+            log_error("send_response: body send failed", strerror(errno));
+            return -1;
+        }
+    }
+
+    return 0;
+}
+
+/*
+ * send_all:
+ *   Loops on send() until all 'len' bytes from 'buf' are written,
+ *   handling EINTR and partial writes.
+ */
+static ssize_t send_all(int fd, const void *buf, size_t len)
+{
+    size_t total_sent = 0;
+    const char *ptr = (const char *)buf;
+
+    while(total_sent < len)
+    {
+        ssize_t sent;
+        sent = send(fd, ptr + total_sent, len - total_sent, 0);
+        if(sent < 0)
+        {
+            if(errno == EINTR)
+            {
+                continue; /* retry if interrupted */
+            }
+            return -1; /* unrecoverable error */
+        }
+        total_sent += (size_t)sent;
+    }
+
+    return (ssize_t)total_sent;
+}
+
+
+
+===== src/browser/handlers.c =====
+/*
+ * handlers.c
+ * ----------
+ * Endpoint handlers for the tiny web‑server:
+ *   - /api/whoami    -> JSON with request echo & server time
+ *   - /api/drive     -> JSON directory listing for the virtual “Drive”
+ *
+ * The file also provides a minimal percent‑decoder for URL paths.
+ *
+ * (c) 2025 Your Name
+ */
+
+#define _GNU_SOURCE
+
+/* Public interface */
+#include "handlers.h"
+
+/* libc / POSIX */
+#include <ctype.h>    /* isxdigit()                                           */
+#include <dirent.h>   /* opendir(), readdir(), closedir()                     */
+#include <errno.h>    /* errno                                                */
+#include <limits.h>   /* PATH_MAX, NAME_MAX                                   */
+#include <stdio.h>    /* snprintf(), sscanf()                                 */
+#include <stdlib.h>   /* malloc(), free(), strdup(), strtol()                 */
+#include <string.h>   /* strcmp(), strcpy(), strerror(), strstr(), strdup()   */
+#include <sys/stat.h> /* stat(), struct stat                                  */
+#include <sys/time.h> /* gettimeofday()                                       */
+#include <time.h>     /* gmtime_r(), strftime()                               */
+
+/* third‑party / project */
+#include "cJSON.h"
+#include "logger.h"
+
+/* ---------------------------------------------------------------------------
+ * Local constants & helper macros
+ * -------------------------------------------------------------------------*/
+
+/* stringify PATH_MAX to build “%<PATH_MAX>s” format strings with sscanf()   */
+#define _STR(x) #x
+#define _XSTR(x) _STR(x)
+#define PATH_MAX_STR _XSTR(PATH_MAX)
+
+/* Allow room for “www” prefix + path + NUL                                   */
+#define FULLPATH_MAX (PATH_MAX + 4)
+/* Allow room for fullpath + “/” + NAME_MAX + NUL                             */
+#define CHILDFULL_MAX (FULLPATH_MAX + NAME_MAX + 1)
+
+/* ---------- Shortcuts to build JSON error replies ------------------------ */
+
+/**
+ * respond_400()
+ * -------------
+ * Fill @resp with status 400 and a tiny JSON body `{"error":"<msg>"}`.
+ * Returns 0 on success, ‑1 on allocation failure.
+ */
+static int respond_400(HttpResponse *resp, const char *msg)
+{
+    const size_t need = strlen(msg) + 20; /* {"error":""} + NUL          */
+    char *buf = malloc(need);
+    if(!buf) return -1;
+
+    snprintf(buf, need, "{\"error\":\"%s\"}", msg);
+
+    resp->status_code = 400;
+    resp->status_text = "Bad Request";
+    resp->content_type = "application/json";
+    resp->body = buf;
+    resp->body_length = strlen(buf);
+    return 0;
+}
+
+/* Convenience macro that bails out of the current handler with a 400 reply. */
+#define RESP_400(MSG)             \
+    do                            \
+    {                             \
+        respond_400(resp, (MSG)); \
+        return 0;                 \
+    } while(0)
+
+/* ---------------------------------------------------------------------------
+ * Private prototypes
+ * -------------------------------------------------------------------------*/
+static int url_decode(const char *src, char *dst, size_t dst_sz);
+
+/* ---------------------------------------------------------------------------
+ * Public handlers
+ * -------------------------------------------------------------------------*/
+
+/**
+ * whoami_json_handler()
+ * ---------------------
+ * Echo endpoint used for diagnostics.
+ * Produces:
+ *   {
+ *     "server_time":"2025-05-03T20:11:22.123Z",
+ *     "method":"GET",
+ *     "path":"/api/whoami",
+ *     "headers":{ ... }
+ *   }
+ */
+int whoami_json_handler(const HttpRequest *req, HttpResponse *res)
+{
+    /* --- (1) Local ISO‑8601 timestamp with milliseconds ------------------ */
+    struct timeval tv;
+    gettimeofday(&tv, NULL);
+
+    struct tm tm;
+    gmtime_r(&tv.tv_sec, &tm);
+
+    char timestr[32];
+    strftime(timestr, sizeof timestr, "%Y-%m-%dT%H:%M:%S", &tm);
+
+    char iso_time[32];
+    int len = snprintf(iso_time, sizeof iso_time, "%s.%03ldZ", timestr, tv.tv_usec / 1000L);
+    if(len < 0 || len >= (int)sizeof iso_time) /* safety fallback   */
+        strncpy(iso_time, timestr, sizeof iso_time - 1), iso_time[sizeof iso_time - 1] = '\0';
+
+    /* --- (2) Build JSON -------------------------------------------------- */
+    cJSON *root = cJSON_CreateObject();
+    cJSON_AddStringToObject(root, "server_time", iso_time);
+    cJSON_AddStringToObject(root, "method", req->method);
+    cJSON_AddStringToObject(root, "path", req->path);
+
+    cJSON *hdrs = cJSON_AddObjectToObject(root, "headers");
+    for(int i = 0; i < req->header_count; ++i)
+        cJSON_AddStringToObject(hdrs, req->header_names[i], req->header_values[i]);
+
+    char *body = cJSON_PrintUnformatted(root);
+    cJSON_Delete(root);
+
+    /* --- (3) Fill HttpResponse ------------------------------------------ */
+    res->status_code = 200;
+    res->status_text = "OK";
+    res->content_type = "application/json";
+    res->body = body;
+    res->body_length = strlen(body);
+
+    return 0;
+}
+
+/**
+ * drive_json_handler()
+ * --------------------
+ * Implements GET /api/drive?path=/some/dir
+ * Returns a JSON listing of the directory contents below the project’s
+ * “www/” folder.
+ */
+int drive_json_handler(const HttpRequest *req, HttpResponse *resp)
+{
+    /* --- (1) Extract and URL‑decode the `path` query param -------------- */
+    const char *qmark = strchr(req->path, '?');
+    char enc_path[PATH_MAX] = "/";
+    if(qmark && sscanf(qmark, "?path=%" PATH_MAX_STR "s", enc_path) < 1) strcpy(enc_path, "/");
+
+    char path[PATH_MAX];
+    if(url_decode(enc_path, path, sizeof path) < 0) RESP_400("path too long");
+
+    /* --- (2) Basic sanitisation ---------------------------------------- */
+    if(strstr(path, "..")) RESP_400("invalid path");
+
+    /* --- (3) Build absolute path on disk ("www" + path) ----------------- */
+    char full[FULLPATH_MAX];
+    int len = snprintf(full, sizeof full, "www%s", path);
+    if(len < 0 || len >= (int)sizeof full) RESP_400("path too long");
+
+    /* --- (4) Open directory -------------------------------------------- */
+    log_info("Opening dir: %s", full);
+    DIR *dir = opendir(full);
+    if(!dir)
+    {
+        log_error("drive: opendir failed", strerror(errno));
+        resp->status_code = 404;
+        resp->status_text = "Not Found";
+        resp->content_type = "application/json";
+        resp->body = strdup("{\"error\":\"not found\"}");
+        resp->body_length = strlen(resp->body);
+        return 0;
+    }
+
+    /* --- (5) Build JSON listing ---------------------------------------- */
+    cJSON *root = cJSON_CreateObject();
+    cJSON_AddStringToObject(root, "path", path);
+    cJSON *items = cJSON_AddArrayToObject(root, "items");
+
+    struct dirent *ent;
+    while((ent = readdir(dir)) != NULL)
+    {
+        const char *name = ent->d_name;
+        if(!strcmp(name, ".") || !strcmp(name, "..")) continue;
+
+        /* create JSON object for this entry */
+        cJSON *obj = cJSON_CreateObject();
+        cJSON_AddStringToObject(obj, "name", name);
+
+        /* Decide “file” vs “directory” with stat() */
+        char child[CHILDFULL_MAX];
+        int l = snprintf(child, sizeof child, "%s/%s", full, name);
+        if(l < 0 || l >= (int)sizeof child)
+        {
+            log_error("drive: child path overflow", name);
+            cJSON_Delete(obj);
+            continue;
+        }
+
+        struct stat st;
+        if(stat(child, &st) == 0 && S_ISDIR(st.st_mode))
+            cJSON_AddStringToObject(obj, "type", "directory");
+        else
+            cJSON_AddStringToObject(obj, "type", "file");
+
+        cJSON_AddItemToArray(items, obj);
+    }
+    closedir(dir);
+
+    /* --- (6) Serialise & send ------------------------------------------ */
+    char *json = cJSON_PrintUnformatted(root);
+    cJSON_Delete(root);
+
+    resp->status_code = 200;
+    resp->status_text = "OK";
+    resp->content_type = "application/json";
+    resp->body = json;
+    resp->body_length = strlen(json);
+
+    return 0;
+}
+
+int expenses_months_handler(HttpResponse *resp)
+{
+    const char *EXP_ROOT = "www/expenses";
+    DIR *d_year = opendir(EXP_ROOT);
+    if(!d_year)
+    {
+        /* fallback to empty list */
+        resp->status_code = 200;
+        resp->content_type = "application/json";
+        resp->body = strdup("[]");
+        resp->body_length = 2;
+        return 0;
+    }
+
+    /* collect month-strings in a dynamic array so we can sort */
+    char *months[256];
+    int count = 0;
+
+    struct dirent *ye;
+    while((ye = readdir(d_year)))
+    {
+        // skip non-“YYYY” dirs
+        if(strlen(ye->d_name) != 4) continue;
+        int ok = 1;
+        for(int i = 0; i < 4; i++)
+            if(!isdigit((unsigned char)ye->d_name[i])) ok = 0;
+        if(!ok) continue;
+
+        // open year directory
+        char yearpath[PATH_MAX];
+        snprintf(yearpath, sizeof yearpath, "%s/%s", EXP_ROOT, ye->d_name);
+        struct stat st;
+        if(stat(yearpath, &st) < 0 || !S_ISDIR(st.st_mode)) continue;
+
+        DIR *d_mon = opendir(yearpath);
+        if(!d_mon) continue;
+        struct dirent *me;
+        while((me = readdir(d_mon)))
+        {
+            /* look for “MM.json” */
+            char *ext = strrchr(me->d_name, '.');
+            if (!ext || strcmp(ext, ".json") != 0) continue;
+            /* make sure the name is exactly 2 chars + “.json” */
+            if ((ext - me->d_name) != 2) continue;
+            /* check the two-digit month */
+            if (!isdigit((unsigned char)me->d_name[0]) ||
+                !isdigit((unsigned char)me->d_name[1])) continue;
+
+            /* build “YYYY-MM” */
+            char m[8];                                     /* room for "YYYY-MM\0" */
+            snprintf(m, sizeof m, "%.4s-%.2s",
+                     ye->d_name,                            /* year (e.g. "2025") */
+                     me->d_name);                           /* month (e.g. "07") */
+            months[count++] = strdup(m);
+        }
+        closedir(d_mon);
+    }
+    closedir(d_year);
+
+    // sort the array
+    qsort(months, count, sizeof months[0], (int (*)(const void *, const void *))strcmp);
+
+    // build a cJSON array
+    cJSON *arr = cJSON_CreateArray();
+    for(int i = 0; i < count; i++)
+    {
+        cJSON_AddItemToArray(arr, cJSON_CreateString(months[i]));
+        free(months[i]);
+    }
+
+    char *out = cJSON_PrintUnformatted(arr);
+    cJSON_Delete(arr);
+
+    resp->status_code = 200;
+    resp->content_type = "application/json";
+    resp->body = out;
+    resp->body_length = strlen(out);
+    return 0;
+}
+
+/* ---------------------------------------------------------------------------
+ * Private helpers
+ * -------------------------------------------------------------------------*/
+
+/**
+ * url_decode()
+ * ------------
+ * Percent‑decodes @src into @dst, stopping early if @dst_sz would overflow.
+ * Returns 0 on success, ‑1 if the output would not fit.
+ *
+ * Rules:
+ *   %xx   → byte with hex value xx
+ *   '+'   → space
+ *   other → unchanged
+ */
+static int url_decode(const char *src, char *dst, size_t dst_sz)
+{
+    size_t di = 0;
+    for(size_t si = 0; src[si] && di < dst_sz - 1; ++si)
+    {
+        if(src[si] == '%' && isxdigit((unsigned char)src[si + 1]) &&
+           isxdigit((unsigned char)src[si + 2]))
+        {
+            const char hex[3] = {src[si + 1], src[si + 2], '\0'};
+            dst[di++] = (char)strtol(hex, NULL, 16);
+            si += 2;
+        }
+        else if(src[si] == '+')
+        {
+            dst[di++] = ' ';
+        }
+        else
+        {
+            dst[di++] = src[si];
+        }
+    }
+
+    if(di >= dst_sz - 1) /* no room for final NUL */
+        return -1;
+
+    dst[di] = '\0';
+    return 0;
+}
+
+
+
+===== src/browser/http_manager.c =====
+#define _GNU_SOURCE
+
+#include "http_manager.h"
+
+#include <ctype.h>
+#include <errno.h>  // errno, EADDRINUSE, etc.
+#include <stdio.h>
+#include <string.h>  // memset(), strcpy(), strlen(), etc.
+
+#include "llhttp.h"
+#include "logger.h"
+
+/****************************************************************************
+ * PRIVATE FUNCTIONS DECLARATIONS
+ ****************************************************************************
+ */
+
+static int on_url(llhttp_t* parser, const char* at, size_t length);
+static int on_header_field(llhttp_t* parser, const char* at, size_t length);
+static int on_header_value(llhttp_t* parser, const char* at, size_t length);
+static int on_method(llhttp_t* parser, const char* at, size_t length);
+static void determine_connection_policy(HttpRequest* req, int* client_connection_policy);
+
+/****************************************************************************
+ * PUBLIC FUNCTIONS DEFINITIONS
+ ****************************************************************************
+ */
+
+/**
+ * Parses a basic HTTP request.
+ * Fills HttpRequest with method and path if successful.
+ */
+int http_parse_request(const char* buffer, const size_t buffer_len, HttpRequest* req,
+                       int* client_connection_policy)
+{
+    llhttp_t parser;
+    llhttp_settings_t settings;
+
+    llhttp_settings_init(&settings);
+    settings.on_url = on_url;
+    settings.on_method = on_method;
+    settings.on_header_field = on_header_field;
+    settings.on_header_value = on_header_value;
+
+    llhttp_init(&parser, HTTP_REQUEST, &settings);
+
+    LlhttpParserContext ctx = {.req = req, .in_header_field = 1};
+
+    parser.data = &ctx;
+
+    memset(req, 0, sizeof(HttpRequest));  // zero fields
+
+    llhttp_errno_t err = llhttp_execute(&parser, buffer, buffer_len);
+
+    // Store last header if not already stored
+    if(ctx.current_field[0] && ctx.req->header_count < HTTP_MAX_HEADER_COUNT)
+    {
+        int i = ctx.req->header_count++;
+        // Copy header name
+        size_t name_len = strnlen(ctx.current_field, HTTP_MAX_HEADER_NAME_LEN - 1);
+        memcpy(ctx.req->header_names[i], ctx.current_field, name_len);
+        ctx.req->header_names[i][name_len] = '\0';
+
+        // Copy header value
+        size_t value_len = strnlen(ctx.current_value, HTTP_MAX_HEADER_VALUE_LEN - 1);
+        memcpy(ctx.req->header_values[i], ctx.current_value, value_len);
+        ctx.req->header_values[i][value_len] = '\0';
+    }
+
+    /* Determine if the client requested Connection: close */
+    determine_connection_policy(req, client_connection_policy);
+
+    if(err != HPE_OK)
+    {
+        log_error("llhttp parse error", llhttp_errno_name(err));
+        return -1;
+    }
+    else
+    {
+        /* log all the html headers */
+        log_info("METHOD: %s, PATH: %s", req->method, req->path);
+        // for(int i = 0; i < req->header_count; ++i)
+        // {
+        //     log_info("%s: %s\n", req->header_names[i], req->header_values[i]);
+        // }
+    }
+
+    return 0;
+}
+
+/**
+ * Builds a simple HTTP response (headers + binary body) into out_buffer.
+ *
+ * Returns: total bytes written (headers+body), or -1 on error.
+ */
+// int http_build_response(const HttpResponse* resp, const int* client_connection_policy,
+//                         char* out_buffer, size_t max_len)
+// {
+//     if(!resp || !out_buffer)
+//     {
+//         log_error("http_manager: build response: invalid input", "");
+//         return -1;
+//     }
+
+//     /* Choose Connection header */
+//     const char* conn_hdr =
+//         (*client_connection_policy == HTTP_CONNECTION_CLOSE ? "close" : "keep-alive");
+
+//     /* 1) Build the headers (no body here!) */
+//     int hdr_len = snprintf(out_buffer, max_len,
+//                            "HTTP/1.1 %d %s\r\n"
+//                            "Content-Type: %s\r\n"
+//                            "Content-Length: %zu\r\n"
+//                            "Connection: %s\r\n"
+//                            "\r\n",
+//                            resp->status_code, resp->status_text, resp->content_type,
+//                            resp->body_length, conn_hdr);
+
+//     if(hdr_len < 0 || (size_t)hdr_len >= max_len)
+//     {
+//         log_error("http_manager: build response: header too large", "");
+//         return -1;
+//     }
+
+//     /* 2) Check space for the body */
+//     if((size_t)hdr_len + resp->body_length > max_len)
+//     {
+//         log_error("http_manager: build response: response too large for buffer", "");
+//         return -1;
+//     }
+
+//     /* 3) Copy the raw bytes of the body immediately after the headers */
+//     if(resp->body && resp->body_length > 0)
+//     {
+//         memcpy(out_buffer + hdr_len, resp->body, resp->body_length);
+//     }
+
+//     /* Total bytes = headers + body */
+//     return hdr_len + (int)resp->body_length;
+// }
+
+/****************************************************************************
+ * PRIVATE FUNCTIONS DEINITIONS
+ ****************************************************************************
+ */
+
+// Called for URL
+static int on_url(llhttp_t* parser, const char* at, size_t length)
+{
+    LlhttpParserContext* ctx = (LlhttpParserContext*)parser->data;
+    snprintf(ctx->req->path, HTTP_MAX_PATH_LEN, "%.*s", (int)length, at);
+    return 0;
+}
+
+/**
+ * Called when header name is parsed
+ */
+static int on_header_field(llhttp_t* parser, const char* at, size_t length)
+{
+    LlhttpParserContext* ctx = (LlhttpParserContext*)parser->data;
+
+    // If were finishing a previous header, store it
+    if(!ctx->in_header_field && ctx->req->header_count < HTTP_MAX_HEADER_COUNT)
+    {
+        int i = ctx->req->header_count++;
+        strncpy(ctx->req->header_names[i], ctx->current_field, HTTP_MAX_HEADER_NAME_LEN);
+        strncpy(ctx->req->header_values[i], ctx->current_value, HTTP_MAX_HEADER_VALUE_LEN);
+        ctx->current_field[0] = 0;
+        ctx->current_value[0] = 0;
+    }
+
+    snprintf(ctx->current_field, HTTP_MAX_HEADER_NAME_LEN, "%.*s", (int)length, at);
+    ctx->in_header_field = 1;
+    return 0;
+}
+
+/**
+ * Called when header value is parsed
+ */
+static int on_header_value(llhttp_t* parser, const char* at, size_t length)
+{
+    LlhttpParserContext* ctx = (LlhttpParserContext*)parser->data;
+    snprintf(ctx->current_value, HTTP_MAX_HEADER_VALUE_LEN, "%.*s", (int)length, at);
+    ctx->in_header_field = 0;
+    return 0;
+}
+
+/**
+ * Called when method is detected
+ */
+static int on_method(llhttp_t* parser, const char* at, size_t length)
+{
+    LlhttpParserContext* ctx = (LlhttpParserContext*)parser->data;
+    snprintf(ctx->req->method, HTTP_MAX_METHOD_LEN, "%.*s", (int)length, at);
+    return 0;
+}
+
+/**
+ * Analyze headers in an HttpRequest to determine if the client wants to close the connection.
+ * Sets req->should_close accordingly.
+ */
+static void determine_connection_policy(HttpRequest* req, int* client_connection_policy)
+{
+    req->should_close = 0;  // Default for HTTP/1.1 is keep-alive
+    *client_connection_policy = HTTP_CONNECTION_KEEP_ALIVE;
+
+    for(int i = 0; i < req->header_count; ++i)
+    {
+        if(strcasecmp(req->header_names[i], "Connection") == 0 &&
+           strcasestr(req->header_values[i], "close"))
+        {
+            req->should_close = 1;
+            *client_connection_policy = HTTP_CONNECTION_CLOSE;
+            break;
+        }
+    }
+}
+
+
+
+===== src/browser/router.c =====
+/**
+ * @file router.c
+ * @brief HTTP request router implementation
+ *
+ * This module dispatches incoming HTTP GET requests to appropriate handlers:
+ *  - serving static files (HTML, CSS, images)
+ *  - the whoami API
+ *  - dynamic content page
+ * It also provides unified 404 and 405 responses via dedicated helper functions.
+ */
+
+#include "router.h"
+
+#include <stdio.h>  /* snprintf */
+#include <string.h> /* strcmp, strrchr, strlen */
+#include <unistd.h> /* access */
+
+#include "handlers.h"
+#include "logger.h"
+#include "static_page.h"
+
+/****************************************************************************
+ * @section Defines and Constants
+ ****************************************************************************/
+
+/** Root directory for all static assets */
+#define PATH_MAX 4096 /* # chars in a path name including nul */
+#define STATIC_ROOT "www"
+
+/** Default file paths */
+#define INDEX_PAGE STATIC_ROOT "/index.html"
+#define WHOAMI_PAGE STATIC_ROOT "/whoami.html"
+#define DYNAMIC_PAGE STATIC_ROOT "/dynamic.html"
+#define STYLE_PAGE STATIC_ROOT "/style.css"
+
+/** URI prefixes and routes */
+#define URI_HOME "/"
+#define URI_HOME_ALIAS "/home"
+#define URI_STYLE "/style.css"
+#define URI_WHOAMI "/whoami"
+#define URI_WHOAMI_API "/api/whoami"
+#define URI_DYNAMIC "/dynamic"
+#define URI_EXPENSES_PAGE "/expenses"
+#define URI_EXPENSES_MONTHS "/api/expenses/months"
+#define URI_IMAGES_PREFIX "/images/"
+
+/** Content types */
+#define CONTENT_HTML "text/html"
+#define CONTENT_CSS "text/css"
+#define BUILD_NOTES_DIR "www/build_notes/diagrams/"
+#define BUILD_NOTES_PAGE "www/build_notes/index.html"
+
+/** HTTP methods */
+#define HTTP_GET "GET"
+
+/****************************************************************************
+ * @section MIME type mapping
+ * Table-driven mapping of file extensions to MIME types.
+ ****************************************************************************/
+static const struct
+{
+    const char *extension;
+    const char *mime_type;
+} mime_map[] = {
+    {".html", "text/html"},
+    {".css", "text/css"},
+    {".js", "application/javascript"},
+    {".jpg", "image/jpeg"},
+    {".jpeg", "image/jpeg"},
+    {".png", "image/png"},
+    {".gif", "image/gif"},
+    {".svg", "image/svg+xml"},
+    {".json", "application/json"},  // for manifest
+    {".md", "text/markdown"},       // if ever want a real markdown mime
+    {".puml", "text/plain"}         // PlantUML source
+};
+
+/****************************************************************************
+ * @section Private Function Prototypes
+ ****************************************************************************/
+
+/** Guess MIME type by file extension */
+static const char *guess_mime_type(const char *path);
+
+/** Send a 404 Not Found response */
+static void send_404(HttpResponse *response);
+
+/** Send a 405 Method Not Allowed response */
+static void send_405(HttpResponse *response);
+
+static int has_suffix(const char *str, const char *suffix);
+
+/****************************************************************************
+ * @section Public Functions
+ ****************************************************************************/
+
+int router_handle_request(const HttpRequest *request, HttpResponse *response)
+{
+    if(!request || !response)
+    {
+        return -1;
+    }
+
+    /* Only GET is supported */
+    if(strcmp(request->method, HTTP_GET) != 0)
+    {
+        send_405(response);
+        return 0;
+    }
+
+    /* Route GET requests */
+    if(strcmp(request->path, URI_STYLE) == 0)
+    {
+        return static_page_serve_file(STYLE_PAGE, CONTENT_CSS, response);
+    }
+    if(strcmp(request->path, URI_HOME) == 0 || strcmp(request->path, URI_HOME_ALIAS) == 0)
+    {
+        return static_page_serve_file(INDEX_PAGE, CONTENT_HTML, response);
+    }
+    if(strcmp(request->path, URI_WHOAMI) == 0)
+    {
+        return static_page_serve_file(WHOAMI_PAGE, CONTENT_HTML, response);
+    }
+    if(strcmp(request->path, URI_WHOAMI_API) == 0)
+    {
+        return whoami_json_handler(request, response);
+    }
+    if(strcmp(request->path, URI_DYNAMIC) == 0)
+    {
+        return static_page_serve_file(DYNAMIC_PAGE, CONTENT_HTML, response);
+    }
+
+    /* ------------------------------------------------------------------
+     * Serve Static assets (under /images)
+     * ------------------------------------------------------------------ */
+    if(strncmp(request->path, URI_IMAGES_PREFIX, sizeof(URI_IMAGES_PREFIX) - 1) == 0)
+    {
+        char file_path[PATH_MAX];
+        snprintf(file_path, sizeof(file_path), "%s%s", STATIC_ROOT, request->path);
+
+        log_info("ROUTER: Trying to serve image from disk: %s", file_path);
+        /* TODO: Sanitize file_path to prevent path traversal */
+        if(access(file_path, R_OK) != 0)
+        {
+            log_info("ROUTER: Image not found or unreadable: %s", file_path);
+            send_404(response);
+            return 0;
+        }
+        log_info("ROUTER: static_page_serve_file returned %s", file_path);
+        return static_page_serve_file(file_path, guess_mime_type(file_path), response);
+    }
+
+    /* ------------------------------------------------------------------
+     * Serve Drive page
+     * ------------------------------------------------------------------ */
+    /* Drive UI page */
+    if(strncmp(request->path, "/drive", 6) == 0)
+    {
+        return static_page_serve_file("www/drive.html", "text/html", response);
+    }
+
+    /* Drive UI page: JSON API: /api/drive?path=/some/subdir */
+    if(strncmp(request->path, "/api/drive", 10) == 0)
+    {
+        return drive_json_handler(request, response);
+    }
+
+    /* ------------------------------------------------------------------
+     * Serve build_notes page
+     * ------------------------------------------------------------------ */
+    if(strncmp(request->path, "/build_notes", 12) == 0)
+    {
+        const char *rest = request->path + 12;  // points at either '\0' or "/…"
+        if(*rest == '\0' || (rest[0] == '/' && rest[1] == '\0'))
+        {
+            // exact /build_notes or /build_notes/
+            return static_page_serve_file(BUILD_NOTES_PAGE, CONTENT_HTML, response);
+        }
+        if(rest[0] == '/')
+        {
+            // anything under /build_notes/…
+            char file_path[PATH_MAX];
+            snprintf(file_path, sizeof file_path, "%s%s", STATIC_ROOT, request->path);
+            if(strstr(request->path, "..") || access(file_path, R_OK) != 0)
+            {
+                send_404(response);
+                return 0;
+            }
+            const char *mime = guess_mime_type(file_path);
+            if(strstr(file_path, ".json")) mime = "application/json";
+            return static_page_serve_file(file_path, mime, response);
+        }
+    }
+
+    /* ------------------------------------------------------------------
+     * Serve any file under /assets/ from disk
+     * ------------------------------------------------------------------ */
+    if(strncmp(request->path, "/assets/", 8) == 0)
+    {
+        char file_path[PATH_MAX];
+        snprintf(file_path, sizeof file_path, "%s%s", STATIC_ROOT, request->path);
+
+        /* Guard against “..” path‑traversal attempts */
+        if(strstr(file_path, ".."))
+        {
+            send_404(response);
+            return 0;
+        }
+
+        return static_page_serve_file(file_path, guess_mime_type(file_path), response);
+    }
+
+    /* ─────────────────────────────────────────────────────────────
+     * Expenses feature
+     * ───────────────────────────────────────────────────────────── */
+    /* “list months” API */
+    if(strcmp(request->path, "/api/expenses/months") == 0)
+    {
+        return expenses_months_handler(response);
+    }
+
+    /* Serve raw JSON files under /expenses/YYYY/MM.json */
+    if(strncmp(request->path, "/expenses/", 9) == 0 && has_suffix(request->path, ".json"))
+    {
+        /* build filesystem path: STATIC_ROOT + request->path */
+        char fullpath[PATH_MAX];
+        snprintf(fullpath, sizeof fullpath, STATIC_ROOT "%s", request->path);
+        return static_page_serve_file(fullpath, "application/json", response);
+    }
+
+    /* Serve the HTML page as before: */
+    if(strcmp(request->path, URI_EXPENSES_PAGE) == 0)
+    {
+        return static_page_serve_file(STATIC_ROOT "/expenses.html", CONTENT_HTML, response);
+    }
+
+    /* Fallback to 404 Not Found */
+    send_404(response);
+    return 0;
+}
+
+/****************************************************************************
+ * @section Private Functions Definitions
+ ****************************************************************************/
+
+static void send_404(HttpResponse *response)
+{
+    response->status_code = 404;
+    response->status_text = "Not Found";
+    response->content_type = CONTENT_HTML;
+    response->body = "<html><body><h1>404 Not Found</h1></body></html>";
+    response->body_length = strlen(response->body);
+}
+
+static void send_405(HttpResponse *response)
+{
+    response->status_code = 405;
+    response->status_text = "Method Not Allowed";
+    response->content_type = CONTENT_HTML;
+    response->body = "<html><body><h1>405 Method Not Allowed</h1></body></html>";
+    response->body_length = strlen(response->body);
+}
+
+static const char *guess_mime_type(const char *path)
+{
+    const char *ext = strrchr(path, '.');
+    if(!ext)
+    {
+        return "application/octet-stream";
+    }
+    for(size_t i = 0; i < sizeof(mime_map) / sizeof(mime_map[0]); ++i)
+    {
+        if(strcmp(ext, mime_map[i].extension) == 0)
+        {
+            return mime_map[i].mime_type;
+        }
+    }
+    return "application/octet-stream";
+}
+
+/**
+ * @brief  Check whether `str` ends with `suffix`.
+ * @param  str     The full string to test.
+ * @param  suffix  The ending substring to look for.
+ * @return         1 if `str` ends with `suffix`, 0 otherwise.
+ */
+static int has_suffix(const char *str, const char *suffix)
+{
+    if(!str || !suffix)
+    {
+        return 0;
+    }
+
+    size_t lenstr = strlen(str);
+    size_t lensuffix = strlen(suffix);
+
+    /* suffix longer than string? cannot match */
+    if(lensuffix > lenstr)
+    {
+        return 0;
+    }
+
+    /* compare tail of str with suffix */
+    return strcmp(str + (lenstr - lensuffix), suffix) == 0;
+}
+
+
+===== src/browser/static_page.c =====
+/**
+ * @file static_page.c
+ * @brief Reads static files from disk and populates HTTP responses.
+ *
+ * This module provides a single public function:
+ *   - static_page_serve_file: open a file, read its contents, and fill
+ *     in an HttpResponse with the appropriate headers and body.
+ *
+ * Detailed error logging is performed via logger.h on failures.
+ */
+
+#include "static_page.h"
+
+#include <errno.h>  /* errno */
+#include <stdio.h>  /* fopen, fseek, ftell, fread, fclose */
+#include <stdlib.h> /* malloc, free */
+#include <string.h> /* strerror */
+
+#include "logger.h"
+
+/****************************************************************************
+ * PUBLIC FUNCTIONS DEFINITIONS
+ ****************************************************************************
+ */
+
+int static_page_serve_file(const char* filepath, const char* content_type, HttpResponse* response)
+{
+    /* Validate arguments */
+    if(!filepath || !response)
+    {
+        log_error("static_page: invalid arguments (filepath or response is NULL)", "");
+        return -1;
+    }
+
+    /* Open file in binary mode to preserve raw bytes (esp. for images) */
+    FILE* file = fopen(filepath, "rb");
+    if(!file)
+    {
+        log_error("static_page: failed to open file", strerror(errno));
+        return -1;
+    }
+
+    /* Determine file size: seek to end, then tell */
+    if(fseek(file, 0, SEEK_END) != 0)
+    {
+        log_error("static_page: fseek to end failed", strerror(errno));
+        fclose(file);
+        return -1;
+    }
+
+    long file_size = ftell(file);
+    if(file_size < 0)
+    {
+        log_error("static_page: ftell failed", strerror(errno));
+        fclose(file);
+        return -1;
+    }
+
+    /* Reset file position to beginning */
+    if(fseek(file, 0, SEEK_SET) != 0)
+    {
+        log_error("static_page: fseek to start failed", strerror(errno));
+        fclose(file);
+        return -1;
+    }
+
+    /* Guard against empty files */
+    if(file_size == 0)
+    {
+        log_error("static_page: file is empty", filepath);
+        fclose(file);
+        return -1;
+    }
+
+    /* Allocate buffer for file contents */
+    char* buffer = (char*)malloc((size_t)file_size);
+    if(!buffer)
+    {
+        log_error("static_page: malloc failed", strerror(errno));
+        fclose(file);
+        return -1;
+    }
+
+    /* Read all bytes */
+    size_t total_read = fread(buffer, 1, (size_t)file_size, file);
+    if(total_read != (size_t)file_size)
+    {
+        log_error("static_page: fread read fewer bytes than expected", filepath);
+        free(buffer);
+        fclose(file);
+        return -1;
+    }
+
+    /* Close file descriptor now that data is in memory */
+    fclose(file);
+
+    /* Populate HttpResponse */
+    response->status_code = 200;
+    response->status_text = "OK";
+    response->content_type = content_type;
+    response->body = buffer;
+    response->body_length = (size_t)file_size;
+
+    return 0;
+}
+
+
+
