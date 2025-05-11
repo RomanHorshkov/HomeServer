@@ -20,7 +20,16 @@
 #include "server_settings.h" /* HTTP constants */
 #include "static_page.h"     /* static_page_serve_file */
 
-/* Private function prototypes */
+/****************************************************************************
+ * PRIVATE DEFINES
+ ****************************************************************************
+ */
+/* None */
+
+/****************************************************************************
+ * PRIVATE FUNCTIONS PROTOTYPES
+ ****************************************************************************
+ */
 
 /*
  * send_response:
@@ -46,6 +55,11 @@ static int send_response(int fd, const HttpResponse *resp, int client_connection
  *   Total bytes sent (=len) or -1 on unrecoverable error.
  */
 static ssize_t send_all(int fd, const void *buf, size_t len);
+
+/****************************************************************************
+ * PUBLIC FUNCTIONS DEFINITIONS
+ ****************************************************************************
+ */
 
 /*
  * Public: browser_manage_client_req
@@ -98,6 +112,11 @@ ssize_t browser_manage_client_req(int fd, const char *recv_buf, size_t n,
 
     return result;
 }
+
+/****************************************************************************
+ * PRIVATE FUNCTIONS DEFINITIONS
+ ****************************************************************************
+ */
 
 /*
  * send_response:

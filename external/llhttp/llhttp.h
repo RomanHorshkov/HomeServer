@@ -7,13 +7,13 @@
 #define LLHTTP_VERSION_PATCH 1
 
 #ifndef INCLUDE_LLHTTP_ITSELF_H_
-#define INCLUDE_LLHTTP_ITSELF_H_
-#ifdef __cplusplus
+#    define INCLUDE_LLHTTP_ITSELF_H_
+#    ifdef __cplusplus
 extern "C"
 {
-#endif
+#    endif
 
-#include <stdint.h>
+#    include <stdint.h>
 
     typedef struct llhttp__internal_s llhttp__internal_t;
     struct llhttp__internal_s
@@ -44,17 +44,17 @@ extern "C"
     int llhttp__internal_init(llhttp__internal_t* s);
     int llhttp__internal_execute(llhttp__internal_t* s, const char* p, const char* endp);
 
-#ifdef __cplusplus
+#    ifdef __cplusplus
 } /* extern "C" */
-#endif
+#    endif
 #endif /* INCLUDE_LLHTTP_ITSELF_H_ */
 
 #ifndef LLLLHTTP_C_HEADERS_
-#define LLLLHTTP_C_HEADERS_
-#ifdef __cplusplus
+#    define LLLLHTTP_C_HEADERS_
+#    ifdef __cplusplus
 extern "C"
 {
-#endif
+#    endif
 
     enum llhttp_errno
     {
@@ -299,269 +299,269 @@ extern "C"
     };
     typedef enum llhttp_status llhttp_status_t;
 
-#define HTTP_ERRNO_MAP(XX)                                                       \
-    XX(0, OK, OK)                                                                \
-    XX(1, INTERNAL, INTERNAL)                                                    \
-    XX(2, STRICT, STRICT)                                                        \
-    XX(25, CR_EXPECTED, CR_EXPECTED)                                             \
-    XX(3, LF_EXPECTED, LF_EXPECTED)                                              \
-    XX(4, UNEXPECTED_CONTENT_LENGTH, UNEXPECTED_CONTENT_LENGTH)                  \
-    XX(30, UNEXPECTED_SPACE, UNEXPECTED_SPACE)                                   \
-    XX(5, CLOSED_CONNECTION, CLOSED_CONNECTION)                                  \
-    XX(6, INVALID_METHOD, INVALID_METHOD)                                        \
-    XX(7, INVALID_URL, INVALID_URL)                                              \
-    XX(8, INVALID_CONSTANT, INVALID_CONSTANT)                                    \
-    XX(9, INVALID_VERSION, INVALID_VERSION)                                      \
-    XX(10, INVALID_HEADER_TOKEN, INVALID_HEADER_TOKEN)                           \
-    XX(11, INVALID_CONTENT_LENGTH, INVALID_CONTENT_LENGTH)                       \
-    XX(12, INVALID_CHUNK_SIZE, INVALID_CHUNK_SIZE)                               \
-    XX(13, INVALID_STATUS, INVALID_STATUS)                                       \
-    XX(14, INVALID_EOF_STATE, INVALID_EOF_STATE)                                 \
-    XX(15, INVALID_TRANSFER_ENCODING, INVALID_TRANSFER_ENCODING)                 \
-    XX(16, CB_MESSAGE_BEGIN, CB_MESSAGE_BEGIN)                                   \
-    XX(17, CB_HEADERS_COMPLETE, CB_HEADERS_COMPLETE)                             \
-    XX(18, CB_MESSAGE_COMPLETE, CB_MESSAGE_COMPLETE)                             \
-    XX(19, CB_CHUNK_HEADER, CB_CHUNK_HEADER)                                     \
-    XX(20, CB_CHUNK_COMPLETE, CB_CHUNK_COMPLETE)                                 \
-    XX(21, PAUSED, PAUSED)                                                       \
-    XX(22, PAUSED_UPGRADE, PAUSED_UPGRADE)                                       \
-    XX(23, PAUSED_H2_UPGRADE, PAUSED_H2_UPGRADE)                                 \
-    XX(24, USER, USER)                                                           \
-    XX(26, CB_URL_COMPLETE, CB_URL_COMPLETE)                                     \
-    XX(27, CB_STATUS_COMPLETE, CB_STATUS_COMPLETE)                               \
-    XX(32, CB_METHOD_COMPLETE, CB_METHOD_COMPLETE)                               \
-    XX(33, CB_VERSION_COMPLETE, CB_VERSION_COMPLETE)                             \
-    XX(28, CB_HEADER_FIELD_COMPLETE, CB_HEADER_FIELD_COMPLETE)                   \
-    XX(29, CB_HEADER_VALUE_COMPLETE, CB_HEADER_VALUE_COMPLETE)                   \
-    XX(34, CB_CHUNK_EXTENSION_NAME_COMPLETE, CB_CHUNK_EXTENSION_NAME_COMPLETE)   \
-    XX(35, CB_CHUNK_EXTENSION_VALUE_COMPLETE, CB_CHUNK_EXTENSION_VALUE_COMPLETE) \
-    XX(31, CB_RESET, CB_RESET)                                                   \
-    XX(38, CB_PROTOCOL_COMPLETE, CB_PROTOCOL_COMPLETE)
+#    define HTTP_ERRNO_MAP(XX)                                                       \
+        XX(0, OK, OK)                                                                \
+        XX(1, INTERNAL, INTERNAL)                                                    \
+        XX(2, STRICT, STRICT)                                                        \
+        XX(25, CR_EXPECTED, CR_EXPECTED)                                             \
+        XX(3, LF_EXPECTED, LF_EXPECTED)                                              \
+        XX(4, UNEXPECTED_CONTENT_LENGTH, UNEXPECTED_CONTENT_LENGTH)                  \
+        XX(30, UNEXPECTED_SPACE, UNEXPECTED_SPACE)                                   \
+        XX(5, CLOSED_CONNECTION, CLOSED_CONNECTION)                                  \
+        XX(6, INVALID_METHOD, INVALID_METHOD)                                        \
+        XX(7, INVALID_URL, INVALID_URL)                                              \
+        XX(8, INVALID_CONSTANT, INVALID_CONSTANT)                                    \
+        XX(9, INVALID_VERSION, INVALID_VERSION)                                      \
+        XX(10, INVALID_HEADER_TOKEN, INVALID_HEADER_TOKEN)                           \
+        XX(11, INVALID_CONTENT_LENGTH, INVALID_CONTENT_LENGTH)                       \
+        XX(12, INVALID_CHUNK_SIZE, INVALID_CHUNK_SIZE)                               \
+        XX(13, INVALID_STATUS, INVALID_STATUS)                                       \
+        XX(14, INVALID_EOF_STATE, INVALID_EOF_STATE)                                 \
+        XX(15, INVALID_TRANSFER_ENCODING, INVALID_TRANSFER_ENCODING)                 \
+        XX(16, CB_MESSAGE_BEGIN, CB_MESSAGE_BEGIN)                                   \
+        XX(17, CB_HEADERS_COMPLETE, CB_HEADERS_COMPLETE)                             \
+        XX(18, CB_MESSAGE_COMPLETE, CB_MESSAGE_COMPLETE)                             \
+        XX(19, CB_CHUNK_HEADER, CB_CHUNK_HEADER)                                     \
+        XX(20, CB_CHUNK_COMPLETE, CB_CHUNK_COMPLETE)                                 \
+        XX(21, PAUSED, PAUSED)                                                       \
+        XX(22, PAUSED_UPGRADE, PAUSED_UPGRADE)                                       \
+        XX(23, PAUSED_H2_UPGRADE, PAUSED_H2_UPGRADE)                                 \
+        XX(24, USER, USER)                                                           \
+        XX(26, CB_URL_COMPLETE, CB_URL_COMPLETE)                                     \
+        XX(27, CB_STATUS_COMPLETE, CB_STATUS_COMPLETE)                               \
+        XX(32, CB_METHOD_COMPLETE, CB_METHOD_COMPLETE)                               \
+        XX(33, CB_VERSION_COMPLETE, CB_VERSION_COMPLETE)                             \
+        XX(28, CB_HEADER_FIELD_COMPLETE, CB_HEADER_FIELD_COMPLETE)                   \
+        XX(29, CB_HEADER_VALUE_COMPLETE, CB_HEADER_VALUE_COMPLETE)                   \
+        XX(34, CB_CHUNK_EXTENSION_NAME_COMPLETE, CB_CHUNK_EXTENSION_NAME_COMPLETE)   \
+        XX(35, CB_CHUNK_EXTENSION_VALUE_COMPLETE, CB_CHUNK_EXTENSION_VALUE_COMPLETE) \
+        XX(31, CB_RESET, CB_RESET)                                                   \
+        XX(38, CB_PROTOCOL_COMPLETE, CB_PROTOCOL_COMPLETE)
 
-#define HTTP_METHOD_MAP(XX)          \
-    XX(0, DELETE, DELETE)            \
-    XX(1, GET, GET)                  \
-    XX(2, HEAD, HEAD)                \
-    XX(3, POST, POST)                \
-    XX(4, PUT, PUT)                  \
-    XX(5, CONNECT, CONNECT)          \
-    XX(6, OPTIONS, OPTIONS)          \
-    XX(7, TRACE, TRACE)              \
-    XX(8, COPY, COPY)                \
-    XX(9, LOCK, LOCK)                \
-    XX(10, MKCOL, MKCOL)             \
-    XX(11, MOVE, MOVE)               \
-    XX(12, PROPFIND, PROPFIND)       \
-    XX(13, PROPPATCH, PROPPATCH)     \
-    XX(14, SEARCH, SEARCH)           \
-    XX(15, UNLOCK, UNLOCK)           \
-    XX(16, BIND, BIND)               \
-    XX(17, REBIND, REBIND)           \
-    XX(18, UNBIND, UNBIND)           \
-    XX(19, ACL, ACL)                 \
-    XX(20, REPORT, REPORT)           \
-    XX(21, MKACTIVITY, MKACTIVITY)   \
-    XX(22, CHECKOUT, CHECKOUT)       \
-    XX(23, MERGE, MERGE)             \
-    XX(24, MSEARCH, M - SEARCH)      \
-    XX(25, NOTIFY, NOTIFY)           \
-    XX(26, SUBSCRIBE, SUBSCRIBE)     \
-    XX(27, UNSUBSCRIBE, UNSUBSCRIBE) \
-    XX(28, PATCH, PATCH)             \
-    XX(29, PURGE, PURGE)             \
-    XX(30, MKCALENDAR, MKCALENDAR)   \
-    XX(31, LINK, LINK)               \
-    XX(32, UNLINK, UNLINK)           \
-    XX(33, SOURCE, SOURCE)           \
-    XX(46, QUERY, QUERY)
+#    define HTTP_METHOD_MAP(XX)          \
+        XX(0, DELETE, DELETE)            \
+        XX(1, GET, GET)                  \
+        XX(2, HEAD, HEAD)                \
+        XX(3, POST, POST)                \
+        XX(4, PUT, PUT)                  \
+        XX(5, CONNECT, CONNECT)          \
+        XX(6, OPTIONS, OPTIONS)          \
+        XX(7, TRACE, TRACE)              \
+        XX(8, COPY, COPY)                \
+        XX(9, LOCK, LOCK)                \
+        XX(10, MKCOL, MKCOL)             \
+        XX(11, MOVE, MOVE)               \
+        XX(12, PROPFIND, PROPFIND)       \
+        XX(13, PROPPATCH, PROPPATCH)     \
+        XX(14, SEARCH, SEARCH)           \
+        XX(15, UNLOCK, UNLOCK)           \
+        XX(16, BIND, BIND)               \
+        XX(17, REBIND, REBIND)           \
+        XX(18, UNBIND, UNBIND)           \
+        XX(19, ACL, ACL)                 \
+        XX(20, REPORT, REPORT)           \
+        XX(21, MKACTIVITY, MKACTIVITY)   \
+        XX(22, CHECKOUT, CHECKOUT)       \
+        XX(23, MERGE, MERGE)             \
+        XX(24, MSEARCH, M - SEARCH)      \
+        XX(25, NOTIFY, NOTIFY)           \
+        XX(26, SUBSCRIBE, SUBSCRIBE)     \
+        XX(27, UNSUBSCRIBE, UNSUBSCRIBE) \
+        XX(28, PATCH, PATCH)             \
+        XX(29, PURGE, PURGE)             \
+        XX(30, MKCALENDAR, MKCALENDAR)   \
+        XX(31, LINK, LINK)               \
+        XX(32, UNLINK, UNLINK)           \
+        XX(33, SOURCE, SOURCE)           \
+        XX(46, QUERY, QUERY)
 
-#define RTSP_METHOD_MAP(XX)              \
-    XX(1, GET, GET)                      \
-    XX(3, POST, POST)                    \
-    XX(6, OPTIONS, OPTIONS)              \
-    XX(35, DESCRIBE, DESCRIBE)           \
-    XX(36, ANNOUNCE, ANNOUNCE)           \
-    XX(37, SETUP, SETUP)                 \
-    XX(38, PLAY, PLAY)                   \
-    XX(39, PAUSE, PAUSE)                 \
-    XX(40, TEARDOWN, TEARDOWN)           \
-    XX(41, GET_PARAMETER, GET_PARAMETER) \
-    XX(42, SET_PARAMETER, SET_PARAMETER) \
-    XX(43, REDIRECT, REDIRECT)           \
-    XX(44, RECORD, RECORD)               \
-    XX(45, FLUSH, FLUSH)
+#    define RTSP_METHOD_MAP(XX)              \
+        XX(1, GET, GET)                      \
+        XX(3, POST, POST)                    \
+        XX(6, OPTIONS, OPTIONS)              \
+        XX(35, DESCRIBE, DESCRIBE)           \
+        XX(36, ANNOUNCE, ANNOUNCE)           \
+        XX(37, SETUP, SETUP)                 \
+        XX(38, PLAY, PLAY)                   \
+        XX(39, PAUSE, PAUSE)                 \
+        XX(40, TEARDOWN, TEARDOWN)           \
+        XX(41, GET_PARAMETER, GET_PARAMETER) \
+        XX(42, SET_PARAMETER, SET_PARAMETER) \
+        XX(43, REDIRECT, REDIRECT)           \
+        XX(44, RECORD, RECORD)               \
+        XX(45, FLUSH, FLUSH)
 
-#define HTTP_ALL_METHOD_MAP(XX)          \
-    XX(0, DELETE, DELETE)                \
-    XX(1, GET, GET)                      \
-    XX(2, HEAD, HEAD)                    \
-    XX(3, POST, POST)                    \
-    XX(4, PUT, PUT)                      \
-    XX(5, CONNECT, CONNECT)              \
-    XX(6, OPTIONS, OPTIONS)              \
-    XX(7, TRACE, TRACE)                  \
-    XX(8, COPY, COPY)                    \
-    XX(9, LOCK, LOCK)                    \
-    XX(10, MKCOL, MKCOL)                 \
-    XX(11, MOVE, MOVE)                   \
-    XX(12, PROPFIND, PROPFIND)           \
-    XX(13, PROPPATCH, PROPPATCH)         \
-    XX(14, SEARCH, SEARCH)               \
-    XX(15, UNLOCK, UNLOCK)               \
-    XX(16, BIND, BIND)                   \
-    XX(17, REBIND, REBIND)               \
-    XX(18, UNBIND, UNBIND)               \
-    XX(19, ACL, ACL)                     \
-    XX(20, REPORT, REPORT)               \
-    XX(21, MKACTIVITY, MKACTIVITY)       \
-    XX(22, CHECKOUT, CHECKOUT)           \
-    XX(23, MERGE, MERGE)                 \
-    XX(24, MSEARCH, M - SEARCH)          \
-    XX(25, NOTIFY, NOTIFY)               \
-    XX(26, SUBSCRIBE, SUBSCRIBE)         \
-    XX(27, UNSUBSCRIBE, UNSUBSCRIBE)     \
-    XX(28, PATCH, PATCH)                 \
-    XX(29, PURGE, PURGE)                 \
-    XX(30, MKCALENDAR, MKCALENDAR)       \
-    XX(31, LINK, LINK)                   \
-    XX(32, UNLINK, UNLINK)               \
-    XX(33, SOURCE, SOURCE)               \
-    XX(34, PRI, PRI)                     \
-    XX(35, DESCRIBE, DESCRIBE)           \
-    XX(36, ANNOUNCE, ANNOUNCE)           \
-    XX(37, SETUP, SETUP)                 \
-    XX(38, PLAY, PLAY)                   \
-    XX(39, PAUSE, PAUSE)                 \
-    XX(40, TEARDOWN, TEARDOWN)           \
-    XX(41, GET_PARAMETER, GET_PARAMETER) \
-    XX(42, SET_PARAMETER, SET_PARAMETER) \
-    XX(43, REDIRECT, REDIRECT)           \
-    XX(44, RECORD, RECORD)               \
-    XX(45, FLUSH, FLUSH)                 \
-    XX(46, QUERY, QUERY)
+#    define HTTP_ALL_METHOD_MAP(XX)          \
+        XX(0, DELETE, DELETE)                \
+        XX(1, GET, GET)                      \
+        XX(2, HEAD, HEAD)                    \
+        XX(3, POST, POST)                    \
+        XX(4, PUT, PUT)                      \
+        XX(5, CONNECT, CONNECT)              \
+        XX(6, OPTIONS, OPTIONS)              \
+        XX(7, TRACE, TRACE)                  \
+        XX(8, COPY, COPY)                    \
+        XX(9, LOCK, LOCK)                    \
+        XX(10, MKCOL, MKCOL)                 \
+        XX(11, MOVE, MOVE)                   \
+        XX(12, PROPFIND, PROPFIND)           \
+        XX(13, PROPPATCH, PROPPATCH)         \
+        XX(14, SEARCH, SEARCH)               \
+        XX(15, UNLOCK, UNLOCK)               \
+        XX(16, BIND, BIND)                   \
+        XX(17, REBIND, REBIND)               \
+        XX(18, UNBIND, UNBIND)               \
+        XX(19, ACL, ACL)                     \
+        XX(20, REPORT, REPORT)               \
+        XX(21, MKACTIVITY, MKACTIVITY)       \
+        XX(22, CHECKOUT, CHECKOUT)           \
+        XX(23, MERGE, MERGE)                 \
+        XX(24, MSEARCH, M - SEARCH)          \
+        XX(25, NOTIFY, NOTIFY)               \
+        XX(26, SUBSCRIBE, SUBSCRIBE)         \
+        XX(27, UNSUBSCRIBE, UNSUBSCRIBE)     \
+        XX(28, PATCH, PATCH)                 \
+        XX(29, PURGE, PURGE)                 \
+        XX(30, MKCALENDAR, MKCALENDAR)       \
+        XX(31, LINK, LINK)                   \
+        XX(32, UNLINK, UNLINK)               \
+        XX(33, SOURCE, SOURCE)               \
+        XX(34, PRI, PRI)                     \
+        XX(35, DESCRIBE, DESCRIBE)           \
+        XX(36, ANNOUNCE, ANNOUNCE)           \
+        XX(37, SETUP, SETUP)                 \
+        XX(38, PLAY, PLAY)                   \
+        XX(39, PAUSE, PAUSE)                 \
+        XX(40, TEARDOWN, TEARDOWN)           \
+        XX(41, GET_PARAMETER, GET_PARAMETER) \
+        XX(42, SET_PARAMETER, SET_PARAMETER) \
+        XX(43, REDIRECT, REDIRECT)           \
+        XX(44, RECORD, RECORD)               \
+        XX(45, FLUSH, FLUSH)                 \
+        XX(46, QUERY, QUERY)
 
-#define HTTP_STATUS_MAP(XX)                                                                 \
-    XX(100, CONTINUE, CONTINUE)                                                             \
-    XX(101, SWITCHING_PROTOCOLS, SWITCHING_PROTOCOLS)                                       \
-    XX(102, PROCESSING, PROCESSING)                                                         \
-    XX(103, EARLY_HINTS, EARLY_HINTS)                                                       \
-    XX(110, RESPONSE_IS_STALE, RESPONSE_IS_STALE)                                           \
-    XX(111, REVALIDATION_FAILED, REVALIDATION_FAILED)                                       \
-    XX(112, DISCONNECTED_OPERATION, DISCONNECTED_OPERATION)                                 \
-    XX(113, HEURISTIC_EXPIRATION, HEURISTIC_EXPIRATION)                                     \
-    XX(199, MISCELLANEOUS_WARNING, MISCELLANEOUS_WARNING)                                   \
-    XX(200, OK, OK)                                                                         \
-    XX(201, CREATED, CREATED)                                                               \
-    XX(202, ACCEPTED, ACCEPTED)                                                             \
-    XX(203, NON_AUTHORITATIVE_INFORMATION, NON_AUTHORITATIVE_INFORMATION)                   \
-    XX(204, NO_CONTENT, NO_CONTENT)                                                         \
-    XX(205, RESET_CONTENT, RESET_CONTENT)                                                   \
-    XX(206, PARTIAL_CONTENT, PARTIAL_CONTENT)                                               \
-    XX(207, MULTI_STATUS, MULTI_STATUS)                                                     \
-    XX(208, ALREADY_REPORTED, ALREADY_REPORTED)                                             \
-    XX(214, TRANSFORMATION_APPLIED, TRANSFORMATION_APPLIED)                                 \
-    XX(226, IM_USED, IM_USED)                                                               \
-    XX(299, MISCELLANEOUS_PERSISTENT_WARNING, MISCELLANEOUS_PERSISTENT_WARNING)             \
-    XX(300, MULTIPLE_CHOICES, MULTIPLE_CHOICES)                                             \
-    XX(301, MOVED_PERMANENTLY, MOVED_PERMANENTLY)                                           \
-    XX(302, FOUND, FOUND)                                                                   \
-    XX(303, SEE_OTHER, SEE_OTHER)                                                           \
-    XX(304, NOT_MODIFIED, NOT_MODIFIED)                                                     \
-    XX(305, USE_PROXY, USE_PROXY)                                                           \
-    XX(306, SWITCH_PROXY, SWITCH_PROXY)                                                     \
-    XX(307, TEMPORARY_REDIRECT, TEMPORARY_REDIRECT)                                         \
-    XX(308, PERMANENT_REDIRECT, PERMANENT_REDIRECT)                                         \
-    XX(400, BAD_REQUEST, BAD_REQUEST)                                                       \
-    XX(401, UNAUTHORIZED, UNAUTHORIZED)                                                     \
-    XX(402, PAYMENT_REQUIRED, PAYMENT_REQUIRED)                                             \
-    XX(403, FORBIDDEN, FORBIDDEN)                                                           \
-    XX(404, NOT_FOUND, NOT_FOUND)                                                           \
-    XX(405, METHOD_NOT_ALLOWED, METHOD_NOT_ALLOWED)                                         \
-    XX(406, NOT_ACCEPTABLE, NOT_ACCEPTABLE)                                                 \
-    XX(407, PROXY_AUTHENTICATION_REQUIRED, PROXY_AUTHENTICATION_REQUIRED)                   \
-    XX(408, REQUEST_TIMEOUT, REQUEST_TIMEOUT)                                               \
-    XX(409, CONFLICT, CONFLICT)                                                             \
-    XX(410, GONE, GONE)                                                                     \
-    XX(411, LENGTH_REQUIRED, LENGTH_REQUIRED)                                               \
-    XX(412, PRECONDITION_FAILED, PRECONDITION_FAILED)                                       \
-    XX(413, PAYLOAD_TOO_LARGE, PAYLOAD_TOO_LARGE)                                           \
-    XX(414, URI_TOO_LONG, URI_TOO_LONG)                                                     \
-    XX(415, UNSUPPORTED_MEDIA_TYPE, UNSUPPORTED_MEDIA_TYPE)                                 \
-    XX(416, RANGE_NOT_SATISFIABLE, RANGE_NOT_SATISFIABLE)                                   \
-    XX(417, EXPECTATION_FAILED, EXPECTATION_FAILED)                                         \
-    XX(418, IM_A_TEAPOT, IM_A_TEAPOT)                                                       \
-    XX(419, PAGE_EXPIRED, PAGE_EXPIRED)                                                     \
-    XX(420, ENHANCE_YOUR_CALM, ENHANCE_YOUR_CALM)                                           \
-    XX(421, MISDIRECTED_REQUEST, MISDIRECTED_REQUEST)                                       \
-    XX(422, UNPROCESSABLE_ENTITY, UNPROCESSABLE_ENTITY)                                     \
-    XX(423, LOCKED, LOCKED)                                                                 \
-    XX(424, FAILED_DEPENDENCY, FAILED_DEPENDENCY)                                           \
-    XX(425, TOO_EARLY, TOO_EARLY)                                                           \
-    XX(426, UPGRADE_REQUIRED, UPGRADE_REQUIRED)                                             \
-    XX(428, PRECONDITION_REQUIRED, PRECONDITION_REQUIRED)                                   \
-    XX(429, TOO_MANY_REQUESTS, TOO_MANY_REQUESTS)                                           \
-    XX(430, REQUEST_HEADER_FIELDS_TOO_LARGE_UNOFFICIAL,                                     \
-       REQUEST_HEADER_FIELDS_TOO_LARGE_UNOFFICIAL)                                          \
-    XX(431, REQUEST_HEADER_FIELDS_TOO_LARGE, REQUEST_HEADER_FIELDS_TOO_LARGE)               \
-    XX(440, LOGIN_TIMEOUT, LOGIN_TIMEOUT)                                                   \
-    XX(444, NO_RESPONSE, NO_RESPONSE)                                                       \
-    XX(449, RETRY_WITH, RETRY_WITH)                                                         \
-    XX(450, BLOCKED_BY_PARENTAL_CONTROL, BLOCKED_BY_PARENTAL_CONTROL)                       \
-    XX(451, UNAVAILABLE_FOR_LEGAL_REASONS, UNAVAILABLE_FOR_LEGAL_REASONS)                   \
-    XX(460, CLIENT_CLOSED_LOAD_BALANCED_REQUEST, CLIENT_CLOSED_LOAD_BALANCED_REQUEST)       \
-    XX(463, INVALID_X_FORWARDED_FOR, INVALID_X_FORWARDED_FOR)                               \
-    XX(494, REQUEST_HEADER_TOO_LARGE, REQUEST_HEADER_TOO_LARGE)                             \
-    XX(495, SSL_CERTIFICATE_ERROR, SSL_CERTIFICATE_ERROR)                                   \
-    XX(496, SSL_CERTIFICATE_REQUIRED, SSL_CERTIFICATE_REQUIRED)                             \
-    XX(497, HTTP_REQUEST_SENT_TO_HTTPS_PORT, HTTP_REQUEST_SENT_TO_HTTPS_PORT)               \
-    XX(498, INVALID_TOKEN, INVALID_TOKEN)                                                   \
-    XX(499, CLIENT_CLOSED_REQUEST, CLIENT_CLOSED_REQUEST)                                   \
-    XX(500, INTERNAL_SERVER_ERROR, INTERNAL_SERVER_ERROR)                                   \
-    XX(501, NOT_IMPLEMENTED, NOT_IMPLEMENTED)                                               \
-    XX(502, BAD_GATEWAY, BAD_GATEWAY)                                                       \
-    XX(503, SERVICE_UNAVAILABLE, SERVICE_UNAVAILABLE)                                       \
-    XX(504, GATEWAY_TIMEOUT, GATEWAY_TIMEOUT)                                               \
-    XX(505, HTTP_VERSION_NOT_SUPPORTED, HTTP_VERSION_NOT_SUPPORTED)                         \
-    XX(506, VARIANT_ALSO_NEGOTIATES, VARIANT_ALSO_NEGOTIATES)                               \
-    XX(507, INSUFFICIENT_STORAGE, INSUFFICIENT_STORAGE)                                     \
-    XX(508, LOOP_DETECTED, LOOP_DETECTED)                                                   \
-    XX(509, BANDWIDTH_LIMIT_EXCEEDED, BANDWIDTH_LIMIT_EXCEEDED)                             \
-    XX(510, NOT_EXTENDED, NOT_EXTENDED)                                                     \
-    XX(511, NETWORK_AUTHENTICATION_REQUIRED, NETWORK_AUTHENTICATION_REQUIRED)               \
-    XX(520, WEB_SERVER_UNKNOWN_ERROR, WEB_SERVER_UNKNOWN_ERROR)                             \
-    XX(521, WEB_SERVER_IS_DOWN, WEB_SERVER_IS_DOWN)                                         \
-    XX(522, CONNECTION_TIMEOUT, CONNECTION_TIMEOUT)                                         \
-    XX(523, ORIGIN_IS_UNREACHABLE, ORIGIN_IS_UNREACHABLE)                                   \
-    XX(524, TIMEOUT_OCCURED, TIMEOUT_OCCURED)                                               \
-    XX(525, SSL_HANDSHAKE_FAILED, SSL_HANDSHAKE_FAILED)                                     \
-    XX(526, INVALID_SSL_CERTIFICATE, INVALID_SSL_CERTIFICATE)                               \
-    XX(527, RAILGUN_ERROR, RAILGUN_ERROR)                                                   \
-    XX(529, SITE_IS_OVERLOADED, SITE_IS_OVERLOADED)                                         \
-    XX(530, SITE_IS_FROZEN, SITE_IS_FROZEN)                                                 \
-    XX(561, IDENTITY_PROVIDER_AUTHENTICATION_ERROR, IDENTITY_PROVIDER_AUTHENTICATION_ERROR) \
-    XX(598, NETWORK_READ_TIMEOUT, NETWORK_READ_TIMEOUT)                                     \
-    XX(599, NETWORK_CONNECT_TIMEOUT, NETWORK_CONNECT_TIMEOUT)
+#    define HTTP_STATUS_MAP(XX)                                                                 \
+        XX(100, CONTINUE, CONTINUE)                                                             \
+        XX(101, SWITCHING_PROTOCOLS, SWITCHING_PROTOCOLS)                                       \
+        XX(102, PROCESSING, PROCESSING)                                                         \
+        XX(103, EARLY_HINTS, EARLY_HINTS)                                                       \
+        XX(110, RESPONSE_IS_STALE, RESPONSE_IS_STALE)                                           \
+        XX(111, REVALIDATION_FAILED, REVALIDATION_FAILED)                                       \
+        XX(112, DISCONNECTED_OPERATION, DISCONNECTED_OPERATION)                                 \
+        XX(113, HEURISTIC_EXPIRATION, HEURISTIC_EXPIRATION)                                     \
+        XX(199, MISCELLANEOUS_WARNING, MISCELLANEOUS_WARNING)                                   \
+        XX(200, OK, OK)                                                                         \
+        XX(201, CREATED, CREATED)                                                               \
+        XX(202, ACCEPTED, ACCEPTED)                                                             \
+        XX(203, NON_AUTHORITATIVE_INFORMATION, NON_AUTHORITATIVE_INFORMATION)                   \
+        XX(204, NO_CONTENT, NO_CONTENT)                                                         \
+        XX(205, RESET_CONTENT, RESET_CONTENT)                                                   \
+        XX(206, PARTIAL_CONTENT, PARTIAL_CONTENT)                                               \
+        XX(207, MULTI_STATUS, MULTI_STATUS)                                                     \
+        XX(208, ALREADY_REPORTED, ALREADY_REPORTED)                                             \
+        XX(214, TRANSFORMATION_APPLIED, TRANSFORMATION_APPLIED)                                 \
+        XX(226, IM_USED, IM_USED)                                                               \
+        XX(299, MISCELLANEOUS_PERSISTENT_WARNING, MISCELLANEOUS_PERSISTENT_WARNING)             \
+        XX(300, MULTIPLE_CHOICES, MULTIPLE_CHOICES)                                             \
+        XX(301, MOVED_PERMANENTLY, MOVED_PERMANENTLY)                                           \
+        XX(302, FOUND, FOUND)                                                                   \
+        XX(303, SEE_OTHER, SEE_OTHER)                                                           \
+        XX(304, NOT_MODIFIED, NOT_MODIFIED)                                                     \
+        XX(305, USE_PROXY, USE_PROXY)                                                           \
+        XX(306, SWITCH_PROXY, SWITCH_PROXY)                                                     \
+        XX(307, TEMPORARY_REDIRECT, TEMPORARY_REDIRECT)                                         \
+        XX(308, PERMANENT_REDIRECT, PERMANENT_REDIRECT)                                         \
+        XX(400, BAD_REQUEST, BAD_REQUEST)                                                       \
+        XX(401, UNAUTHORIZED, UNAUTHORIZED)                                                     \
+        XX(402, PAYMENT_REQUIRED, PAYMENT_REQUIRED)                                             \
+        XX(403, FORBIDDEN, FORBIDDEN)                                                           \
+        XX(404, NOT_FOUND, NOT_FOUND)                                                           \
+        XX(405, METHOD_NOT_ALLOWED, METHOD_NOT_ALLOWED)                                         \
+        XX(406, NOT_ACCEPTABLE, NOT_ACCEPTABLE)                                                 \
+        XX(407, PROXY_AUTHENTICATION_REQUIRED, PROXY_AUTHENTICATION_REQUIRED)                   \
+        XX(408, REQUEST_TIMEOUT, REQUEST_TIMEOUT)                                               \
+        XX(409, CONFLICT, CONFLICT)                                                             \
+        XX(410, GONE, GONE)                                                                     \
+        XX(411, LENGTH_REQUIRED, LENGTH_REQUIRED)                                               \
+        XX(412, PRECONDITION_FAILED, PRECONDITION_FAILED)                                       \
+        XX(413, PAYLOAD_TOO_LARGE, PAYLOAD_TOO_LARGE)                                           \
+        XX(414, URI_TOO_LONG, URI_TOO_LONG)                                                     \
+        XX(415, UNSUPPORTED_MEDIA_TYPE, UNSUPPORTED_MEDIA_TYPE)                                 \
+        XX(416, RANGE_NOT_SATISFIABLE, RANGE_NOT_SATISFIABLE)                                   \
+        XX(417, EXPECTATION_FAILED, EXPECTATION_FAILED)                                         \
+        XX(418, IM_A_TEAPOT, IM_A_TEAPOT)                                                       \
+        XX(419, PAGE_EXPIRED, PAGE_EXPIRED)                                                     \
+        XX(420, ENHANCE_YOUR_CALM, ENHANCE_YOUR_CALM)                                           \
+        XX(421, MISDIRECTED_REQUEST, MISDIRECTED_REQUEST)                                       \
+        XX(422, UNPROCESSABLE_ENTITY, UNPROCESSABLE_ENTITY)                                     \
+        XX(423, LOCKED, LOCKED)                                                                 \
+        XX(424, FAILED_DEPENDENCY, FAILED_DEPENDENCY)                                           \
+        XX(425, TOO_EARLY, TOO_EARLY)                                                           \
+        XX(426, UPGRADE_REQUIRED, UPGRADE_REQUIRED)                                             \
+        XX(428, PRECONDITION_REQUIRED, PRECONDITION_REQUIRED)                                   \
+        XX(429, TOO_MANY_REQUESTS, TOO_MANY_REQUESTS)                                           \
+        XX(430, REQUEST_HEADER_FIELDS_TOO_LARGE_UNOFFICIAL,                                     \
+           REQUEST_HEADER_FIELDS_TOO_LARGE_UNOFFICIAL)                                          \
+        XX(431, REQUEST_HEADER_FIELDS_TOO_LARGE, REQUEST_HEADER_FIELDS_TOO_LARGE)               \
+        XX(440, LOGIN_TIMEOUT, LOGIN_TIMEOUT)                                                   \
+        XX(444, NO_RESPONSE, NO_RESPONSE)                                                       \
+        XX(449, RETRY_WITH, RETRY_WITH)                                                         \
+        XX(450, BLOCKED_BY_PARENTAL_CONTROL, BLOCKED_BY_PARENTAL_CONTROL)                       \
+        XX(451, UNAVAILABLE_FOR_LEGAL_REASONS, UNAVAILABLE_FOR_LEGAL_REASONS)                   \
+        XX(460, CLIENT_CLOSED_LOAD_BALANCED_REQUEST, CLIENT_CLOSED_LOAD_BALANCED_REQUEST)       \
+        XX(463, INVALID_X_FORWARDED_FOR, INVALID_X_FORWARDED_FOR)                               \
+        XX(494, REQUEST_HEADER_TOO_LARGE, REQUEST_HEADER_TOO_LARGE)                             \
+        XX(495, SSL_CERTIFICATE_ERROR, SSL_CERTIFICATE_ERROR)                                   \
+        XX(496, SSL_CERTIFICATE_REQUIRED, SSL_CERTIFICATE_REQUIRED)                             \
+        XX(497, HTTP_REQUEST_SENT_TO_HTTPS_PORT, HTTP_REQUEST_SENT_TO_HTTPS_PORT)               \
+        XX(498, INVALID_TOKEN, INVALID_TOKEN)                                                   \
+        XX(499, CLIENT_CLOSED_REQUEST, CLIENT_CLOSED_REQUEST)                                   \
+        XX(500, INTERNAL_SERVER_ERROR, INTERNAL_SERVER_ERROR)                                   \
+        XX(501, NOT_IMPLEMENTED, NOT_IMPLEMENTED)                                               \
+        XX(502, BAD_GATEWAY, BAD_GATEWAY)                                                       \
+        XX(503, SERVICE_UNAVAILABLE, SERVICE_UNAVAILABLE)                                       \
+        XX(504, GATEWAY_TIMEOUT, GATEWAY_TIMEOUT)                                               \
+        XX(505, HTTP_VERSION_NOT_SUPPORTED, HTTP_VERSION_NOT_SUPPORTED)                         \
+        XX(506, VARIANT_ALSO_NEGOTIATES, VARIANT_ALSO_NEGOTIATES)                               \
+        XX(507, INSUFFICIENT_STORAGE, INSUFFICIENT_STORAGE)                                     \
+        XX(508, LOOP_DETECTED, LOOP_DETECTED)                                                   \
+        XX(509, BANDWIDTH_LIMIT_EXCEEDED, BANDWIDTH_LIMIT_EXCEEDED)                             \
+        XX(510, NOT_EXTENDED, NOT_EXTENDED)                                                     \
+        XX(511, NETWORK_AUTHENTICATION_REQUIRED, NETWORK_AUTHENTICATION_REQUIRED)               \
+        XX(520, WEB_SERVER_UNKNOWN_ERROR, WEB_SERVER_UNKNOWN_ERROR)                             \
+        XX(521, WEB_SERVER_IS_DOWN, WEB_SERVER_IS_DOWN)                                         \
+        XX(522, CONNECTION_TIMEOUT, CONNECTION_TIMEOUT)                                         \
+        XX(523, ORIGIN_IS_UNREACHABLE, ORIGIN_IS_UNREACHABLE)                                   \
+        XX(524, TIMEOUT_OCCURED, TIMEOUT_OCCURED)                                               \
+        XX(525, SSL_HANDSHAKE_FAILED, SSL_HANDSHAKE_FAILED)                                     \
+        XX(526, INVALID_SSL_CERTIFICATE, INVALID_SSL_CERTIFICATE)                               \
+        XX(527, RAILGUN_ERROR, RAILGUN_ERROR)                                                   \
+        XX(529, SITE_IS_OVERLOADED, SITE_IS_OVERLOADED)                                         \
+        XX(530, SITE_IS_FROZEN, SITE_IS_FROZEN)                                                 \
+        XX(561, IDENTITY_PROVIDER_AUTHENTICATION_ERROR, IDENTITY_PROVIDER_AUTHENTICATION_ERROR) \
+        XX(598, NETWORK_READ_TIMEOUT, NETWORK_READ_TIMEOUT)                                     \
+        XX(599, NETWORK_CONNECT_TIMEOUT, NETWORK_CONNECT_TIMEOUT)
 
-#ifdef __cplusplus
+#    ifdef __cplusplus
 } /* extern "C" */
-#endif
+#    endif
 #endif /* LLLLHTTP_C_HEADERS_ */
 
 #ifndef INCLUDE_LLHTTP_API_H_
-#define INCLUDE_LLHTTP_API_H_
-#ifdef __cplusplus
+#    define INCLUDE_LLHTTP_API_H_
+#    ifdef __cplusplus
 extern "C"
 {
-#endif
-#include <stddef.h>
+#    endif
+#    include <stddef.h>
 
-#if defined(__wasm__)
-#define LLHTTP_EXPORT __attribute__((visibility("default")))
-#elif defined(_WIN32)
-#define LLHTTP_EXPORT __declspec(dllexport)
-#else
-#define LLHTTP_EXPORT
-#endif
+#    if defined(__wasm__)
+#        define LLHTTP_EXPORT __attribute__((visibility("default")))
+#    elif defined(_WIN32)
+#        define LLHTTP_EXPORT __declspec(dllexport)
+#    else
+#        define LLHTTP_EXPORT
+#    endif
 
     typedef llhttp__internal_t llhttp_t;
     typedef struct llhttp_settings_s llhttp_settings_t;
@@ -901,9 +901,9 @@ extern "C"
     LLHTTP_EXPORT
     void llhttp_set_lenient_spaces_after_chunk_size(llhttp_t* parser, int enabled);
 
-#ifdef __cplusplus
+#    ifdef __cplusplus
 } /* extern "C" */
-#endif
+#    endif
 #endif /* INCLUDE_LLHTTP_API_H_ */
 
 #endif /* INCLUDE_LLHTTP_H_ */
