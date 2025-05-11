@@ -112,6 +112,23 @@ extern "C"
      */
     void client_manager_set_pid(client_manager_t *mgr, pid_t child, int file_descriptor);
 
+    /**
+     * @brief Handle a single connected client socket in the *child* process.
+     *
+     * The routine sets appropriate socket options, enters a blocking receive
+     * loop, delegates request processing to the *browser* layer, and finally
+     * closes the socket before returning.  It performs all logging necessary
+     * for diagnostics.
+     *
+     * **Usage contract**
+     *   * Must be invoked **only** in the forked child (never in the parent).
+     *   * Takes ownership of @p socket_fd for the duration of the call.
+     *   * Never throws; in the worst case it logs an error, closes the socket
+     *     and returns.
+     *
+     * @param socket_fd  Connected client descriptor obtained from
+     *                   @c accept(2).
+     */
     void client_manager_handle_socket(int socket_fd);
 
     /**
@@ -126,32 +143,8 @@ extern "C"
      */
     void client_manager_reap(client_manager_t *mgr, pid_t dead);
 
-    // /*──────────────────────────────────────────────────────────────────────────*/
-    // /*  Introspection                                                          */
-    // /*──────────────────────────────────────────────────────────────────────────*/
-    // /**
-    //  * @brief Get the current number of active clients.
-    //  *
-    //  * @param mgr  Client manager handle.
-    //  * @return     How many client slots are presently in use.
-    //  */
-    // size_t client_manager_count(const client_manager_t *mgr);
-
 #ifdef __cplusplus
 } /* extern "C" */
 #endif
 
 #endif /* SERVER_CLIENT_MANAGER_H */
-
-// int clients_init(clients_t **clients);
-
-// int clients_add_new_client(clients_t **clients, struct sockaddr_storage *client_addr,
-//                            socklen_t client_addr_len, int *client_fd);
-
-// void clients_handle_client(const int *client_fd);
-
-// void clients_erase_client(clients_t **clients, const pid_t *client_pid);
-
-// void clients_set_client_pid(clients_t **clients, pid_t *pid, int *client_fd);
-
-// void clients_shutdown(clients_t **clients);
