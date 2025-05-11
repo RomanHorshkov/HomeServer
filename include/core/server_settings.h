@@ -1,10 +1,16 @@
 #ifndef SERVER_SETTINGS_H
 #define SERVER_SETTINGS_H
 
+#ifdef __cplusplus
+extern "C"
+{
+#endif
+
 /****************************************************************************
  * PUBLIC DEFINES
  ****************************************************************************
  */
+/* None */
 
 /****************************************************************************
  * SERVER PROPERTIES
@@ -40,10 +46,10 @@
 /* Client short timeout [ms] */
 #define CLIENT_MAX_TIMEOUT_MS 0
 
-/****************************************************************************
- * HTTP PROPERTIES
- ****************************************************************************
- */
+    /****************************************************************************
+     * HTTP PROPERTIES
+     ****************************************************************************
+     */
 
 #define HTTP_RECEIVE_BUFFER_LEN 4096
 #define HTTP_SEND_BUFFER_LEN 8192
@@ -53,5 +59,9 @@
 #define HTTP_MAX_HEADER_COUNT 20
 #define HTTP_MAX_HEADER_NAME_LEN 64
 #define HTTP_MAX_HEADER_VALUE_LEN 256
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif /* SERVER_SETTINGS_H */
