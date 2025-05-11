@@ -1,135 +1,55 @@
-#define _POSIX_C_SOURCE 200112L
 #define _GNU_SOURCE
 
+/****************************************************************************
+ * PRIVATE INCLUDES
+ ****************************************************************************
+ */
 #include "client.h"
 
-#include <netdb.h>  // socklen_t, NI_MAXHOST, NI_MAXSERV
-
-#include "browser.h"
-// #include "server_settings.h"
-#include <errno.h>  // errno, EADDRINUSE, etc.
-
-#include "logger.h"
-// #include <unistd.h>                 // ssize_t
+#include <errno.h>       // errno, EADDRINUSE, etc.
+#include <netdb.h>       // socklen_t, NI_MAXHOST, NI_MAXSERV
 #include <stdio.h>       // snprintf(), etc
 #include <stdlib.h>      // malloc(), calloc() etc
 #include <string.h>      // memset(), strcpy(), strlen(), etc.
 #include <sys/socket.h>  // socklen_t, socket(), bind(), setsockopt(), etc.
 #include <sys/time.h>    // struct timeval
 
+#include "browser.h"
+#include "logger.h"
+
 /****************************************************************************
  * PRIVATE DEFINES
  ****************************************************************************
  */
+/* None */
 
 /****************************************************************************
  * PRIVATE STRUCTURED VARIABLES
  ****************************************************************************
  */
-
-/* Server's clients structures */
-
-typedef struct
-{
-    int client_fd;             // file descriptor
-    int pid;                   // process id
-    char host[NI_MAXHOST];     // host name
-    char service[NI_MAXSERV];  // service name
-} client_info;
-
-struct clients_pot
-{
-    client_info clients[MAX_CLIENTS];  // all clients
-    int active_clients_no;             // active clients count
-};
+/* None */
 
 /****************************************************************************
  * PRIVATE FUNCTIONS DECLARATIONS
  ****************************************************************************
  */
 
-static int save_client(clients_t **clients, struct sockaddr *client_addr, socklen_t client_addr_len,
-                       int *client_fd);
+static int set_client_socket_initial_options(int socket_fd);
 
-static int set_client_socket_options(int *socket_fd);
-
-static int upgrade_client_socket_options(int *socket_fd);
-
-static void close_all_clients(clients_t **clients);
+static int upgrade_client_socket_options(int socket_fd);
 
 /****************************************************************************
  * PUBLIC FUNCTIONS DEFINITIONS
  ****************************************************************************
  */
 
-int clients_init(clients_t **clients)
+void client_handle(const int client_fd)
 {
-    /* result value */
-    int res = -1;
-
-    if(clients != NULL)
-    {
-        /* Allocate space for clients */
-        *clients = malloc(sizeof(clients_t));
-
-        if(*clients != NULL)
-        {
-            /* Set everything to 0 */
-            memset(*clients, 0, sizeof(clients_t));
-            /* set return to 0 */
-            res = 0;
-        }
-    }
-
-    return res;
-}
-
-int clients_add_new_client(clients_t **clients, struct sockaddr_storage *client_addr,
-                           socklen_t client_addr_len, int *client_fd)
-{
-    /* return value */
-    int res = -1;
-
-    if((*clients)->active_clients_no >= MAX_CLIENTS)
-    {
-        /* Max no of clients reached, politely decline connection */
-        log_error("Clients: max client No limit reached ", strerror(errno));
-        close(*client_fd);
-        *client_fd = -1;
-    }
-
-    /* set client socket options */
-    else if(set_client_socket_options(client_fd) == -1)
-    {
-        log_error("Clients: set client socket options failed: %s", strerror(errno));
-        close(*client_fd);
-        *client_fd = -1;
-    }
-
-    /* Save client into clients array */
-    else if(save_client(clients, (struct sockaddr *)client_addr, client_addr_len, client_fd) == -1)
-    {
-        log_error("Clients: save client failed: %s", strerror(errno));
-        close(*client_fd);
-        *client_fd = -1;
-    }
-
-    /* All went good */
-    else
-    {
-        res = 0;
-    }
-
-    return res;
-}
-
-void clients_handle_client(const int *client_fd)
-{
-    /* set a local file descriptor */
-    int fd = *client_fd;
-
     /* set a connections counter */
     int received_first_time = 0;
+
+    /* Set beginning socket options */
+    set_client_socket_initial_options(client_fd);
 
     /* receive buffer */
     char recv_buff[HTTP_RECEIVE_BUFFER_LEN];
@@ -140,12 +60,13 @@ void clients_handle_client(const int *client_fd)
     int client_connection_policy = -1;
 
     /* recv is BLOCKING here */
-    while((n = recv(fd, recv_buff, sizeof(recv_buff), 0)) > 0)
+    while((n = recv(client_fd, recv_buff, sizeof(recv_buff), 0)) > 0)
     {
-        log_info("Client [pid %d fd %d]: received, parsing ->", getpid(), fd);
+        log_info("Client [pid %d fd %d]: received, parsing ->", getpid(), client_fd);
 
         /* serve the request; if any and respond */
-        if(browser_manage_client_req(fd, recv_buff, (size_t)n, &client_connection_policy) <= 0)
+        if(browser_manage_client_req(client_fd, recv_buff, (size_t)n, &client_connection_policy) <=
+           0)
         {
             log_error("Client: browser failed to manage request", strerror(errno));
         }
@@ -154,92 +75,32 @@ void clients_handle_client(const int *client_fd)
         else if(client_connection_policy == HTTP_CONNECTION_CLOSE)
         {
             /* exit and close the client */
-            log_info("Client [pid %d fd %d]: closes connection", getpid(), fd);
+            log_info("Client: [pid %d fd %d]: closes connection", getpid(), client_fd);
             break;
         }
 
         /* Upgrade after first msg received the client's socket options */
-        else if(!received_first_time && upgrade_client_socket_options(&fd) == 0)
+        else if(!received_first_time && upgrade_client_socket_options(client_fd) == 0)
         {
             received_first_time = 1;
-            log_info("Upgraded timeout for fd=%d to %ds\n", fd, CLIENT_MAX_TIMEOUT_S_L);
+            log_info("Client: upgraded timeout for fd=%d to %ds\n", client_fd,
+                     CLIENT_MAX_TIMEOUT_S_L);
         }
     }
 
     if(n == 0)
     {
-        log_info("Client fd=%d closed connection.\n", fd);
+        log_info("Client: fd=%d closed connection.\n", client_fd);
     }
     else if(errno != EAGAIN && errno != EWOULDBLOCK)
     {
-        log_error("recv: %s", strerror(errno));
+        log_error("Client: recv: %s", strerror(errno));
     }
 
     /* Close client */
-    close(fd);
+    close(client_fd);
 
     log_info("Client handeled; Connection closed.");
-}
-
-void clients_erase_client(clients_t **clients, const pid_t *client_pid)
-{
-    for(int i = 0; i < MAX_CLIENTS; i++)
-    {
-        if((*clients)->clients[i].pid == *client_pid)
-        {
-            log_info("Clients: client reaped: PID %d (fd=%d)", (*clients)->clients[i].pid,
-                     (*clients)->clients[i].client_fd);
-
-            if((*clients)->clients[i].client_fd != -1)
-            {
-                /* if the socket is active close the
-                client and set file descriptor to -1 */
-                close((*clients)->clients[i].client_fd);
-            }
-
-            /* update client's internal values */
-            memset(&(*clients)->clients[i], 0, sizeof((*clients)->clients[i]));
-            (*clients)->clients[i].client_fd = -1;
-            (*clients)->clients[i].pid = 0;  // not necessary but for clarity
-
-            /* decrease client's number */
-            (*clients)->active_clients_no--;
-
-            log_info("Clients: remaining clients: %d", (*clients)->active_clients_no);
-            break;  // no need to look further
-        }
-        else
-        {
-            /* try next client */
-            continue;
-        }
-    }
-}
-
-void clients_set_client_pid(clients_t **clients, pid_t *pid, int *client_fd)
-{
-    /* loop through all clients */
-    for(int i = 0; i < MAX_CLIENTS; i++)
-    {
-        /* if a corresponding found */
-        if((*clients)->clients[i].client_fd == *client_fd)
-        {
-            /* set client's pid */
-            (*clients)->clients[i].pid = *pid;
-
-            log_info("Clients: client started: PID %d; fd %d; host %s; service %s ", *pid,
-                     *client_fd, (*clients)->clients[i].host, (*clients)->clients[i].service);
-
-            break;
-        }
-    }
-}
-
-void clients_shutdown(clients_t **clients)
-{
-    close_all_clients(clients);
-    free(*clients);
-    log_info("Clients: -- shutdown -- ");
 }
 
 /****************************************************************************
@@ -247,67 +108,7 @@ void clients_shutdown(clients_t **clients)
  ****************************************************************************
  */
 
-static int save_client(clients_t **clients, struct sockaddr *client_addr, socklen_t client_addr_len,
-                       int *client_fd)
-{
-    /* return value */
-    int res = -1;
-
-    /* host client's info */
-    char host[NI_MAXHOST];
-
-    /* service client's info */
-    char service[NI_MAXSERV];
-
-    int gni = getnameinfo(client_addr, client_addr_len, host, sizeof(host), service,
-                          sizeof(service), NI_NUMERICHOST | NI_NUMERICSERV);
-
-    if(gni != 0)
-    {
-        /* Could not resolve client info, fallback to unknown client */
-        snprintf(host, sizeof(host), "unknown");
-        snprintf(service, sizeof(service), "unknown");
-
-        log_info("Clients: client (fd=%d) accepted, but getnameinfo failed: %s", *client_fd,
-                 gai_strerror(gni));
-    }
-
-    /* save the client */
-    /* space is already allocated in clients_init */
-    /* loop through all clients and find empty space */
-    /* TO DO: all this is to be upgraded absolutely. */
-    for(int i = 0; i < MAX_CLIENTS; i++)
-    {
-        if((*clients)->clients[i].client_fd <= 0)
-        {
-            /* if the i-th client slot is available (free) */
-            (*clients)->clients[i].client_fd = *client_fd;
-            memcpy((*clients)->clients[i].host, host, NI_MAXHOST);
-            memcpy((*clients)->clients[i].service, service, NI_MAXSERV);
-
-            /* increment active clients amount */
-            (*clients)->active_clients_no++;
-
-            /* set return value to success */
-            res = 0;
-
-            log_info("Clients: client accepted from %s:%s (fd=%d)", host, service, *client_fd);
-            log_info("Clients: active clients %d", (*clients)->active_clients_no);
-
-            /* stop after one client saved */
-            break;
-        }
-        else
-        {
-            /* check next available slot */
-            continue;
-        }
-    }
-
-    return res;
-}
-
-static int set_client_socket_options(int *socket_fd)
+static int set_client_socket_initial_options(int socket_fd)
 {
     /* return value */
     int res = -1;
@@ -315,10 +116,10 @@ static int set_client_socket_options(int *socket_fd)
     /* Timeout */
     struct timeval timeout = {CLIENT_MAX_TIMEOUT_S, CLIENT_MAX_TIMEOUT_MS};
 
-    if(setsockopt(*socket_fd, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout)) < 0)
+    if(setsockopt(socket_fd, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout)) < 0)
     {
         /* log error if set sock opt fails and return -1 */
-        log_error("Clients: set_client_socket_options timeout: %s\n", strerror(errno));
+        log_error("Clients: set_client_socket_initial_options timeout: %s\n", strerror(errno));
     }
     else
     {
@@ -328,7 +129,7 @@ static int set_client_socket_options(int *socket_fd)
     return res;
 }
 
-static int upgrade_client_socket_options(int *socket_fd)
+static int upgrade_client_socket_options(int socket_fd)
 {
     /* return value */
     int res = -1;
@@ -336,7 +137,7 @@ static int upgrade_client_socket_options(int *socket_fd)
     /* Timeout */
     struct timeval timeout = {CLIENT_MAX_TIMEOUT_S_L, CLIENT_MAX_TIMEOUT_MS};
 
-    if(setsockopt(*socket_fd, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout)) < 0)
+    if(setsockopt(socket_fd, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout)) < 0)
     {
         log_error("Clients: upgrade_client_socket_options timeout: %s\n", strerror(errno));
     }
@@ -345,36 +146,4 @@ static int upgrade_client_socket_options(int *socket_fd)
         res = 0;
     }
     return res;
-}
-
-static void close_all_clients(clients_t **clients)
-{
-    /* set active clients amount to 0 */
-    (*clients)->active_clients_no = 0;
-
-    /* loop through all clients */
-    for(int i = 0; i < MAX_CLIENTS; i++)
-    {
-        if((*clients)->clients[i].client_fd > 0)
-        {
-            /* close the client */
-            close((*clients)->clients[i].client_fd);
-
-            /* leave the internal values for main process
-            clients handling. Close is needed to close the
-            connection but from this process never delete
-            data about the client's socket fd */
-
-            // /* update client's internal values */
-            // (*clients)->clients[i].client_fd = 0;
-            // (*clients)->clients[i].pid = -1;
-            // memcpy((*clients)->clients[i].host,    NULL, NI_MAXHOST);
-            // memcpy((*clients)->clients[i].service, NULL, NI_MAXSERV);
-        }
-        else
-        {
-            /* client not active */
-            continue;
-        }
-    }
 }
