@@ -102,37 +102,36 @@ int listener_init(Listener_t **listener_ptr, const char *port)
 }
 
 int listener_check_incoming_clients(Listener_t **listener_ptr, struct sockaddr_storage *client_addr,
-                                    int *client_fd)
+                                    socklen_t *client_addr_len, int *client_fd)
 {
-    /* TO DO:
-    try to loop through just active_listeners
-    but be sure they're always at the beginning */
-
     /* result value */
     int res = -1;
+
+    /* save the original client's socket length */
+    /* in case of more loops this size has to be restored! */
+    // socklen_t original_client_addr_len = *client_addr_len;
 
     /* temporary client_fd */
     int client_fd_tmp;
 
-    /* input length */
-    socklen_t addr_len = sizeof(*client_addr);
-
     /* Loop through all the listeners */
     for(int i = 0; i < MAX_LISTENERS; i++)
     {
-        /* Check if listener on */
+        /* Check if listener is active */
         if((*listener_ptr)->listeners_fds[i] <= 0)
         {
             /* the listener is not active */
             continue;
         }
 
-        /* Accept incoming client request if any */
-        client_fd_tmp =
-            accept((*listener_ptr)->listeners_fds[i], (struct sockaddr *)client_addr, &addr_len);
-
-        /* accept is set to not blocking:
+        /* Accept incoming client request if any
+        accept is set to not blocking:
         will return errno EAGAIN or EWOULDBLOCK if no incoming connections */
+        /* Even if the input client address size is 128 bytes (sockaddr_storage size),
+        the accept function will write inside the real size of the accepted client,
+        16 for ipv4 or 28 for ipv6 clients. */
+        client_fd_tmp = accept((*listener_ptr)->listeners_fds[i], (struct sockaddr *)client_addr,
+                               client_addr_len);
 
         /* if a valid client_fd was obtained */
         if(client_fd_tmp != -1)
@@ -157,6 +156,8 @@ int listener_check_incoming_clients(Listener_t **listener_ptr, struct sockaddr_s
             else
             {
                 /* No pending client connections, continue */
+                /* Kernel leaves the variables passed to accept
+                as they were passed, without modifications */
             }
         }
     }

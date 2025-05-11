@@ -1,192 +1,172 @@
-# Socket Fundamentals in a POSIX C Server
-> *Everything you wanted to know about file‑descriptors that speak TCP, packed in one place.*
----
+# Deep‑Dive on POSIX Sockets
 
-## Socket Fundamentals – What They Are and Why They Matter
-A socket is a fundamental building block for network communication in POSIX systems, serving as the bridge between your application and the underlying network stack. It’s a file descriptor that you can read from and write to, just like a regular file, but with the critical difference that it handles the bidirectional flow of data over a network.
+*A distilled field‑manual for writing robust server code in C.*
 
-### Why Sockets Exist
-At its core, a socket abstracts the complexity of network protocols, providing a simple API for sending and receiving data. Without sockets, every network application would need to manually craft packets, handle checksums, manage retransmissions, and negotiate handshakes – a daunting task that would make modern networking nearly impossible to scale.
-
-### Types of Sockets
-Sockets come in various flavors, each designed for different communication scenarios:
-Stream Sockets (TCP) – Reliable, connection-oriented communication (e.g., web servers, SSH).
-Datagram Sockets (UDP) – Connectionless, unreliable, but fast (e.g., DNS, VoIP).
-Raw Sockets – Direct access to the network layer, used for protocols like ICMP (ping).
-
-### How They Work
-Sockets operate within the Transport Layer (Layer 4) of the OSI model, providing the mechanisms for end-to-end communication. They rely on IP addresses (Layer 3) to locate devices and ports to distinguish services on those devices.
-
-### A typical server socket lifecycle:
-Creation (socket) – Reserving a file descriptor for network I/O.
-Binding (bind) – Associating the socket with a specific IP and port.
-Listening (listen) – Transitioning to a passive state, ready to accept connections.
-Accepting (accept) – Handshaking with clients and creating a new socket for each incoming connection.
-Reading / Writing – Exchanging data through the new connection.
-Closing (close / shutdown) – Releasing resources and gracefully terminating the connection.
-
-### Why Use Sockets in C?
-Using sockets directly in C gives you unparalleled control over the performance, scalability, and behavior of your network code. You’re not limited by the overhead of higher-level frameworks, making it possible to squeeze out every last bit of efficiency for latency-critical applications.
-
-## Quick cheat‑sheet
-
-| Stage        | Call                                | Typical purpose                         | Notes                                                  |
-| ------------ | ----------------------------------- | --------------------------------------- | ------------------------------------------------------ |
-| **Create**   | `int fd = socket(af, type, proto);` | Allocate a file descriptor.             | No packets on the wire yet.                            |
-| **Tune**     | `setsockopt(fd, SOL_SOCKET, …)`     | Reuse, non‑blocking, linger, etc.       | Must happen before `bind` for some options.            |
-| **Name**     | `bind(fd, sockaddr*, len);`         | Associate a local (IP, port) tuple.     | Wildcard `0.0.0.0` / `::` means *all* local addresses. |
-| **Listen**   | `listen(fd, backlog);`              | Turn the passive endpoint into a queue. | Still no network traffic.                              |
-| **Accept**   | `int cfd = accept(fd, sa*, len*);`  | Grab one queued connection.             | Now the three‑way handshake has already completed.     |
-| **I/O**      | `read` / `write`                    | Exchange bytes.                         | May block unless `O_NONBLOCK`.                         |
-| **Good‑bye** | `shutdown` / `close`                | Half‑close or fully close.              | `SO_LINGER` decides FIN vs RST.                        |
-
-The calls above are pure kernel conversations; the NIC stays idle until **Accept** or later.
+> **Scope** – this guide is **only** about the socket layer.  No HTTP, no business logic, no TLS.  Just file‑descriptors that talk IP.
 
 ---
 
-## 2  Address families
+## 1  What *is* a socket?
 
-| Macro      | Meaning              | Wire‑format struct    |
-| ---------- | -------------------- | --------------------- |
-| `AF_INET`  | IPv4                 | `struct sockaddr_in`  |
-| `AF_INET6` | IPv6                 | `struct sockaddr_in6` |
-| `AF_UNIX`  | Local domain sockets | `struct sockaddr_un`  |
+A socket is a kernel object referenced by a file‑descriptor.  You `read()` and `write()` it like any other FD, but the bytes you push travel across a transport protocol (TCP, UDP, …) instead of a disk.
 
-`getaddrinfo` lets you stay generic by passing `AF_UNSPEC`; it returns a linked list of `addrinfo` items, one per viable protocol/transport combo.
+* **Local endpoint** ⇒ *(IP, port, protocol)*
+* **Remote endpoint** ⇒ *(IP, port, protocol)*
 
----
-
-## 3  Dual‑stack: serving IPv4 *and* IPv6
-
-### 3.1  The two classic approaches
-
-| Approach                  | What you do                                                           | Pros                                     | Cons                                                                                                        |
-| ------------------------- | --------------------------------------------------------------------- | ---------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
-| **Two sockets**           | Call `getaddrinfo`, create one fd per `AF_INET` *and* per `AF_INET6`. | Predictable behaviour, explicit control. | Twice the listeners, twice the epoll cost.                                                                  |
-| **One dual‑stack socket** | Create an IPv6 fd, *leave* `IPV6_V6ONLY` **disabled** (0).            | Only one fd in epoll.                    | Some Linux dists ship with `net.ipv6.bindv6only=1`, breaking dual‑stack unless you clear the flag yourself. |
-
-Your code picks the first path: it iterates the `addrinfo` list and runs `socket/bind/listen` for each entry. When the current item is IPv6 it explicitly flips `IPV6_V6ONLY` to **on** (`1`). That means each fd is *single‑stack* by design, avoiding surprises.
-
-> **Tip –** If you ever want the single dual‑stack listener, just skip the `setsockopt(fd, IPPROTO_IPV6, IPV6_V6ONLY, …)` call.
-
-### 3.2  IPv4‑mapped IPv6 addresses
-
-With `IPV6_V6ONLY = 0`, an IPv4 peer `203.0.113.10:5000` appears as `::ffff:203.0.113.10 port 5000`. Use `INET6_ADDRSTRLEN` buffer size when printing.
+The kernel owns sequence numbers, retransmissions, congestion control; you own when to block, when to close, and which options to flip.
 
 ---
 
-## 4  Key structs at a glance
+## 2  Server‑side lifecycle
+
+| Stage      | Syscall                      | What really happens                                                             | When NIC traffic starts |
+| ---------- | ---------------------------- | ------------------------------------------------------------------------------- | ----------------------- |
+| **Create** | `socket(af,type,proto)`      | Kernel allocates an unbound inode.                                              | None                    |
+| **Tune**   | `setsockopt()` / `fcntl()`   | Flags such as `SO_REUSEADDR`, `O_NONBLOCK`, `IPV6_V6ONLY`.                      | None                    |
+| **Bind**   | `bind(fd, sockaddr*, len)`   | Associate a local IP/port; reserves the tuple.                                  | None                    |
+| **Listen** | `listen(fd, backlog)`        | Turn the FD into a passive queue.                                               | None                    |
+| **Accept** | `accept(fd, sa*, len*)`      | Three‑way handshake is *already* completed; kernel returns a new FD per client. | **Now**                 |
+| **I/O**    | `read` / `write` / `sendmsg` | Exchange data.                                                                  | Continues               |
+| **Close**  | `shutdown` / `close`         | FIN or RST depending on `SO_LINGER`.                                            | Final packets           |
+
+`accept()` duplicates work: it **both** pulls the first pending connection *and* fills in the peer address, so you can log or apply ACLs.
+
+---
+
+## 3  Address families & structs
+
+| Family | Macro      | Struct on the wire    | Bytes     |
+| ------ | ---------- | --------------------- | --------- |
+| IPv4   | `AF_INET`  | `struct sockaddr_in`  | 16        |
+| IPv6   | `AF_INET6` | `struct sockaddr_in6` | 28        |
+| UNIX   | `AF_UNIX`  | `struct sockaddr_un`  | up to 110 |
+
+### 3.1  Generic buckets
+
+`struct sockaddr` is the *common header* (2 bytes `sa_family`, 14 bytes data).  Too small for IPv6.
+`struct sockaddr_storage` is **big enough for any family** and properly aligned – always safe as a stack variable.
+
+### 3.2  The cast rule
+
+You may freely cast between specific ↑ structs and the generic ↓ type **as long as you pass the correct byte length** alongside it.
 
 ```c
-struct sockaddr_in {
-    sa_family_t    sin_family;   // AF_INET
-    in_port_t      sin_port;     // network‑byte‑order
-    struct in_addr sin_addr;     // 32‑bit address
-    char           sin_zero[8];  // padding (unused)
-};
-
-struct sockaddr_in6 {
-    sa_family_t     sin6_family;   // AF_INET6
-    in_port_t       sin6_port;     // network‑byte‑order
-    uint32_t        sin6_flowinfo; // usually 0
-    struct in6_addr sin6_addr;     // 128‑bit address
-    uint32_t        sin6_scope_id; // link‑local scope
-};
+struct sockaddr_storage ss;
+socklen_t len = sizeof ss;
+int cfd = accept(lsn_fd, (struct sockaddr *)&ss, &len);
 ```
 
-For a generic bucket, cast both of the above to `struct sockaddr` or, even safer, use `struct sockaddr_storage` which is guaranteed to be big enough for any family.
+After the call:
+
+* `ss.ss_family` says which flavour you got.
+* `len` holds 16 for IPv4, 28 for IPv6 – propagate it to `getnameinfo()`.
 
 ---
 
-## 5  Essential socket options
+## 4  Dual‑stack strategies
 
-| Option         | Proto / Level  | Why you care                                                    | Code snippet                                                                |
-| -------------- | -------------- | --------------------------------------------------------------- | --------------------------------------------------------------------------- |
-| `SO_REUSEADDR` | `SOL_SOCKET`   | Restart the server quickly after a crash.                       | `int yes = 1; setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &yes, sizeof yes);`  |
-| `SO_REUSEPORT` | `SOL_SOCKET`   | Multiple accept loops on the same port (perfect for multicore). | Linux 3.9+ only.                                                            |
-| `SO_LINGER`    | `SOL_SOCKET`   | Decide between graceful FIN vs immediate RST at close.          | See `struct linger`.                                                        |
-| `IPV6_V6ONLY`  | `IPPROTO_IPV6` | Toggle dual‑stack.                                              | `int one = 1; setsockopt(fd, IPPROTO_IPV6, IPV6_V6ONLY, &one, sizeof one);` |
-| `TCP_NODELAY`  | `IPPROTO_TCP`  | Disable Nagle, send small frames instantly.                     | Latency‑critical workloads.                                                 |
-| `O_NONBLOCK`   | `fcntl` flag   | Never block in accept/read/write.                               | Combine with `epoll`/`poll`.                                                |
-| `FD_CLOEXEC`   | `fcntl` flag   | Don’t leak sockets into `execve()`.                             | `fcntl(fd, F_SETFD, FD_CLOEXEC);`                                           |
+| Strategy                | How                                              | Pros                            | Cons                                                                                   |
+| ----------------------- | ------------------------------------------------ | ------------------------------- | -------------------------------------------------------------------------------------- |
+| **2 sockets**           | One `AF_INET`, one `AF_INET6 + IPV6_V6ONLY=1`    | Clear separation, no surprises. | Slightly more FDs; epoll list ×2.                                                      |
+| **1 dual‑stack socket** | Make only an IPv6 socket, leave `IPV6_V6ONLY=0`. | Single FD.                      | Breaks on distros with `net.ipv6.bindv6only=1`. IPv4 peers appear as `::ffff:a.b.c.d`. |
+
+Your code path #1 (two sockets) is robust and portable.
 
 ---
 
-## 6  Non‑blocking accept loop
+## 5  Passing pointers & sizes correctly
+
+### 5.1  `accept()` pattern
 
 ```c
-for (int i = 0; i < listener_count; ++i) {
-    int cfd = accept4(listeners[i], NULL, NULL, SOCK_NONBLOCK | SOCK_CLOEXEC);
+struct sockaddr_storage addr;
+for (;;) {
+    socklen_t len = sizeof addr;          /* reset every loop */
+    int cfd = accept4(lsn_fd,
+                      (struct sockaddr *)&addr,
+                      &len,
+                      SOCK_NONBLOCK | SOCK_CLOEXEC);
     if (cfd == -1) {
-        if (errno == EAGAIN || errno == EWOULDBLOCK) {
-            continue; // nothing queued right now
-        }
-        perror("accept");
+        if (errno == EAGAIN)  break;      /* no pending */
+        perror("accept");                /* real error */
         continue;
     }
-    // hand cfd to your worker pool / epoll instance
+    handle_client(cfd, &addr, len);
 }
 ```
 
-Using `accept4` lets you set `O_NONBLOCK` and `FD_CLOEXEC` in one go, avoiding a race.
+* **Always** pass the *pointer* to `len`; kernel writes back real size on success, leaves it untouched on error.
+* Re‑initialise `len` before each call; otherwise it still contains the previous client’s size.
 
----
-
-## 7  When does the NIC matter?
-
-All the housekeeping (`socket`, `bind`, `listen`) lives inside the kernel. No Ethernet frame leaves the machine until **after**:
-
-1. The peer sends a SYN.
-2. The kernel completes the handshake.
-3. Your process performs `accept` and starts I/O.
-
-That’s why the sequence diagram places *NIC / LAN* only below the **Accept** message.
-
----
-
-## 8  Sample full listener (IPv4 + IPv6, one per family)
+### 5.2  `getnameinfo()`
 
 ```c
-static int start_listeners(const char *port, int fds[], size_t *out_n) {
-    struct addrinfo hints = {0}, *ai, *it;
-    hints.ai_family   = AF_UNSPEC;
-    hints.ai_socktype = SOCK_STREAM;
-    hints.ai_flags    = AI_PASSIVE;
-
-    if (getaddrinfo(NULL, port, &hints, &ai) != 0)
-        return -1;
-
-    size_t n = 0;
-    for (it = ai; it && n < MAX_LSN; it = it->ai_next) {
-        int fd = socket(it->ai_family, it->ai_socktype, it->ai_protocol);
-        if (fd == -1) continue;
-
-        int yes = 1;
-        setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &yes, sizeof yes);
-        setsockopt(fd, SOL_SOCKET, SO_LINGER, &(struct linger){1,0}, sizeof(struct linger));
-        fcntl(fd, F_SETFL, fcntl(fd, F_GETFL) | O_NONBLOCK);
-
-        if (bind(fd, it->ai_addr, it->ai_addrlen) == -1) { close(fd); continue; }
-        if (listen(fd, 128) == -1) { close(fd); continue; }
-
-        fds[n++] = fd;
-    }
-    freeaddrinfo(ai);
-    *out_n = n;
-    return n ? 0 : -1;
-}
+char host[NI_MAXHOST], serv[NI_MAXSERV];
+getnameinfo((struct sockaddr *)&addr, len,
+            host, sizeof host,
+            serv, sizeof serv,
+            NI_NUMERICHOST | NI_NUMERICSERV);
 ```
 
----
-
-## 9  Further reading
-
-* \[man 7 socket]
-* \[man 2 bind]
-* \[RFC 3493 – Basic Socket Interface Extensions for IPv6]
-* Stevens & Fenner – *UNIX Network Programming, v1* (Sockets)
-* Love – *Linux System Programming*, ch. 16
+Use the same `len` returned by `accept()` so IPv6 is not truncated.
 
 ---
 
-> *Last updated : 10 May 2025*
+## 6  Essential socket‑level options
+
+| Option         | Level          | Typical value              | Effect                                                                       |
+| -------------- | -------------- | -------------------------- | ---------------------------------------------------------------------------- |
+| `SO_REUSEADDR` | `SOL_SOCKET`   | `int yes = 1`              | Rebind after crash without 2‑minute TIME‑WAIT wait.                          |
+| `SO_REUSEPORT` | `SOL_SOCKET`   | `yes`                      | Multiple processes can bind the same (IP,port); kernel round‑robins accepts. |
+| `SO_LINGER`    | `SOL_SOCKET`   | `{.l_onoff=1,.l_linger=0}` | Force RST on close – handy for listeners.                                    |
+| `IPV6_V6ONLY`  | `IPPROTO_IPV6` | `int one=1` (or 0)         | Toggle dual‑stack vs IPv6‑only.                                              |
+| `TCP_NODELAY`  | `IPPROTO_TCP`  | `one`                      | Disable Nagle; send tiny frames immediately.                                 |
+| `O_NONBLOCK`   | `fcntl` flag   | n/a                        | Make accept/read/write return `EAGAIN` instead of hanging.                   |
+| `FD_CLOEXEC`   | `fcntl` flag   | n/a                        | Do not leak sockets across `execve`.                                         |
+
+---
+
+## 7  Non‑blocking accept loops & epoll hints
+
+* Use `accept4()` with `SOCK_NONBLOCK | SOCK_CLOEXEC` to avoid a race window.
+* Never spin on `accept()` in a tight loop – integrate the listener FDs into `epoll_wait()`.
+* Beware the “thundering herd”: with many worker processes, either set `SO_REUSEPORT` **or** designate one accept‑thread and share clients via a queue.
+
+---
+
+## 8  Printing addresses (IPv4 & IPv6)
+
+```c
+char buf[INET6_ADDRSTRLEN];
+void *addr_ptr;
+if (sa->sa_family == AF_INET) {
+    addr_ptr = &((struct sockaddr_in *)sa)->sin_addr;
+} else {
+    addr_ptr = &((struct sockaddr_in6 *)sa)->sin6_addr;
+}
+inet_ntop(sa->sa_family, addr_ptr, buf, sizeof buf);
+```
+
+IPv6 buffer constant (`INET6_ADDRSTRLEN`) is big enough for IPv4 too – use it by default.
+
+---
+
+## 9  Checklist before shipping
+
+* [x] `setsockopt(fd, SOL_SOCKET, SO_REUSEADDR)` before **bind**.
+* [x] Open with `FD_CLOEXEC` (or use `accept4`).
+* [x] Decide dual‑stack strategy and set/clear `IPV6_V6ONLY` accordingly.
+* [x] Handle `EINTR`, `EAGAIN`, `ECONNRESET` on accept/read/write.
+* [x] Propagate real `socklen_t` sizes, never hard‑code `sizeof(struct sockaddr)` for IPv6.
+* [x] Log peer addresses with `getnameinfo()+NI_NUMERICHOST`, not `inet_ntoa()`.
+* [x] Sanity‑check your backlog (`/proc/sys/net/core/somaxconn`).
+
+---
+
+### Useful references
+
+* **man 7 socket** – the grand overview.
+* **RFC 3493** – Basic socket interface extensions for IPv6.
+* W. Richard Stevens – *UNIX Network Programming Vol 1*.
+
+*Last updated 11 May 2025*

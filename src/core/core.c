@@ -157,16 +157,22 @@ static int accept_client(void)
     /* return value */
     int client_fd = -1;
 
-    /* helper structures */
+    /* client socket storage structure */
     struct sockaddr_storage client_addr;
 
-    if(listener_check_incoming_clients(&listener, &client_addr, &client_fd) == -1)
+    /* client socket storage structure length */
+    socklen_t client_addr_len = sizeof(client_addr);
+
+    /* Pass the variables by reference because the client_add_len for example, written by accept()
+    in the listener, is setting the length of the client address, which is important later
+    for managing the client itself. */
+    if(listener_check_incoming_clients(&listener, &client_addr, &client_addr_len, &client_fd) == -1)
     {
         // do nothing, no incoming clients
     }
 
     /* save and manage new client */
-    else if(clients_add_new_client(&clients, &client_addr, &client_fd) == -1)
+    else if(clients_add_new_client(&clients, &client_addr, client_addr_len, &client_fd) == -1)
     {
         // do nothing
     }
