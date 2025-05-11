@@ -1,0 +1,77 @@
+@startuml
+'=====================================================================
+'title Client‑connection life‑cycle – accept → fork → handle → reap
+'=====================================================================
+
+' Participants --------------------------------------------------------
+actor        User                    #white
+participant  "Kernel\n(syscalls)"   as Kernel  #lightgrey
+participant  "Parent P\n"           as Parent  #lightblue
+participant  "Listener"             #palegreen
+participant  "ClientManager"        as CM      #plum
+participant  "Child process"        as Child   #thistle
+participant  "Socket"               as Socket  #orange
+participant  "Browser"              as Browser  #khaki
+
+User -> Parent  : TCP SYN / incoming connection (not handled yet)
+Parent -> Listener : listener_check_incoming_clients()
+Listener -> Kernel : accept(2)
+Kernel  --> Listener : new client fd, peer sockaddr
+Listener --> Parent  : client_fd, addr
+
+== Register socket ==
+Parent -> CM : client_manager_add(addr, len, fd)
+CM --> Parent : ok / fd stored (pid = 0)
+
+== Fork per‑client ==
+Parent -> Kernel : fork()
+Kernel --> Parent : child_pid > 0   (parent branch)
+Kernel --> Child  : 0               (child branch)
+
+opt CHILD  (pid == 0)
+    Child -> Listener : listener_close()
+    note over Listener
+        listeners unused in child
+    end note
+    Child -> Socket  : handle_socket(fd)
+    Socket -> Kernel : set SO_RCVTIMEO etc.
+
+    loop HTTP request / response cycle
+        Socket -> Kernel : recv(fd)
+        Kernel  --> Socket : bytes read
+        Socket -> Browser : manage_req()
+        Browser -> Browser : parse
+        Browser -> Browser : route
+        Browser -> Browser : prepare response
+        Browser -> Kernel  : send(fd, headers+body)
+    end
+
+    Socket -> Kernel : close(fd)
+    Socket --> Child : return
+    Child  -> Kernel : _exit(0)
+end opt
+
+opt PARENT (pid > 0)
+    Parent -> CM : client_manager_set_pid(child_pid, fd)
+end opt
+
+== Idle ==
+Parent -> Parent : (continues accept loop\nmay fork more children)
+
+== Reap zombies ==
+loop every iteration
+    Parent -> Kernel : waitpid(-1, NULL, WNOHANG)
+    Kernel --> Parent : dead_pid or 0
+    alt dead_pid > 0
+        Parent -> CM : client_manager_reap(dead_pid)
+        CM -> Kernel : close(fd)  ' ensures socket closed if child didn't
+    end alt
+end loop
+
+note over Parent,Child
+    Parent and each Child run in *parallel* after the fork.
+    They share no writable memory (copy‑on‑write); communication is via
+    the inherited socket fd and the kernel.
+end note
+
+@enduml
