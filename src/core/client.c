@@ -48,7 +48,8 @@ struct clients_pot
  ****************************************************************************
  */
 
-static int save_client(clients_t **clients, struct sockaddr *client_addr, int *client_fd);
+static int save_client(clients_t **clients, struct sockaddr *client_addr, socklen_t client_addr_len,
+                       int *client_fd);
 
 static int set_client_socket_options(int *socket_fd);
 
@@ -84,10 +85,10 @@ int clients_init(clients_t **clients)
 }
 
 int clients_add_new_client(clients_t **clients, struct sockaddr_storage *client_addr,
-                           int *client_fd)
+                           socklen_t client_addr_len, int *client_fd)
 {
     /* return value */
-    int res = 0;
+    int res = -1;
 
     if((*clients)->active_clients_no >= MAX_CLIENTS)
     {
@@ -95,7 +96,6 @@ int clients_add_new_client(clients_t **clients, struct sockaddr_storage *client_
         log_error("Clients: max client No limit reached ", strerror(errno));
         close(*client_fd);
         *client_fd = -1;
-        res = -1;
     }
 
     /* set client socket options */
@@ -104,16 +104,20 @@ int clients_add_new_client(clients_t **clients, struct sockaddr_storage *client_
         log_error("Clients: set client socket options failed: %s", strerror(errno));
         close(*client_fd);
         *client_fd = -1;
-        res = -1;
     }
 
     /* Save client into clients array */
-    else if(save_client(clients, (struct sockaddr *)client_addr, client_fd) == -1)
+    else if(save_client(clients, (struct sockaddr *)client_addr, client_addr_len, client_fd) == -1)
     {
         log_error("Clients: save client failed: %s", strerror(errno));
         close(*client_fd);
         *client_fd = -1;
-        res = -1;
+    }
+
+    /* All went good */
+    else
+    {
+        res = 0;
     }
 
     return res;
@@ -243,13 +247,11 @@ void clients_shutdown(clients_t **clients)
  ****************************************************************************
  */
 
-static int save_client(clients_t **clients, struct sockaddr *client_addr, int *client_fd)
+static int save_client(clients_t **clients, struct sockaddr *client_addr, socklen_t client_addr_len,
+                       int *client_fd)
 {
     /* return value */
     int res = -1;
-
-    /* input length */
-    socklen_t addr_len = sizeof(*client_addr);
 
     /* host client's info */
     char host[NI_MAXHOST];
@@ -257,9 +259,8 @@ static int save_client(clients_t **clients, struct sockaddr *client_addr, int *c
     /* service client's info */
     char service[NI_MAXSERV];
 
-    /* get all client's info */
-    int gni = getnameinfo(client_addr, addr_len, host, sizeof(host), service, sizeof(service),
-                          NI_NUMERICHOST | NI_NUMERICSERV);
+    int gni = getnameinfo(client_addr, client_addr_len, host, sizeof(host), service,
+                          sizeof(service), NI_NUMERICHOST | NI_NUMERICSERV);
 
     if(gni != 0)
     {
@@ -267,13 +268,14 @@ static int save_client(clients_t **clients, struct sockaddr *client_addr, int *c
         snprintf(host, sizeof(host), "unknown");
         snprintf(service, sizeof(service), "unknown");
 
-        log_info("Client (fd=%d) accepted, but getnameinfo failed: %s", *client_fd,
+        log_info("Clients: client (fd=%d) accepted, but getnameinfo failed: %s", *client_fd,
                  gai_strerror(gni));
     }
 
     /* save the client */
     /* space is already allocated in clients_init */
     /* loop through all clients and find empty space */
+    /* TO DO: all this is to be upgraded absolutely. */
     for(int i = 0; i < MAX_CLIENTS; i++)
     {
         if((*clients)->clients[i].client_fd <= 0)
@@ -316,7 +318,7 @@ static int set_client_socket_options(int *socket_fd)
     if(setsockopt(*socket_fd, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout)) < 0)
     {
         /* log error if set sock opt fails and return -1 */
-        log_error("setsockopt timeout: %s\n", strerror(errno));
+        log_error("Clients: set_client_socket_options timeout: %s\n", strerror(errno));
     }
     else
     {
@@ -336,7 +338,7 @@ static int upgrade_client_socket_options(int *socket_fd)
 
     if(setsockopt(*socket_fd, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout)) < 0)
     {
-        log_error("setsockopt timeout: %s\n", strerror(errno));
+        log_error("Clients: upgrade_client_socket_options timeout: %s\n", strerror(errno));
     }
     else
     {

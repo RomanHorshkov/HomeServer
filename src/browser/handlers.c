@@ -266,18 +266,17 @@ int expenses_months_handler(HttpResponse *resp)
         {
             /* look for “MM.json” */
             char *ext = strrchr(me->d_name, '.');
-            if (!ext || strcmp(ext, ".json") != 0) continue;
+            if(!ext || strcmp(ext, ".json") != 0) continue;
             /* make sure the name is exactly 2 chars + “.json” */
-            if ((ext - me->d_name) != 2) continue;
+            if((ext - me->d_name) != 2) continue;
             /* check the two-digit month */
-            if (!isdigit((unsigned char)me->d_name[0]) ||
-                !isdigit((unsigned char)me->d_name[1])) continue;
+            if(!isdigit((unsigned char)me->d_name[0]) || !isdigit((unsigned char)me->d_name[1]))
+                continue;
 
             /* build “YYYY-MM” */
             char m[8];                                     /* room for "YYYY-MM\0" */
-            snprintf(m, sizeof m, "%.4s-%.2s",
-                     ye->d_name,                            /* year (e.g. "2025") */
-                     me->d_name);                           /* month (e.g. "07") */
+            snprintf(m, sizeof m, "%.4s-%.2s", ye->d_name, /* year (e.g. "2025") */
+                     me->d_name);                          /* month (e.g. "07") */
             months[count++] = strdup(m);
         }
         closedir(d_mon);

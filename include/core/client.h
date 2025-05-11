@@ -1,6 +1,8 @@
 #ifndef SERVER_CLIENT_H
 #define SERVER_CLIENT_H
 
+#include <sys/socket.h>  // socklen_t
+
 /****************************************************************************
  * PUBLIC STRUCTURED VARIABLES DECLARATIONS
  ****************************************************************************
@@ -17,7 +19,7 @@ typedef struct clients_pot clients_t;
 int clients_init(clients_t **clients);
 
 int clients_add_new_client(clients_t **clients, struct sockaddr_storage *client_addr,
-                           int *client_fd);
+                           socklen_t client_addr_len, int *client_fd);
 
 void clients_handle_client(const int *client_fd);
 
