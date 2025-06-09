@@ -91,8 +91,10 @@ You should see the styled **index.html** page with **header.html** included, plu
 │   │   ├── http_manager.h
 │   │   ├── router.h
 │   │   └── static_page.h
+│   ├── clients/
+│   │   ├── client.h
+│   │   └── client_manager.h
 │   └── core/
-│       ├── client.h
 │       ├── core.h
 │       ├── listener.h
 │       ├── logger.h
@@ -105,8 +107,10 @@ You should see the styled **index.html** page with **header.html** included, plu
 │   │   ├── http_manager.c
 │   │   ├── router.c
 │   │   └── static_page.c
+│   ├── clients/
+│   │   ├── client.c         # client manages all sockets for a client.
+│   │   └── client_manager.c  # manages all clients (processes).
 │   └── core/
-│       ├── client.c
 │       ├── core.c
 │       ├── listener.c
 │       ├── logger.c
@@ -440,17 +444,25 @@ Although out‑of‑scope for localhost demos, real deployment must run behind T
 * Write unit tests that fuzz‑feed headers and URLs through `http_parse_request()` under AddressSanitizer and UndefinedBehaviourSanitizer.
 
 
-
 ## Future work
 
 * Chunked‑encoding & streamed responses
 * MIME‑type auto‑detection beyond simple table
 * Extended router: POST, PUT, DELETE, HTTP pipelining
 * Optional TLS via a minimal OpenSSL wrapper
-* Thread‑pool + `epoll`/`kqueue` for higher concurrency
+* WORK IN PROGRESS: Thread‑pool + `epoll`/`kqueue` for higher concurrency
 * CLI flags (port, backlog, www dir)
 * In‑band metrics (`/api/metrics`) for Prometheus
 * Hot‑reload configuration with `inotify`
 * Fuzz tests with libFuzzer
 
 Pull requests & ideas welcome — **happy coding!**
+
+
+
+## WORK IN PROGRESS:
+# TO DO
+Implement threads; idea:
+each client is a process, but each process handles all the sockets of the same client threaded.
+
+Clean properly the includes. The overall structure is spreaded enough to start avoiding cross dependancies etc etc.

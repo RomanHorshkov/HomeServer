@@ -14,7 +14,7 @@ participant  "Socket"               as Socket  #orange
 participant  "Browser"              as Browser  #khaki
 
 User -> Parent  : TCP SYN / incoming connection (not handled yet)
-Parent -> Listener : listener_check_incoming_clients()
+Parent -> Listener : listener_check_incoming_client()
 Listener -> Kernel : accept(2)
 Kernel  --> Listener : new client fd, peer sockaddr
 Listener --> Parent  : client_fd, addr
