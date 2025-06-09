@@ -13,7 +13,6 @@
 #include <stdlib.h>      // malloc(), calloc() etc
 #include <string.h>      // memset(), strcpy(), strlen(), etc.
 #include <sys/socket.h>  // socklen_t, socket(), bind(), setsockopt(), etc.
-#include <sys/time.h>    // struct timeval
 #include <unistd.h>      // close()
 
 #include "client.h"
@@ -24,26 +23,19 @@
  * PRIVATE DEFINES
  ****************************************************************************
  */
+/* None */
+
 
 /****************************************************************************
  * PRIVATE STRUCTURED VARIABLES
  ****************************************************************************
  */
 
-/* Server's clients structures */
-struct socket_info
-{
-    int fd;                 // file descriptor
-    pid_t pid;              // process id
-    char host[NI_MAXHOST];  // host name
-    char port[NI_MAXSERV];  // port name
-};
-
 struct client_manager
 {
-    struct socket_info *list;  // dynamic array
-    size_t active_sockets_no;  // active clients count
-    size_t sockets_list_size;  // clients list size
+    struct client *clients;         // dynamic array of clients (processes)
+    size_t clients_count;           // active clients count
+    size_t clients_capacity;        // clients list size
 };
 
 /****************************************************************************
@@ -52,55 +44,175 @@ struct client_manager
  */
 
 /**
- * @brief Re‑allocates the internal list to double elements.
- * @return 0 on success, -1 on error.
+ * @brief
+ * @return
  */
-static int expand_clients_array(struct client_manager *mgr);
-
-static int check_clients_array(struct client_manager *mgr);
-
-static void add_socket(struct client_manager *mgr, const struct sockaddr *socket_address,
-                       socklen_t socket_address_len, int file_descriptor);
+static int add_new_client(client_manager_t *mgr, const struct sockaddr *socket_address,
+                               socklen_t socket_address_len, int file_descriptor);
 
 /****************************************************************************
  * PUBLIC FUNCTIONS DEFINITIONS
  ****************************************************************************
  */
 
-client_manager_t *client_manager_new(size_t clients_initial_amount)
+int client_manager_init(client_manager_t *client_manager)
 {
-    /* return variable, client manager */
-    struct client_manager *new_client_manager = calloc(1, sizeof(struct client_manager));
+    /* return variable */
+    int ret = STATUS_FAILURE;
 
-    /* set a minimum size for the clients amount */
-    if(clients_initial_amount < MAX_CLIENTS)
+    /* allocate space for client_manager
+    calloc sets to 0 the members */
+    client_manager_t *new_client_manager = calloc(MAX_CLIENT_MANAGERS, sizeof(client_manager_t));
+
+    /* check if allocation successful */
+    if(new_client_manager == NULL)
     {
-        clients_initial_amount = (size_t)MAX_CLIENTS;
+        log_error("ClientManager: failed to allocate memory: %s", strerror(errno));
     }
 
-    if(new_client_manager != NULL)
+    /* Initialize clients */
+    else if(clients_init(new_client_manager->clients) == STATUS_FAILURE)
     {
-        /* allocate space for clients */
-        new_client_manager->list = calloc(clients_initial_amount, sizeof(struct socket_info));
+        log_error("ClientManager: failed to initialize clients: %s", strerror(errno));
+        free(new_client_manager);
+    }
 
-        /* check if allocation successful */
-        if(new_client_manager->list != NULL)
+    else
+    {
+        /* set return variable to success */
+        ret = STATUS_SUCCESS;
+
+        /* set the client manager to the caller */
+        client_manager = new_client_manager;
+
+        log_info("ClientManager: created NULL");
+    }
+
+    return ret;
+}
+
+
+int client_manager_add_client(client_manager_t *mgr, const struct sockaddr_storage *addr,
+                              socklen_t addrlen, int *file_descriptor)
+{
+    /* return variable */
+    int ret = STATUS_FAILURE;
+
+    /* check input */
+    if(mgr == NULL || addr == NULL || addrlen == 0 || *file_descriptor <= 0)
+    {
+        errno = EINVAL;
+        log_error("ClientManager: client_manager_add_client(): invalid input", strerror(errno));
+    }
+    
+    /* Check if any client already exists */
+    else if (mgr->clients == NULL || mgr->clients_count == 0)
+    {
+        #ifdef DEBUG_MODE
+        log_info("ClientManager: no existing clients, creating new process");
+        #endif
+        ret = CLIENT_MANAGER_CLIENT_NOT_EXISTS;
+    }
+    
+    /* Check if socket belongs to existent client or a new client is needed */
+    else
+    {
+        /* set temporary buffers for host string, ip and port */
+        char client_ipstr[NI_MAXHOST] = {0};
+        char ipstr[NI_MAXHOST] = {0};
+        char portstr[NI_MAXSERV] = {0};
+
+        /* get info about connecting client */
+        int gntret = getnameinfo((struct sockaddr *)addr, addrlen,
+                                ipstr, NI_MAXHOST,
+                                portstr, NI_MAXSERV,
+                                NI_NUMERICHOST | NI_NUMERICSERV);
+        /* check if getnameinfo succeeded */
+        if (gntret != 0)
         {
-            new_client_manager->sockets_list_size = clients_initial_amount;
-            log_info("ClientManager: created with initial capacity %zu", clients_initial_amount);
+            log_error("ClientManager: getnameinfo failed: %s", gai_strerror(gntret));
+            ret = STATUS_FAILURE;
         }
         else
         {
-            log_error("ClientManager: failed to allocate client list: %s", strerror(errno));
+            /* Search for existing client with this IP */
+            for (size_t i = 0; i < mgr->clients_count; i++)
+            {
+                client_get_host(&(mgr->clients[i]), client_ipstr, NI_MAXHOST);
+                if (strcmp(ipstr, client_ipstr) == 0)
+                {
+                    /* Found existing client for this IP */
+                    #ifdef DEBUG_MODE
+                    log_info("ClientManager: found existing client for IP %s", ipstr);
+                    #endif
+
+                    /* Add the socket to the client's sockets pool */
+                    if (client_add_socket(&(mgr->clients[i]), *file_descriptor, ipstr, portstr) != STATUS_SUCCESS)
+                    {
+                        log_error("ClientManager: failed to add socket to existing client: %s", strerror(errno));
+                        ret = STATUS_FAILURE;
+                    }
+                    else
+                    {
+                        ret = CLIENT_MANAGER_CLIENT_EXISTS;
+                    }
+
+                    break;
+                }
+                else
+                {
+                    /* New client for this IP */
+                    ret = CLIENT_MANAGER_CLIENT_NOT_EXISTS;
+                }
+            }
+
+            if (ret == CLIENT_MANAGER_CLIENT_NOT_EXISTS)
+            {
+                /* Add the client */
+                if(client_add_client(&(mgr->clients[mgr->clients_count]), *file_descriptor, ipstr, portstr) != STATUS_SUCCESS)
+                {
+                    log_error("ClientManager: failed to add new client: %s", strerror(errno));
+                    ret = STATUS_FAILURE;
+                }
+                else
+                {
+                    ret = CLIENT_NEW_CLIENT_CREATED;
+                    #ifdef DEBUG_MODE
+                    log_info("ClientManager: added new client with fd %d, IP %s, port %s",
+                            *file_descriptor, ipstr, portstr);
+                    #endif
+                }
+            }
+            else if(ret == CLIENT_MANAGER_CLIENT_EXISTS)
+            {
+                /* Initialize the socket's thread */
+                ret = CLIENT_NEW_SOCKET_CREATED;
+            }
+            
         }
     }
-    else
-    {
-        log_error("ClientManager: failed to allocate manager: %s", strerror(errno));
-    }
 
-    return new_client_manager;
+    return ret;
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 void client_manager_free(client_manager_t *mgr)
 {
@@ -122,35 +234,6 @@ void client_manager_free(client_manager_t *mgr)
         free(mgr);
     }
 }
-
-int client_manager_add_socket(client_manager_t *mgr, const struct sockaddr_storage *addr,
-                              socklen_t addrlen, int file_descriptor)
-{
-    /* return variable */
-    int ret = -1;
-
-    /* check input and clients */
-    if(mgr == NULL || file_descriptor < 0)
-    {
-        errno = EINVAL;
-        log_error("ClientManager: client_manager_add_socket(): invalid input", strerror(errno));
-    }
-    else if(check_clients_array(mgr) == -1)
-    {
-        log_error("ClientManager: check_clients_array() failed miserably", strerror(errno));
-    }
-
-    else
-    {
-        /* everything went good,
-        add the socket info to clients_manager */
-        add_socket(mgr, (const struct sockaddr *)addr, addrlen, file_descriptor);
-        ret = 0;
-    }
-
-    return ret;
-}
-
 void client_manager_set_pid(client_manager_t *mgr, pid_t pid, int file_descriptor)
 {
     if(mgr != NULL && pid > 0 && file_descriptor >= 0)
@@ -211,91 +294,25 @@ void client_manager_reap(client_manager_t *mgr, pid_t dead)
  ****************************************************************************
  */
 
-static int expand_clients_array(struct client_manager *mgr)
+static int add_new_client(client_manager_t *mgr, const struct sockaddr *socket_address,
+                               socklen_t socket_address_len, int file_descriptor)
 {
     /* return variable */
-    int ret = -1;
+    int ret = STATUS_FAILURE;
 
-    /* new size (duplicate) */
-    size_t new_size = mgr->sockets_list_size * 2;
-
-    struct socket_info *new_list = realloc(mgr->list, new_size * sizeof(struct socket_info));
-
-    /* check realloc success */
-    if(new_list != NULL)
+    /* check if the client manager is NULL */
+    if(mgr == NULL || socket_address == NULL || file_descriptor < 0 || socket_address_len <= 0)
     {
-        /* zero the new list */
-        memset(new_list + mgr->sockets_list_size, 0,
-               (new_size - mgr->sockets_list_size) * sizeof(struct socket_info));
-
-        /* reassign the list */
-        mgr->list = new_list;
-
-        /* update the size */
-        mgr->sockets_list_size = new_size;
-
-        /* set return variable */
-        ret = 0;
-        log_info("Client Manager: Successfully expanded clients array to %ld", new_size);
+        errno = EINVAL;
+        log_error("ClientManager: add_new_client(): invalid input parameters %s", strerror(errno));
     }
+
     else
     {
-        log_error("Client Manager: realloc failed: %s", strerror(errno));
+         = 
+
     }
+
 
     return ret;
-}
-
-static int check_clients_array(struct client_manager *mgr)
-{
-    /* return variable */
-    int ret = -1;
-
-    /* check size */
-    if(mgr->active_sockets_no >= mgr->sockets_list_size)
-    {
-        /* Resize up the array (double it) */
-        if(expand_clients_array(mgr) != -1)
-        {
-            ret = 0;
-        }
-    }
-    else
-    {
-        /* nothing to do */
-        ret = 0;
-    }
-
-    return ret;
-}
-
-static void add_socket(struct client_manager *mgr, const struct sockaddr *socket_address,
-                       socklen_t socket_address_len, int file_descriptor)
-{
-    /* get the next free socket_info struct in the manager's list */
-    struct socket_info *new_sock = &mgr->list[mgr->active_sockets_no];
-
-    /* assign the file descriptor */
-    new_sock->fd = file_descriptor;
-
-    /* increase the total active sockets number */
-    mgr->active_sockets_no++;
-
-    int gntret =
-        getnameinfo(socket_address, socket_address_len, new_sock->host, sizeof(new_sock->host),
-                    new_sock->port, sizeof(new_sock->port), NI_NUMERICHOST | NI_NUMERICSERV);
-
-    /* check if getnameinfo resolved correctly the socket information */
-    if(gntret != 0)
-    {
-        /* write unknown to the socket's host and port */
-        strncpy(new_sock->host, "unknown", sizeof(new_sock->host));
-        strncpy(new_sock->port, "unknown", sizeof(new_sock->port));
-
-        log_info("ClientManager: client (fd=%d) accepted, but getnameinfo failed: %s",
-                 file_descriptor, gai_strerror(gntret));
-    }
-
-    log_info("ClientManager: added client fd=%d (%s:%s)", file_descriptor, new_sock->host,
-             new_sock->port);
 }

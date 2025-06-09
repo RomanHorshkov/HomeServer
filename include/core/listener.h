@@ -27,7 +27,7 @@ extern "C"
 
     int listener_init(Listener_t **listener_ptr, const char *port);
 
-    int listener_check_incoming_clients(Listener_t **listener_ptr,
+    int listener_check_incoming_client(Listener_t **listener_ptr,
                                         struct sockaddr_storage *client_addr,
                                         socklen_t *client_addr_len, int *client_fd);
 
