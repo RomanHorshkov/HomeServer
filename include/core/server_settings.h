@@ -1,27 +1,49 @@
 #ifndef SERVER_SETTINGS_H
 #define SERVER_SETTINGS_H
 
-#ifdef __cplusplus
-extern "C"
+
+/****************************************************************************
+ * PUBLIC ENUMERATED VARIABLES
+ ****************************************************************************
+ */
+
+enum status
 {
-#endif
+    STATUS_FAILURE = -10,            // error occurred
+    STATUS_SUCCESS = -9,             // everything is fine
+    CLIENT_NEW_CLIENT_CREATED,           // new client created
+    CLIENT_NEW_SOCKET_CREATED,           // new socket created for an existing client
+    CLIENT_MANAGER_NEW_CLIENT_NONE,      // no new client
+    CLIENT_MANAGER_CLIENT_NOT_EXISTS,      // new client process
+    CLIENT_MANAGER_CLIENT_EXISTS,       // new socket for an existing client
+};
+
+
 
 /****************************************************************************
  * PUBLIC DEFINES
  ****************************************************************************
  */
-/* None */
+
+/* Debug mode */
+#define DEBUG_MODE
 
 /****************************************************************************
  * SERVER PROPERTIES
  ****************************************************************************
  */
 
+/* Max client managers */
+#define MAX_CLIENT_MANAGERS 1
+
 /* Max listeners amount */
 #define MAX_LISTENERS 2
 
 /* Max clients amount */
 #define MAX_CLIENTS 10
+
+/* Max sockets per client */
+#define MAX_SOCKETS_PER_CLIENT 10
 
 /* Max pending connections amount */
 #define MAX_PENDING_CONNECTIONS 10
@@ -46,10 +68,10 @@ extern "C"
 /* Client short timeout [ms] */
 #define CLIENT_MAX_TIMEOUT_MS 0
 
-    /****************************************************************************
-     * HTTP PROPERTIES
-     ****************************************************************************
-     */
+/****************************************************************************
+ * HTTP PROPERTIES
+ ****************************************************************************
+*/
 
 #define HTTP_RECEIVE_BUFFER_LEN 4096
 #define HTTP_SEND_BUFFER_LEN 8192
@@ -60,8 +82,5 @@ extern "C"
 #define HTTP_MAX_HEADER_NAME_LEN 64
 #define HTTP_MAX_HEADER_VALUE_LEN 256
 
-#ifdef __cplusplus
-}
-#endif
 
 #endif /* SERVER_SETTINGS_H */

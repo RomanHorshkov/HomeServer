@@ -7,7 +7,6 @@
 #include <stdlib.h>      // malloc(), calloc(), NULL etc
 #include <string.h>      // memset(), strcpy(), strlen(), etc.
 #include <sys/socket.h>  // socklen_t, socket(), bind(), setsockopt(), etc.
-#include <sys/time.h>    // struct timeval
 #include <sys/wait.h>    // wait, who hang, pid_t
 #include <time.h>        // nanosleep()
 #include <unistd.h>      // fork(), close()
@@ -30,6 +29,7 @@ typedef struct server
     /* future: config_t *, tls_ctx_t *, … */
 } server_t;
 
+
 /****************************************************************************
  * PRIVATE VARIABLES DEFINITIONS
  ****************************************************************************
@@ -37,6 +37,7 @@ typedef struct server
 
 /* Server's instantiation */
 static server_t srv;
+
 
 /****************************************************************************
  * PRIVATE FUNCTIONS DECLARATIONS
@@ -46,6 +47,7 @@ static server_t srv;
 static int accept_client(void);
 
 static void reap_zombies(void);
+
 
 /****************************************************************************
  * PUBLIC FUNCTIONS DEFINITIONS
@@ -57,31 +59,34 @@ int server_init(const char *port)
     /* return value */
     int ret = -1;
 
-    /* Start the logger */
+    /* Initialize the logger */
     logger_init("server.log");
 
     /* Initialize the listener */
-    if(listener_init(&srv.listener, port) != -1)
-    {
-        /* Initialize the clients manager */
-        srv.client_mng = client_manager_new((size_t)MAX_CLIENTS);
-
-        /* check if initialization succeded */
-        if(srv.client_mng != NULL)
-        {
-            /* Successful initialization */
-            log_info("🚀 C Server running on http://localhost:%s\n", port);
-            ret = 0;
-        }
-        else
-        {
-            log_error("CORE: clients manager failed to init.", strerror(errno));
-        }
-    }
-    else
+    if(listener_init(&srv.listener, port) == -1)
     {
         log_error("CORE: listener failed to init.", strerror(errno));
     }
+
+    /* Initialize the client manager */
+    else if(client_manager_init(&srv.client_mng) == -1)
+    {
+        log_error("CORE: clients manager failed to init.", strerror(errno));
+    }
+
+    /* double check if initialization succeded */
+    if(srv.client_mng == NULL)
+    {
+        log_error("CORE: clients manager failed to init.", strerror(errno));
+    }
+
+    /* Successful initialization */
+    else
+    {
+        log_info("🚀 C Server running on http://localhost:%s\n", port);
+        ret = 0;
+    }
+
 
     return ret;
 }
@@ -93,9 +98,10 @@ void server_run(void)
 
     while(check_stdin_for_exit() != 0)
     {
-        int new_socket_fd = accept_client(/* an all listeners */);
+        int new_client_socket = accept_client(/* an all listeners */);
 
-        if(new_socket_fd != -1)
+        /* When a new client is incoming manage it */
+        if(new_client_socket != -1)
         {
             /* Fork for a new client */
             pid = fork();
@@ -107,7 +113,7 @@ void server_run(void)
                 listener_close(&srv.listener);
 
                 /* Handle client: blocking function */
-                client_manager_handle_socket(new_socket_fd);
+                client_manager_handle_socket(new_client_socket);
 
                 /* Exit */
                 _exit(0);
@@ -117,7 +123,7 @@ void server_run(void)
             else if(pid > 0)
             {
                 /* Set client's process id */
-                client_manager_set_pid(srv.client_mng, pid, new_socket_fd);
+                client_manager_set_pid(srv.client_mng, pid, new_client_socket);
             }
             else
             {
@@ -154,7 +160,10 @@ void server_shutdown(void)
 static int accept_client(void)
 {
     /* return value */
-    int client_fd = -1;
+    int ret = STATUS_FAILURE;
+
+    /* return value */
+    int client_file_descriptor = -1;
 
     /* client socket storage structure */
     struct sockaddr_storage client_addr;
@@ -165,20 +174,27 @@ static int accept_client(void)
     /* Pass the variables by reference because the client_add_len for example, written by accept()
     in the listener, is setting the length of the client address, which is important later
     for managing the client itself. */
-    if(listener_check_incoming_clients(&srv.listener, &client_addr, &client_addr_len, &client_fd) ==
-       -1)
+    if(listener_check_incoming_client(&srv.listener, &client_addr, &client_addr_len, &client_file_descriptor) != -1)
     {
-        // do nothing, no incoming sockets connection requests
+        /* Check if socket belonging to an already existent client or if new client */
+        ret = client_manager_add_client(srv.client_mng, &client_addr, client_addr_len, &client_file_descriptor);
+
+        if (ret == CLIENT_NEW_SOCKET_CREATED || ret == CLIENT_NEW_CLIENT_CREATED)
+        {
+            /* return the file descriptor of the new socket */
+            ret = client_file_descriptor;
+        }
+        else
+        {
+            log_error("CORE: client manager failed to add client/socket: %s", strerror(errno));
+        }
+    }
+    else
+    {
+        ret = CLIENT_MANAGER_NEW_CLIENT_NONE;
     }
 
-    /* save and manage new socket */
-    else if(client_manager_add_socket(srv.client_mng, &client_addr, client_addr_len, client_fd) ==
-            -1)
-    {
-        // do nothing
-    }
-
-    return client_fd;
+    return ret;
 }
 
 static void reap_zombies(void)

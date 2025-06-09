@@ -101,7 +101,7 @@ int listener_init(Listener_t **listener_ptr, const char *port)
     return res;
 }
 
-int listener_check_incoming_clients(Listener_t **listener_ptr, struct sockaddr_storage *client_addr,
+int listener_check_incoming_client(Listener_t **listener_ptr, struct sockaddr_storage *client_addr,
                                     socklen_t *client_addr_len, int *client_fd)
 {
     /* result value */
@@ -124,7 +124,7 @@ int listener_check_incoming_clients(Listener_t **listener_ptr, struct sockaddr_s
             continue;
         }
 
-        /* Accept incoming client request if any
+        /* Accept incoming client request if any.
         accept is set to not blocking:
         will return errno EAGAIN or EWOULDBLOCK if no incoming connections */
         /* Even if the input client address size is 128 bytes (sockaddr_storage size),
@@ -156,8 +156,6 @@ int listener_check_incoming_clients(Listener_t **listener_ptr, struct sockaddr_s
             else
             {
                 /* No pending client connections, continue */
-                /* Kernel leaves the variables passed to accept
-                as they were passed, without modifications */
             }
         }
     }
