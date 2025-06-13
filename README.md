@@ -193,7 +193,7 @@ Parent (main)
 
 | Layer                | Blocking?                                                              | Behaviour                                                      |
 | -------------------- | ---------------------------------------------------------------------- | -------------------------------------------------------------- |
-| **Listener sockets** | **NON‑blocking** (`O_NONBLOCK`)                                        | `SO_REUSEADDR`, dual‑stack (IPv4 + IPv6)                       |
+| **worker sockets** | **NON‑blocking** (`O_NONBLOCK`)                                        | `SO_REUSEADDR`, dual‑stack (IPv4 + IPv6)                       |
 | **Client sockets**   | *Blocking* with **SO\_RCVTIMEO**: 30 s pre‑handshake, 120 s keep‑alive | Negotiated via `Connection:` header; child exits on close/idle |
 
 ---

@@ -9,8 +9,8 @@
 
 enum status
 {
-    STATUS_FAILURE = -10,            // error occurred
-    STATUS_SUCCESS = -9,             // everything is fine
+    STATUS_FAILURE = -1,            // error occurred
+    STATUS_SUCCESS = 0,             // everything is fine
     CLIENT_NEW_CLIENT_CREATED,           // new client created
     CLIENT_NEW_SOCKET_CREATED,           // new socket created for an existing client
     CLIENT_MANAGER_NEW_CLIENT_NONE,      // no new client
@@ -33,20 +33,20 @@ enum status
  ****************************************************************************
  */
 
-/* Max client managers */
-#define MAX_CLIENT_MANAGERS 1
-
 /* Max listeners amount */
 #define MAX_LISTENERS 2
 
 /* Max clients amount */
-#define MAX_CLIENTS 10
+#define MAX_CLIENTS 100
 
-/* Max sockets per client */
-#define MAX_SOCKETS_PER_CLIENT 10
+// /* Max sockets per client */
+// #define MAX_SOCKETS_PER_CLIENT 10
 
-/* Max pending connections amount */
+/* Max pending connections on one listener socket */
 #define MAX_PENDING_CONNECTIONS 10
+
+// 
+#define MAX_EVENTS 64
 
 /* Sleep time */
 #define SERVER_SLEEP_TIME_S 0
