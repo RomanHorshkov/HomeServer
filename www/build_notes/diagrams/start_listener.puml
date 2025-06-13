@@ -1,5 +1,5 @@
 @startuml
-title Listener setup
+title worker setup
 
 ' ---------- general look ----------
 skinparam shadowing false

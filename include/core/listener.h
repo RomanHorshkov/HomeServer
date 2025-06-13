@@ -6,37 +6,26 @@
 #ifndef SERVER_LISTENER_H
 #define SERVER_LISTENER_H
 
-#include <sys/socket.h>  // defines struct sockaddr_storage, socklen_t, accept(), etc.
+/****************************************************************************
+ * PUBLIC STRUCTURED VARIABLES DECLARATIONS
+ ****************************************************************************
+*/
 
-#ifdef __cplusplus
-extern "C"
-{
-#endif
+typedef struct listener listener_t;
 
-    /****************************************************************************
-     * PUBLIC STRUCTURED VARIABLES DECLARATIONS
-     ****************************************************************************
-     */
+/****************************************************************************
+ * PUBLIC FUNCTIONS DECLARATIONS
+ ****************************************************************************
+*/
 
-    typedef struct Listener Listener_t;
+int listener_init(listener_t **listener_ptr, const char *port, int *pipe_write_fd);
 
-    /****************************************************************************
-     * PUBLIC FUNCTIONS DECLARATIONS
-     ****************************************************************************
-     */
+void *listener_run(void *arg);
 
-    int listener_init(Listener_t **listener_ptr, const char *port);
+void listener_shutdown(listener_t **listener_ptr);
 
-    int listener_check_incoming_client(Listener_t **listener_ptr,
-                                        struct sockaddr_storage *client_addr,
-                                        socklen_t *client_addr_len, int *client_fd);
 
-    void listener_close(Listener_t **listener_ptr);
 
-    void listener_shutdown(Listener_t **listener_ptr);
-
-#ifdef __cplusplus
-}
-#endif
+int set_socket_non_blocking(const int *socket_fd);
 
 #endif /* SERVER_LISTENER_H */
