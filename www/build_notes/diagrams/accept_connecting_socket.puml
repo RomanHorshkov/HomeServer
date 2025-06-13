@@ -7,17 +7,17 @@
 actor        User                    #white
 participant  "Kernel\n(syscalls)"   as Kernel  #lightgrey
 participant  "Parent P\n"           as Parent  #lightblue
-participant  "Listener"             #palegreen
+participant  "worker"             #palegreen
 participant  "ClientManager"        as CM      #plum
 participant  "Child process"        as Child   #thistle
 participant  "Socket"               as Socket  #orange
 participant  "Browser"              as Browser  #khaki
 
 User -> Parent  : TCP SYN / incoming connection (not handled yet)
-Parent -> Listener : listener_check_incoming_client()
-Listener -> Kernel : accept(2)
-Kernel  --> Listener : new client fd, peer sockaddr
-Listener --> Parent  : client_fd, addr
+Parent -> worker : listener_check_incoming_client()
+worker -> Kernel : accept(2)
+Kernel  --> worker : new client fd, peer sockaddr
+worker --> Parent  : client_fd, addr
 
 == Register socket ==
 Parent -> CM : client_manager_add(addr, len, fd)
@@ -29,8 +29,8 @@ Kernel --> Parent : child_pid > 0   (parent branch)
 Kernel --> Child  : 0               (child branch)
 
 opt CHILD  (pid == 0)
-    Child -> Listener : listener_close()
-    note over Listener
+    Child -> worker : listener_close()
+    note over worker
         listeners unused in child
     end note
     Child -> Socket  : handle_socket(fd)

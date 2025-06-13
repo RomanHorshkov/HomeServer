@@ -1,7 +1,7 @@
 {
   "diagrams": [
     "getaddrinfo.puml",
-    "start_listener.puml",
+    "create_listener.puml",
     "expenses.puml",
     "accept_connecting_socket.puml"
   ],

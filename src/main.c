@@ -29,6 +29,7 @@
 #define _GNU_SOURCE /* for completeness                                    */
 
 #include "core.h" /* server_init / run / shutdown                        */
+#include "logger.h" /* loginfo / log_error / logger_init                  */
 
 /****************************************************************************
  * PUBLIC FUNCTIONS DEFINITIONS
@@ -40,17 +41,18 @@ int main()
     /* server's listening port */
     const char *port = "3490";
 
+    log_info("Starting server on port %s...", port);
+
     if(server_init(port) == -1)
     {
-        /* ensure cleanup even on failure */
-        /* This process has to be properly memory-controlled */
-        server_shutdown();
     }
     else
     {
+        log_info("Server initialized successfully. Starting server...");
         server_run();
-        server_shutdown();
     }
+    
+    server_shutdown();
 
     return 0;
 }

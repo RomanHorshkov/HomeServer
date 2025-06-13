@@ -3,7 +3,7 @@ title Expenses Dashboard: Internal Sequence Flow
 
 actor User as Browser
 
-participant "DOMContentLoaded\nListener" as Listener
+participant "DOMContentLoaded\nListener" as worker
 participant "Fetch Months API\n(/api/expenses/months)" as MonthsAPI
 participant "Fetch Month JSON API\n(/expenses/YYYY/MM.json)" as MonthAPI
 participant "Data Processor\n(flatt, parse, filter)" as Processor
@@ -11,48 +11,48 @@ participant "Chart.js Bar" as BarChart
 participant "Chart.js Pie" as PieChart
 participant "DOM Table\nRenderer" as Table
 
-Browser -> Listener : DOMContentLoaded\nevent fires
-activate Listener
+Browser -> worker : DOMContentLoaded\nevent fires
+activate worker
 
-Listener -> MonthsAPI : fetch('/api/expenses/months')
+worker -> MonthsAPI : fetch('/api/expenses/months')
 activate MonthsAPI
-MonthsAPI --> Listener : rawMonths[] JSON
+MonthsAPI --> worker : rawMonths[] JSON
 deactivate MonthsAPI
 
-note right of Listener
+note right of worker
   1) dedupe rawMonths  
   2) sort chronologically  
 end note
 
-Listener -> Processor : normalizeMonths(rawMonths)
+worker -> Processor : normalizeMonths(rawMonths)
 activate Processor
-Processor --> Listener : months[] (unique & sorted)
+Processor --> worker : months[] (unique & sorted)
 deactivate Processor
 
-Listener -> MonthAPI : for each month in months[]
+worker -> MonthAPI : for each month in months[]
 activate MonthAPI
 loop Parallel fetch
-  MonthAPI --> Listener : monthData_i.json
+  MonthAPI --> worker : monthData_i.json
 end
 deactivate MonthAPI
 
-note right of Listener
+note right of worker
   perMonth = Promise.all(...)  
   allExpenses = perMonth.flat()  
 end note
 
-Listener -> Processor : attachDateObjects(allExpenses)
+worker -> Processor : attachDateObjects(allExpenses)
 activate Processor
-Processor --> Listener : allExpenses with .dateObj
+Processor --> worker : allExpenses with .dateObj
 deactivate Processor
 
-    note over Listener
+    note over worker
     Instantiate empty charts:
     a) barChart = new Chart(..., type:'bar')
     b) pieChart = new Chart(..., type:'pie')
     end note
 
-Listener -> Processor : renderExpenses(allExpenses)
+worker -> Processor : renderExpenses(allExpenses)
 activate Processor
 
     note over Processor
@@ -82,33 +82,33 @@ activate Processor
       Processor -> Table : append <tr> (${e.date}, ${e.category}, €${e.amount}, ${e.comment})
     end
 
-Processor --> Listener : renderExpenses done
+Processor --> worker : renderExpenses done
 deactivate Processor
 
-Listener --> Browser : initial dashboard shown
-deactivate Listener
+worker --> Browser : initial dashboard shown
+deactivate worker
 
 === User Interacts ===
 
-Browser -> Listener : change event on from/to inputs
-activate Listener
+Browser -> worker : change event on from/to inputs
+activate worker
 
-Listener -> Processor : parseDateInputs()\n→ fromDate, toDate
+worker -> Processor : parseDateInputs()\n→ fromDate, toDate
 activate Processor
-Processor --> Listener : fromDateObj, toDateObj
+Processor --> worker : fromDateObj, toDateObj
 deactivate Processor
 
-Listener -> Processor : filterExpenses(allExpenses, fromDateObj, toDateObj)
+worker -> Processor : filterExpenses(allExpenses, fromDateObj, toDateObj)
 activate Processor
 Processor -> Processor : filtered = allExpenses.filter(...)
-Processor --> Listener : filteredExpenses[]
+Processor --> worker : filteredExpenses[]
 deactivate Processor
 
-Listener -> Processor : renderExpenses(filteredExpenses)
+worker -> Processor : renderExpenses(filteredExpenses)
 activate Processor
-Processor --> Listener : renderExpenses done
+Processor --> worker : renderExpenses done
 deactivate Processor
 
-Listener --> Browser : UI updated
+worker --> Browser : UI updated
 
 @enduml
