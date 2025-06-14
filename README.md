@@ -1,12 +1,11 @@
-# Concurrent TCP + HTTP/1.1 Server (C11 / POSIX)
+# Concurrent TCP + HTTP/1.1 Server (C11 / POSIX, Multithreaded)
 
-A compact yet fully‑featured teaching project that demonstrates how to write a **modular, preforking TCP + HTTP/1.1 server** in pure C11/POSIX.
+A compact yet fully‑featured teaching project that demonstrates how to write a **modular, multithreaded TCP + HTTP/1.1 server** in pure C11/POSIX.  
 It now serves **dynamic JSON APIs**, **rich client‑side pages**, a **build‑notes viewer**, and a **directory‑driven file browser**, with:
 
-* non‑blocking *listener* sockets
-* blocking *client* sockets protected by **SO\_RCVTIMEO** (short‑then‑long)
+* non‑blocking *listener* sockets (epoll-based)
+* event-driven *worker* thread managing all client sockets
 * graceful admission control (max‑connections cap)
-* per‑client **fork()** isolation
 * structured logging (to `server.log`)
 * production‑grade **HTTP/1.1 parsing** via the 🏎️ **[llhttp](https://github.com/nodejs/llhttp)** state‑machine library (static‑linked)
 * full request‑header capture (e.g. *User‑Agent*, *Accept*, …)
@@ -19,7 +18,7 @@ It now serves **dynamic JSON APIs**, **rich client‑side pages**, a **build‑n
 * an optional **rich animation** demo (`dynamic.html`) with CSS/JS effects
 * log‑controlled terminal shutdown (`q`)
 
-Everything builds with **`gcc -std=c11 -Wall -Wextra -Werror -pedantic`** and only the POSIX libc + the bundled **`libllhttp.a`** and **`libcjson.a`**—no threads, no external runtime deps.
+Everything builds with **`gcc -std=c11 -Wall -Wextra -Werror -pedantic`** and only the POSIX libc + the bundled **`libllhttp.a`** and **`libcjson.a`**—no external runtime deps.
 
 ---
 
@@ -29,14 +28,13 @@ Everything builds with **`gcc -std=c11 -Wall -Wextra -Werror -pedantic`** and on
 2. [Directory layout](#directory-layout)
 3. [Utils](#utils)
 4. [Top‑level data‑flow](#top-level-data-flow)
-5. [Sockets & blocking model](#sockets--blocking-model)
-6. [Fork lifecycle](#fork-lifecycle)
-7. [Timeouts & limits](#timeouts--limits)
-8. [HTTP capabilities & dynamic features](#http-capabilities--dynamic-features)
-9. [Build details](#build-details)
-10. [Logging semantics](#logging-semantics)
-11. [Testing matrix](#testing-matrix)
-12. [Future work](#future-work)
+5. [Sockets & threading model](#sockets--threading-model)
+6. [Timeouts & limits](#timeouts--limits)
+7. [HTTP capabilities & dynamic features](#http-capabilities--dynamic-features)
+8. [Build details](#build-details)
+9. [Logging semantics](#logging-semantics)
+10. [Testing matrix](#testing-matrix)
+11. [Future work](#future-work)
 
 ---
 
@@ -84,38 +82,19 @@ You should see the styled **index.html** page with **header.html** included, plu
 │   └── llhttp/
 │       ├── libllhttp.a
 │       └── llhttp.h
-├── include/
-│   ├── browser/
-│   │   ├── browser.h
-│   │   ├── handlers.h
-│   │   ├── http_manager.h
-│   │   ├── router.h
-│   │   └── static_page.h
-│   ├── clients/
-│   │   ├── client.h
-│   │   └── client_manager.h
-│   └── core/
-│       ├── core.h
-│       ├── listener.h
-│       ├── logger.h
-│       ├── server_input.h
-│       └── server_settings.h
 ├── src/
+│   ├── main
 │   ├── browser/
-│   │   ├── browser.c
-│   │   ├── handlers.c
-│   │   ├── http_manager.c
-│   │   ├── router.c
-│   │   └── static_page.c
-│   ├── clients/
-│   │   ├── client.c         # client manages all sockets for a client.
-│   │   └── client_manager.c  # manages all clients (processes).
+│   │   ├── browser
+│   │   ├── handlers
+│   │   ├── http_manager
+│   │   ├── router
+│   │   └── static_page
 │   └── core/
-│       ├── core.c
-│       ├── listener.c
-│       ├── logger.c
-│       ├── server.c
-│       └── server_input.c
+│       ├── core
+│       ├── listener
+│       ├── logger
+│       └── worker
 ├── utils/
 │   ├── MemoryTests/
 │   │   └── memcheck_short.sh
@@ -132,18 +111,10 @@ You should see the styled **index.html** page with **header.html** included, plu
     │   ├── load-notes.js
     │   ├── manifest.json
     │   ├── diagrams/
-    │   │   └── example.puml
     │   └── notes/
-    │       ├── intro.md
-    │       └── login_flow.md
     ├── drive.html          # Drive UI – fetches /api/drive
     ├── dynamic.html        # Animation demo
     ├── images/
-    │   ├── html_headers_viasual_representation.png
-    │   ├── img1.jpg
-    │   ├── img2.jpg
-    │   ├── img3.jpg
-    │   └── img4.jpg
     ├── index.html
     ├── style.css
     └── whoami.html         # fetches /api/whoami
@@ -169,60 +140,46 @@ Under **utils/** you’ll find:
 ## Top‑level data‑flow
 
 ```text
-Parent (main)
+Main thread (core)
 │
-├─ accept() new client FD (non‑blocking listener)
-├─ fork()
-│  ├─ Child:
-│  │   ├─ close other listeners
-│  │   ├─ clients_handle_client(fd):
-│  │   │   ├─ recv() HTTP request(s)
-│  │   │   ├─ llhttp_parse() → HttpRequest struct
-│  │   │   ├─ router_handle_request() → HttpResponse
-│  │   │   │       static_page | whoami_json | drive_json | build_notes_static
-│  │   │   ├─ send_response() (headers + body, Connection handling)
-│  │   │   └─ repeat / exit on close or timeouts
-│  │   └─ _exit()
-│  └─ Parent: track PID, reap zombies, continue
-└─ waitpid() reaper
+├─ Initializes logger, listener, worker, and control subsystems
+├─ Starts three threads:
+│    ├─ Listener thread: accepts new TCP connections (epoll, non-blocking)
+│    │    └─ Forwards client FDs to worker via pipe
+│    ├─ Worker thread: event-driven (epoll), manages all client sockets
+│    │    └─ Reads new client FDs from pipe, handles all I/O and HTTP requests
+│    └─ Control thread: interactive menu (shutdown, info)
+└─ Waits for all threads to finish (shutdown or fatal error)
 ```
 
 ---
 
-## Sockets & blocking model
+## Sockets & threading model
 
-| Layer                | Blocking?                                                              | Behaviour                                                      |
-| -------------------- | ---------------------------------------------------------------------- | -------------------------------------------------------------- |
-| **worker sockets** | **NON‑blocking** (`O_NONBLOCK`)                                        | `SO_REUSEADDR`, dual‑stack (IPv4 + IPv6)                       |
-| **Client sockets**   | *Blocking* with **SO\_RCVTIMEO**: 30 s pre‑handshake, 120 s keep‑alive | Negotiated via `Connection:` header; child exits on close/idle |
+| Layer                | Blocking?         | Behaviour                                                      |
+| -------------------- | ---------------- | -------------------------------------------------------------- |
+| **Listener sockets** | **NON‑blocking** | Managed by listener thread, epoll-based, dual-stack (IPv4/6)   |
+| **Client sockets**   | **NON‑blocking** | Managed by worker thread, epoll-based, persistent connections  |
 
----
-
-## Fork lifecycle
-
-1. `accept()` new connection
-2. `fork()` child
-
-   * **Child**: one‑socket loop → exit on close/timeout
-   * **Parent**: continues accepting, limits total children
-3. `waitpid()` periodically reaps exited children
+- **Admission control:** Max-clients cap enforced in worker.
+- **Shutdown:** Atomic status flags signal threads to exit cleanly.
+- **Inter-thread communication:** Pipe (listener → worker) for new client FDs.
 
 ---
 
-## Timeouts & limits
+## Timeouts & limits
 
 (see `include/core/server_settings.h`)
 
 | Symbol                    | Meaning                           | Default   |
 | ------------------------- | --------------------------------- | --------- |
 | `MAX_LISTENERS`           | Listening sockets (IPv4 + IPv6)   | **2**     |
-| `MAX_CLIENTS`             | Simultaneous child processes      | **10**    |
+| `MAX_CLIENTS`             | Simultaneous clients (epoll)      | **100**   |
 | `MAX_PENDING_CONNECTIONS` | `listen()` backlog                | **10**    |
-| `CLIENT_MAX_TIMEOUT_S`    | Pre‑handshake idle timeout        | **30 s**  |
-| `CLIENT_MAX_TIMEOUT_S_L`  | Post‑handshake keep‑alive timeout | **120 s** |
-| `SERVER_LOOP_SLEEP_USEC`  | Parent loop pause between polls   | **50 ms** |
+| `SERVER_LOOP_SLEEP_USEC`  | Main loop pause between polls     | **50 ms** |
 
 ---
+
 
 ## HTTP capabilities & dynamic features
 
@@ -273,6 +230,15 @@ Parent (main)
     * `make tidy` – generate `compile_commands.json` with **bear** and run **clang‑tidy** (disabling the *unsafe buffer* warning) then clean intermediates
 * `make tidy` leaves **compile\_commands.json** in the repo root so editors (VS Code + clangd) get full‑fledged IntelliSense.
 * Every build treats warnings as errors – the CI pipeline must always be green.
+
+---
+
+## Logging semantics
+
+* Log file: **`server.log`** (overwritten each run)
+* Format: `[YYYY‑MM‑DD hh:mm:ss] [LEVEL] message`
+* Levels: `INFO`, `ERROR` (extend as you wish)
+* Every write is flushed so `tail -f server.log` shows live traffic.
 
 ---
 
@@ -342,10 +308,9 @@ Feel free to extend the hook with `make tidy` or unit‑test execution once the 
 | Press `q` in server                           | Parent stops accepting, reaps children, exits cleanly                                             |
 
 ---
-
 ## Security Concerns
 
-Below is a deep‑dive catalogue of security issues that emerged during the review.
+Below is a deep‑dive catalogue of security issues identified in the current multithreaded, event-driven server implementation.  
 For each item you will find **the underlying cause**, **the practical impact/attack scenario**, and **actionable mitigations**.
 
 ---
@@ -354,94 +319,96 @@ For each item you will find **the underlying cause**, **the practical impact/a
 
 | Aspect     | Details                                                                                                                                                                                                                                                        |
 | ---------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Cause**  | `browser_manage_client_req()` calls `free((void*)response.body)` unconditionally. When helpers like `send_404()` or `send_405()` set `response.body` to a string literal, that literal lives in read‑only program text; freeing it is **undefined behaviour**. |
-| **Impact** | Depending on libc build‑time sanity checks, you get a crash (DoS) or silent heap corruption—an attacker may be able to craft a sequence of requests that hit the literal and then trigger reuse of the freed pointer.                                          |
-| **Fixes**  | ① Add a `needs_free` flag to `HttpResponse`. ② Or always duplicate constant strings with `strdup()` so everything is heap‑owned. ③ Consider a tiny wrapper `http_resp_set_body(HttpResponse*, const char *src, bool copy)`.                                    |
+| **Cause**  | `browser_manage_client_req()` calls `free((void*)response.body)` unconditionally. If helpers like `send_404()` or `send_405()` set `response.body` to a string literal, freeing it is **undefined behaviour**.                                                |
+| **Impact** | Crash (DoS) or heap corruption. An attacker may trigger this by requesting a path that causes a literal to be used as the response body.                                                                                |
+| **Fixes**  | ① Add a `needs_free` flag to `HttpResponse`. ② Or always duplicate constant strings with `strdup()`. ③ Use a wrapper like `http_resp_set_body(HttpResponse*, const char *src, bool copy)`.                             |
 
 ---
 
-### 2. Fork‑per‑client model → resource‑exhaustion DoS
-
-| Aspect     | Details                                                                                                                                                                                                                                             |
-| ---------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Cause**  | Every new TCP connection triggers a `fork()`. On a busy port a malicious user can open thousands of parallel sockets, each consuming a full process image, stack, libc TLS and COW pages.                                                           |
-| **Impact** | Rapid spike in PIDs, context‑switch overhead and memory: easy to hit `/proc/sys/kernel/pid_max` or the soft `ulimit -u`. Legitimate clients start timing‑out.                                                                                       |
-| **Fixes**  | ① Switch to a single‑process event loop (epoll/kqueue) or a fixed worker pool that accepts on a shared socket. ② Add `MaxClients` limit at the accept layer and fail fast with `SO_REUSEPORT`. ③ Use `setrlimit(RLIMIT_NPROC, …)` to self‑throttle. |
-
----
-
-### 3. Shared log file descriptor across forks
-
-| Aspect     | Details                                                                                                                                                                                                                                         |
-| ---------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Cause**  | Parent and every child inherit the same `FILE *` opened in write‑mode. Writes are **not atomic** at the stdio layer—`fprintf()` buffers can overlap.                                                                                            |
-| **Impact** | Garbled or truncated log lines break forensic value. Attackers could exploit predictable interleaving to obscure traces.                                                                                                                        |
-| **Fixes**  | ① Re‑open the log in each child **after** `fork()` with `O_APPEND`. ② Or call `setvbuf(log_file,NULL,_IONBF,0)` to disable buffering (still risk torn writes). ③ Or ditch the file and use `syslog()`—the daemon manages serialisation for you. |
-
----
-
-### 4. Incomplete HTTP frame parsing (pipelining / request‑smuggling)
+### 2. Incomplete HTTP frame parsing (pipelining / request‑smuggling)
 
 | Aspect     | Details                                                                                                                                                                |
 | ---------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Cause**  | You pass the whole `recv()` buffer to `llhttp` once and ignore `parser.off`. If two requests arrive back‑to‑back (pipelined) the surplus bytes are silently discarded. |
-| **Impact** | **Request‑smuggling**: an attacker tunnels an extra request through an idle keep‑alive socket; subsequent handler sees stale state or mis‑routes.                      |
-| **Fixes**  | ① Loop while `parsed < n` and feed remaining bytes into a fresh `llhttp_t`. ② Maintain a per‑connection buffer + offset so you can append and parse incrementally.     |
+| **Cause**  | If you pass the whole `recv()` buffer to `llhttp` once and ignore `parser.off`, pipelined requests (multiple HTTP requests in one TCP packet) may be mishandled.        |
+| **Impact** | **Request‑smuggling**: an attacker can tunnel extra requests through a keep-alive socket; subsequent handler sees stale state or misroutes.                            |
+| **Fixes**  | ① Loop while `parsed < n` and feed remaining bytes into a fresh `llhttp_t`. ② Maintain a per‑connection buffer + offset for incremental parsing.                      |
 
 ---
 
-### 5. Path traversal guards are bypassable
+### 3. Path traversal guards are bypassable
 
 | Aspect     | Details                                                                                                                                                                                                                   |
 | ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Cause**  | Checks like `if(strstr(path, ".."))` occur **before URL‑decoding** in some branches and don’t cover encoded forms (`..%2f`, `%2e%2e/`).                                                                                   |
-| **Impact** | Classic directory traversal → arbitrary file read, e.g. `GET /assets/..%2f..%2fetc/passwd`.                                                                                                                               |
-| **Fixes**  | ① Always call `url_decode()` **first**. ② Use `realpath()` on the assembled path and verify the result begins with your web‑root prefix. ③ Chroot or drop privileges (`setuid(nobody)`) so escapes are less catastrophic. |
+| **Cause**  | Checks like `if(strstr(path, ".."))` may occur **before URL‑decoding** and don’t cover encoded forms (`..%2f`, `%2e%2e/`).                                                                                                |
+| **Impact** | Directory traversal → arbitrary file read, e.g. `GET /assets/..%2f..%2fetc/passwd`.                                                                                                |
+| **Fixes**  | ① Always call `url_decode()` **first**. ② Use `realpath()` and verify the result begins with your web‑root. ③ Chroot or drop privileges (`setuid(nobody)`).                        |
 
 ---
 
-### 6. Blocking `send()` enables slow‑loris style attacks
+### 4. Blocking `send()` enables slow‑loris style attacks
 
 | Aspect     | Details                                                                                                                                                                                     |
 | ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Cause**  | Child sockets remain in blocking mode. A client that ACKs each TCP segment slowly stalls the process inside `send_all()`.                                                                   |
-| **Impact** | Ten malicious sockets → ten hung processes → service freeze despite low network traffic.                                                                                                    |
-| **Fixes**  | ① Set `SO_SNDTIMEO` to a few seconds. ② Or switch sockets to non‑blocking and integrate a `poll()`/`epoll()`‑based write loop with rate limiting. ③ Consider `TCP_NODELAY` + write retries. |
+| **Cause**  | If you use blocking `send()` in the worker, a slow client can stall a worker thread.                                                                                                        |
+| **Impact** | A few malicious clients can exhaust all worker threads, freezing the service.                                                                         |
+| **Fixes**  | ① Set `SO_SNDTIMEO` to a few seconds. ② Or use non-blocking sockets and integrate a `poll()`/`epoll()`-based write loop. ③ Consider `TCP_NODELAY` + write retries.                        |
 
 ---
 
-### 7. Large‑file integer truncation
+### 5. Large‑file integer truncation
 
 | Aspect     | Details                                                                                                                                                                  |
 | ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| **Cause**  | `ftell()` returns `long` but you store it in `long` then cast to `size_t`; on 32‑bit or when `_FILE_OFFSET_BITS=32` this truncates >2 GiB.                               |
-| **Impact** | Short reads (partial file leak) or, worse, negative size when cast to `size_t` → huge allocation attempt → crash.                                                        |
-| **Fixes**  | ① Use `struct stat st; fstat(fileno(file), &st); off_t sz = st.st_size;` ② Add an upper bound (e.g. `MAX_STATIC_FILE = 50*1024*1024`) and refuse to serve bigger assets. |
+| **Cause**  | Using `ftell()`/`fseek()` and casting to `size_t` can truncate files >2 GiB on 32-bit or with `_FILE_OFFSET_BITS=32`.                                                    |
+| **Impact** | Partial file reads or huge allocation attempts → crash.                                                                            |
+| **Fixes**  | ① Use `struct stat st; fstat(fileno(file), &st); off_t sz = st.st_size;` ② Add a max file size (e.g. `MAX_STATIC_FILE = 50*1024*1024`).                                 |
 
 ---
 
-### 8. Hard‑coded protocol limits
+### 6. Hard‑coded protocol limits
 
 | Aspect     | Details                                                                                                                                                                                                          |
 | ---------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | **Cause**  | `HTTP_RECEIVE_BUFFER_LEN` is 4 KiB, `HTTP_MAX_HEADER_COUNT` is 20. Modern browsers can send 10 KiB cookie headers easily.                                                                                        |
 | **Impact** | Oversized request truncates in the middle of a header → parse error → vague 400 or crash → trivial DoS.                                                                                                          |
-| **Fixes**  | ① Grow the buffer dynamically (`realloc`) until a sane max (e.g. 64 KiB). ② If limit is hit, reply `431 Request Header Fields Too Large` not just close. ③ Stream‑parse with `llhttp_execute()` as bytes arrive. |
+| **Fixes**  | ① Grow the buffer dynamically (`realloc`) until a sane max (e.g. 64 KiB). ② If limit is hit, reply `431 Request Header Fields Too Large`. ③ Stream‑parse with `llhttp_execute()` as bytes arrive.               |
 
 ---
 
-### 9. Missing transport‑layer security & privilege separation *(defence‑in‑depth)*
+### 7. Missing transport‑layer security & privilege separation *(defence‑in‑depth)*
 
-Although out‑of‑scope for localhost demos, real deployment must run behind TLS (nginx/Caddy) and as an **unprivileged UID** inside a chroot/container.  Combine with `seccomp()` or `landlock` to sandbox file system access.
+| Aspect     | Details                                                                                                                                                                                                                   |
+| ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Cause**  | No TLS, no chroot, no privilege drop.                                                                                                                                                                                    |
+| **Impact** | If exposed to the internet, traffic is unencrypted and a compromise is more severe.                                                                                                |
+| **Fixes**  | ① Run behind nginx/Caddy for TLS. ② Drop privileges after binding (`setuid(nobody)`). ③ Use chroot/container. ④ Use `seccomp()` or `landlock` to sandbox file system access.        |
 
 ---
 
-### 10. Future counter‑measures checklist
+### 8. Additional concurrency and resource management risks
+
+| Aspect     | Details                                                                                                                                                                                                                   |
+| ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Race conditions** | Shared state (e.g. status flags, counters) must be protected with atomics or mutexes. Data races can cause undefined behavior, crashes, or security bugs. **Mitigation:** Audit all shared variables for proper atomic/mutex protection. |
+| **Pipe buffer overflow** | If the worker thread is slow or blocked, the listener may fill the pipe buffer and lose client FDs. **Mitigation:** Monitor pipe usage, consider backpressure or a bounded queue. |
+| **Resource leaks on thread exit** | If a thread exits abnormally, sockets or memory may not be freed. **Mitigation:** Ensure all cleanup paths are robust; use thread join and error logging. |
+| **Unvalidated input in APIs** | JSON and file APIs may not validate all user input (e.g. path, query params). **Mitigation:** Strictly validate and sanitize all user input. |
+| **Denial-of-service via many connections** | If `MAX_CLIENTS` is too high or not enforced, a flood of connections can exhaust memory or file descriptors. **Mitigation:** Enforce connection caps, monitor resource usage, and consider per-IP limits. |
+| **Log injection** | If user input is logged without sanitization, attackers can inject fake log lines. **Mitigation:** Sanitize or escape user input before logging. |
+
+---
+
+### 9. Future counter‑measures checklist
 
 * Enable **ASLR, RELRO, PIE** at compile time (`-fPIE -pie -Wl,-z,relro,-z,now`).
 * Ship a **Content‑Security‑Policy** header in every HTML response to curb XSS.
 * Add **rate‑limiting** (token bucket per‑IP) on the accept loop to blunt brute‑force traffic.
 * Write unit tests that fuzz‑feed headers and URLs through `http_parse_request()` under AddressSanitizer and UndefinedBehaviourSanitizer.
+* Consider using a static analysis tool (e.g. cppcheck, clang-tidy) in CI.
+* Regularly review and update all dependencies (even static libraries).
+* Document and test all error paths and edge cases.
+
+---
 
 
 ## Future work
@@ -456,13 +423,5 @@ Although out‑of‑scope for localhost demos, real deployment must run behind T
 * Hot‑reload configuration with `inotify`
 * Fuzz tests with libFuzzer
 
+
 Pull requests & ideas welcome — **happy coding!**
-
-
-
-## WORK IN PROGRESS:
-# TO DO
-Implement threads; idea:
-each client is a process, but each process handles all the sockets of the same client threaded.
-
-Clean properly the includes. The overall structure is spreaded enough to start avoiding cross dependancies etc etc.
