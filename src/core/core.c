@@ -2,20 +2,19 @@
 
 #include "core.h"
 
-#include <errno.h>          /* errno, EADDRINUSE, stdout, stdin. */
-#include <netdb.h>          /* socklen_t */
-#include <stdio.h>          /* printf(), fprintf(), etc. */
-#include <stdlib.h>         /* malloc(), calloc(), NULL etc */
-#include <string.h>         /* memset(), strcpy(), strlen(), etc. */
-#include <sys/socket.h>     /* socklen_t, socket(), bind(), setsockopt(), etc. */
-#include <unistd.h>         /* fork(), close(), pipe(), read(), write(), etc. */
-#include <pthread.h>        /* pthread_create(), pthread_join() */
-
+#include <errno.h>      /* errno, EADDRINUSE, stdout, stdin. */
+#include <netdb.h>      /* socklen_t */
+#include <pthread.h>    /* pthread_create(), pthread_join() */
+#include <stdio.h>      /* printf(), fprintf(), etc. */
+#include <stdlib.h>     /* malloc(), calloc(), NULL etc */
+#include <string.h>     /* memset(), strcpy(), strlen(), etc. */
+#include <sys/socket.h> /* socklen_t, socket(), bind(), setsockopt(), etc. */
+#include <unistd.h>     /* fork(), close(), pipe(), read(), write(), etc. */
 
 #include "listener.h"
-#include "worker.h"
 #include "logger.h"
 #include "server_settings.h"
+#include "worker.h"
 
 /****************************************************************************
  * PRIVATE STRUCTURED TYPES
@@ -45,7 +44,6 @@ typedef struct
     // future: config_t *config, tls_t *tls, etc.
 } server_t;
 
-
 /****************************************************************************
  * PRIVATE VARIABLES DEFINITIONS
  ****************************************************************************
@@ -59,7 +57,6 @@ typedef struct
  * core module and should not be accessed directly from outside.
  */
 static server_t srv;
-
 
 /****************************************************************************
  * PRIVATE FUNCTIONS DECLARATIONS
@@ -79,7 +76,6 @@ static server_t srv;
  */
 void *control_run(void *arg);
 
-
 /****************************************************************************
  * PUBLIC FUNCTIONS DEFINITIONS
  ****************************************************************************
@@ -91,12 +87,12 @@ int server_init(const char *port)
     int ret = STATUS_FAILURE;
 
     /* Initialize the pipe between listener and worker */
-    if (pipe(srv.pipe_fds) == -1)
+    if(pipe(srv.pipe_fds) == -1)
     {
         log_error("CORE: pipe failed to create: %s", strerror(errno));
     }
     /* Set the pipe file descriptors to non-blocking */
-    else if (set_socket_non_blocking(&srv.pipe_fds[0]) != STATUS_SUCCESS)
+    else if(set_socket_non_blocking(&srv.pipe_fds[0]) != STATUS_SUCCESS)
     {
         log_error("CORE: set_socket_non_blocking failed for pipe 0.");
     }
@@ -152,11 +148,11 @@ void server_run(void)
 
 void *control_run(void *arg)
 {
-    (void)arg; // Unused parameter
+    (void)arg;  // Unused parameter
 
     /* input from console */
     char input[16];
-    while (1)
+    while(1)
     {
         printf("\n--- Server Menu ---\n");
         printf("1. Listeners\n");
@@ -165,17 +161,17 @@ void *control_run(void *arg)
         printf("Select: ");
         fflush(stdout);
 
-        if (fgets(input, sizeof(input), stdin) == NULL) continue;
+        if(fgets(input, sizeof(input), stdin) == NULL) continue;
 
-        if (input[0] == '1')
+        if(input[0] == '1')
         {
             printf("Show listeners info here...\n");
         }
-        else if (input[0] == '2')
+        else if(input[0] == '2')
         {
             printf("Show clients info here...\n");
         }
-        else if (input[0] == 'q')
+        else if(input[0] == 'q')
         {
             printf("Shutting down server...\n");
             /* Set listener and worker status to shutdown */
