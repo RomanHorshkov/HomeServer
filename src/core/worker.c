@@ -124,7 +124,8 @@ void *worker_run(void *arg)
             int nfds = epoll_wait(epfd, events, MAX_CLIENTS, -1);
 
             log_info("[worker] Woke up with %d event(s)", nfds);
-
+            
+            /* Check for errors */
             if (nfds < 0)
             {
                 log_error("worker_run: epoll_wait failed: %s", strerror(errno));

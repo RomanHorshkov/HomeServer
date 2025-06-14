@@ -1,11 +1,3 @@
-/*
- * browser.c
- *
- * Handles incoming client HTTP requests: parses raw data, dispatches to router,
- * and sends back HTTP responses over a TCP socket in two phases (headers then body).
- * Supports binary-safe transfers for static files (images, CSS, HTML, etc.).
- */
-
 #include "browser.h"
 
 #include <errno.h>      /* errno */
@@ -31,28 +23,33 @@
  ****************************************************************************
  */
 
-/*
- * send_response:
- *   Build HTTP/1.1 response headers then stream the response body.
- * Parameters:
- *   fd - Client socket descriptor
- *   resp - Pointer to populated HttpResponse structure
- *   client_connection_policy - HTTP_CONNECTION_CLOSE or KEEP_ALIVE
- * Returns:
- *   0 on success, -1 on any failure (logged).
+
+/**
+ * @brief Send a complete HTTP response (headers and body) to a client socket.
+ *
+ * This function builds the HTTP/1.1 response headers into a stack buffer,
+ * sends them in a single call, and then streams the response body (if any)
+ * using @ref send_all(). Handles both text and binary-safe transfers.
+ *
+ * @param fd                      Client socket descriptor.
+ * @param resp                    Pointer to a populated HttpResponse structure.
+ * @param client_connection_policy HTTP_CONNECTION_CLOSE or HTTP_CONNECTION_KEEP_ALIVE.
+ * @retval  0  Success.
+ * @retval -1 Failure (logged).
  */
 static int send_response(int fd, const HttpResponse *resp, int client_connection_policy);
 
-/*
- * send_all:
- *   Ensures that exactly 'len' bytes are sent over the socket,
- *   retrying on partial sends or EINTR.
- * Parameters:
- *   fd - Client socket descriptor
- *   buf - Pointer to data buffer
- *   len - Number of bytes to send
- * Returns:
- *   Total bytes sent (=len) or -1 on unrecoverable error.
+
+/**
+ * @brief Send exactly 'len' bytes from 'buf' over the socket, handling partial sends.
+ *
+ * This function loops on @c send() until all bytes are written, retrying on
+ * partial sends or EINTR. It is binary-safe and suitable for large files.
+ *
+ * @param fd   Client socket descriptor.
+ * @param buf  Pointer to data buffer.
+ * @param len  Number of bytes to send.
+ * @return     Total bytes sent (=len) or -1 on unrecoverable error.
  */
 static ssize_t send_all(int fd, const void *buf, size_t len);
 
