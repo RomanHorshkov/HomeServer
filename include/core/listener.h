@@ -15,30 +15,23 @@
  * @date    2025-05-11
  */
 
-
- 
 #ifndef SERVER_LISTENER_H
 #define SERVER_LISTENER_H
-
-
 
 /****************************************************************************
  * PUBLIC STRUCTURED VARIABLES DECLARATIONS
  ****************************************************************************
-*/
+ */
 
 /**
  * @brief Opaque listener structure (defined in listener.c).
  */
 typedef struct listener listener_t;
 
-
-
 /****************************************************************************
  * PUBLIC FUNCTIONS DECLARATIONS
  ****************************************************************************
-*/
-
+ */
 
 /**
  * @brief Initialise the listener subsystem and create all listening sockets.
@@ -63,7 +56,6 @@ typedef struct listener listener_t;
  */
 int listener_init(listener_t **listener_ptr, const char *port, int *pipe_write_fd);
 
-
 /**
  * @brief Main listener thread function: accepts new connections and forwards them.
  *
@@ -78,7 +70,6 @@ int listener_init(listener_t **listener_ptr, const char *port, int *pipe_write_f
  */
 void *listener_run(void *arg);
 
-
 /**
  * @brief Set the listener's atomic status flag (active/shutdown).
  *
@@ -89,7 +80,6 @@ void *listener_run(void *arg);
  * @param status        New status value (e.g., SERVER_STATUS_ACTIVE or _SHUTDOWN).
  */
 void listener_set_status(listener_t *listener_ptr, int status);
-
 
 /**
  * @brief Set a socket file descriptor to non-blocking mode.

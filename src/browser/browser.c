@@ -23,7 +23,6 @@
  ****************************************************************************
  */
 
-
 /**
  * @brief Send a complete HTTP response (headers and body) to a client socket.
  *
@@ -38,7 +37,6 @@
  * @retval -1 Failure (logged).
  */
 static int send_response(int fd, const HttpResponse *resp, int client_connection_policy);
-
 
 /**
  * @brief Send exactly 'len' bytes from 'buf' over the socket, handling partial sends.

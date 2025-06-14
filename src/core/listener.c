@@ -1,19 +1,19 @@
 #define _POSIX_C_SOURCE 200112L
 #define _GNU_SOURCE
-#include "listener.h"       /* listener */
+#include "listener.h" /* listener */
 
-#include <errno.h>          /* errno, EADDRINUSE, etc. */
-#include <fcntl.h>          /* fcntl(), F_GETFL, F_SETFL, O_NONBLOCK */
-#include <netdb.h>          /* getaddrinfo(), addrinfo, gai_strerror() */
-#include <stdlib.h>         /* malloc(), calloc(), free, etc. */
-#include <string.h>         /* memset(), strcpy(), strlen(), etc. */
-#include <unistd.h>         /* fork(), close(), read(), write(), etc. */
-#include <sys/epoll.h>      /* epoll_create1(), epoll_ctl(), epoll_wait(), struct epoll_event */
-#include <arpa/inet.h>      /* inet_ntop(), struct sockaddr_in, struct sockaddr_in6 */
-#include <stdatomic.h>      /* atomic_int */
+#include <arpa/inet.h> /* inet_ntop(), struct sockaddr_in, struct sockaddr_in6 */
+#include <errno.h>     /* errno, EADDRINUSE, etc. */
+#include <fcntl.h>     /* fcntl(), F_GETFL, F_SETFL, O_NONBLOCK */
+#include <netdb.h>     /* getaddrinfo(), addrinfo, gai_strerror() */
+#include <stdatomic.h> /* atomic_int */
+#include <stdlib.h>    /* malloc(), calloc(), free, etc. */
+#include <string.h>    /* memset(), strcpy(), strlen(), etc. */
+#include <sys/epoll.h> /* epoll_create1(), epoll_ctl(), epoll_wait(), struct epoll_event */
+#include <unistd.h>    /* fork(), close(), read(), write(), etc. */
 
-#include "logger.h"           /* logger */
-#include "server_settings.h"  /* settings */
+#include "logger.h"          /* logger */
+#include "server_settings.h" /* settings */
 
 /****************************************************************************
  * PRIVATE STUCTURED VARIABLES
@@ -32,7 +32,7 @@ struct listener
     int pipe_write_fd;
 
     /* status variable */
-    atomic_int status;      /* 0 = inactive, 1 = active */
+    atomic_int status; /* 0 = inactive, 1 = active */
 };
 
 /****************************************************************************
@@ -45,7 +45,6 @@ struct listener
  * PRIVATE FUNCTIONS DECLARATIONS
  ****************************************************************************
  */
-
 
 /**
  * @brief Create and bind all listening sockets for the server.
@@ -61,7 +60,6 @@ struct listener
  */
 static int create_listener(struct addrinfo *server_info_out, listener_t **listener_ptr);
 
-
 /**
  * @brief Allocate and initialize memory for a new listener instance.
  *
@@ -73,7 +71,6 @@ static int create_listener(struct addrinfo *server_info_out, listener_t **listen
  * @retval -1 Failure (memory allocation failed).
  */
 static int init_memory(listener_t **listener_ptr);
-
 
 /**
  * @brief Set recommended socket options in the addrinfo hints structure.
@@ -87,7 +84,6 @@ static int init_memory(listener_t **listener_ptr);
  */
 static int set_socket_hints(struct addrinfo *hints);
 
-
 /**
  * @brief Enable address reuse on a socket.
  *
@@ -100,7 +96,6 @@ static int set_socket_hints(struct addrinfo *hints);
  */
 static int set_listener_socket_reusability(const int *socket_fd);
 
-
 /**
  * @brief Enable fast restart on a socket by setting SO_LINGER.
  *
@@ -112,7 +107,6 @@ static int set_listener_socket_reusability(const int *socket_fd);
  * @retval -1 Failure (setsockopt failed).
  */
 static int set_listener_socket_restartability(const int *socket_fd);
-
 
 /**
  * @brief Apply all recommended socket options for a listener socket.
@@ -127,7 +121,6 @@ static int set_listener_socket_restartability(const int *socket_fd);
  */
 static int set_listener_socket_options(const int *listener_socket_fd, const int32_t *ai_family);
 
-
 /**
  * @brief Close all active listening sockets and reset the listener state.
  *
@@ -138,7 +131,6 @@ static int set_listener_socket_options(const int *listener_socket_fd, const int3
  */
 static void listener_close(listener_t **listener_ptr);
 
-
 /**
  * @brief Shutdown the listener and release all associated resources.
  *
@@ -148,8 +140,6 @@ static void listener_close(listener_t **listener_ptr);
  * @param listener_ptr  Address of a pointer to the listener instance.
  */
 static void listener_shutdown(listener_t **listener_ptr);
-
-
 
 /****************************************************************************
  * PUBLIC FUNCTIONS DEFINITIONS
@@ -168,7 +158,7 @@ int listener_init(listener_t **listener_ptr, const char *port, int *pipe_write_f
     struct addrinfo *server_info_out = NULL;
 
     /* Check input */
-    if (port == NULL || pipe_write_fd == NULL)
+    if(port == NULL || pipe_write_fd == NULL)
     {
         log_error("listener_init invalid input");
     }
@@ -218,13 +208,12 @@ int listener_init(listener_t **listener_ptr, const char *port, int *pipe_write_f
     return res;
 }
 
-
 void *listener_run(void *arg)
 {
     log_info("Starting Listener...");
 
     /* Check input */
-    if (arg == NULL)
+    if(arg == NULL)
     {
         log_error("listener_run invalid input");
     }
@@ -232,21 +221,21 @@ void *listener_run(void *arg)
     /* main listener thread loop */
     else
     {
-
         listener_t *listener_ptr = (listener_t *)arg;
 
         int epfd = epoll_create1(0);
         struct epoll_event ev, events[MAX_LISTENERS];
 
         /* Register all listening sockets with epoll */
-        for (int i = 0; i < listener_ptr->active_sockets_no; ++i) {
+        for(int i = 0; i < listener_ptr->active_sockets_no; ++i)
+        {
             ev.events = EPOLLIN;
             ev.data.fd = listener_ptr->sockets_fds[i];
             epoll_ctl(epfd, EPOLL_CTL_ADD, listener_ptr->sockets_fds[i], &ev);
         }
 
         /* While the listener is active */
-        while (atomic_load(&listener_ptr->status) == SERVER_STATUS_ACTIVE)
+        while(atomic_load(&listener_ptr->status) == SERVER_STATUS_ACTIVE)
         {
 #ifdef DEBUG_MODE
             log_info("listener: waiting for incoming connections...");
@@ -259,25 +248,26 @@ void *listener_run(void *arg)
             log_info("listener: epoll_wait returned %d events", nfds);
 #endif /* DEBUG_MODE */
 
-            if (nfds < 0)
+            if(nfds < 0)
             {
                 log_error("listener: epoll_wait failed: %s", strerror(errno));
             }
             else
             {
-                for (int i = 0; i < nfds; ++i)
+                for(int i = 0; i < nfds; ++i)
                 {
                     int listen_fd = events[i].data.fd;
                     struct sockaddr_storage client_addr;
                     socklen_t addrlen = sizeof(client_addr);
-                    int client_fd = accept4(listen_fd, (struct sockaddr *)&client_addr, &addrlen, SOCK_NONBLOCK);
-                    if (client_fd >= 0)
+                    int client_fd = accept4(listen_fd, (struct sockaddr *)&client_addr, &addrlen,
+                                            SOCK_NONBLOCK);
+                    if(client_fd >= 0)
                     {
                         set_socket_non_blocking(&client_fd);
 
                         char ipstr[INET6_ADDRSTRLEN];
                         void *addr;
-                        if (client_addr.ss_family == AF_INET)
+                        if(client_addr.ss_family == AF_INET)
                         {
                             addr = &((struct sockaddr_in *)&client_addr)->sin_addr;
                         }
@@ -301,14 +291,13 @@ void *listener_run(void *arg)
 
         /* Close the epoll file descriptor */
         close(epfd);
-
     }
     return NULL;
 }
 
 void listener_set_status(listener_t *listener_ptr, int status)
 {
-    if (listener_ptr == NULL)
+    if(listener_ptr == NULL)
     {
         log_error("listener_set_status: invalid listener pointer");
     }
@@ -329,7 +318,7 @@ static void listener_close(listener_t **listener_ptr)
 #ifdef DEBUG_MODE
     log_info("[listener]: listener_close: closing all listening sockets");
 #endif /* DEBUG_MODE */
-    if (listener_ptr == NULL || *listener_ptr == NULL)
+    if(listener_ptr == NULL || *listener_ptr == NULL)
     {
         log_error("[listener]: listener_close: invalid listener pointer");
     }
@@ -337,7 +326,7 @@ static void listener_close(listener_t **listener_ptr)
     /* loop through all listener's sockets */
     else
     {
-        for (int i = 0; i < (*listener_ptr)->active_sockets_no; i++)
+        for(int i = 0; i < (*listener_ptr)->active_sockets_no; i++)
         {
             /* check if listener is active */
             if((*listener_ptr)->sockets_fds[i] > 0)
@@ -353,13 +342,11 @@ static void listener_close(listener_t **listener_ptr)
                 continue;
             }
         }
-        
+
         /* reset listener sockets number */
         (*listener_ptr)->active_sockets_no = 0;
     }
 }
-
-
 
 /****************************************************************************
  * PRIVATE FUNCTIONS DEFINITIONS
@@ -384,7 +371,8 @@ static int create_listener(struct addrinfo *server_info_out, listener_t **listen
         }
 
         /* Set socket options */
-        else if(set_listener_socket_options(&listener_socket_fd, &server_info_out->ai_family) != STATUS_SUCCESS)
+        else if(set_listener_socket_options(&listener_socket_fd, &server_info_out->ai_family) !=
+                STATUS_SUCCESS)
         {
             log_error("setsockopt failed: %s\n", strerror(errno));
             /* delete the socket */
@@ -409,7 +397,7 @@ static int create_listener(struct addrinfo *server_info_out, listener_t **listen
         }
 
         /* check if available space for more sockets */
-        else if ((*listener_ptr)->active_sockets_no >= MAX_LISTENERS)
+        else if((*listener_ptr)->active_sockets_no >= MAX_LISTENERS)
         {
             log_error("Maximum number of listeners reached: %d", MAX_LISTENERS);
             /* delete the socket */
@@ -585,8 +573,8 @@ static int set_listener_socket_options(const int *listener_socket_fd, const int3
             /* yes value */
             int yes = 1;
 
-            if(setsockopt(*listener_socket_fd, IPPROTO_IPV6, IPV6_V6ONLY, &yes,
-                            sizeof(yes)) != STATUS_SUCCESS)
+            if(setsockopt(*listener_socket_fd, IPPROTO_IPV6, IPV6_V6ONLY, &yes, sizeof(yes)) !=
+               STATUS_SUCCESS)
             {
                 res = STATUS_FAILURE;
                 log_error("Socket ipv6 opts failed: %s\n", strerror(errno));

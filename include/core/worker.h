@@ -14,29 +14,23 @@
  * @date    2025-05-11
  */
 
-
 #ifndef SERVER_WORKER_H
 #define SERVER_WORKER_H
-
-
 
 /****************************************************************************
  * PUBLIC STRUCTURED VARIABLES DECLARATIONS
  ****************************************************************************
-*/
+ */
 
 /**
  * @brief Opaque worker structure (defined in worker.c).
  */
 typedef struct worker worker_t;
 
-
-
 /****************************************************************************
  * PUBLIC FUNCTIONS DECLARATIONS
  ****************************************************************************
-*/
-
+ */
 
 /**
  * @brief Initialise the worker subsystem and prepare for client management.
@@ -57,7 +51,6 @@ typedef struct worker worker_t;
  */
 int worker_init(worker_t **worker_ptr, int *pipe_read_fd);
 
-
 /**
  * @brief Main worker thread function: manages all active client sockets.
  *
@@ -72,7 +65,6 @@ int worker_init(worker_t **worker_ptr, int *pipe_read_fd);
  * @return     NULL on exit.
  */
 void *worker_run(void *arg);
-
 
 /**
  * @brief Set the worker's status flag (active/shutdown).
