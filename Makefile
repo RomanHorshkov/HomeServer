@@ -4,7 +4,7 @@ CFLAGS          := -std=c11 -Wall -Werror -Wextra -pedantic -g
 LDLIBS 			+= -Lexternal/llhttp -lllhttp\
                    -Lexternal/cjson -lcjson
 
-INCDIRS 		:= include include/core # include/browser include/clients external/llhttp external/cjson
+INCDIRS 		:= include include/core include/browser include/clients external/llhttp external/cjson
 SRCDIRS         := src
 BUILDDIR        := build
 OBJDIR          := $(BUILDDIR)/obj
@@ -15,8 +15,8 @@ TARGET          := server
 INCLUDES        := $(foreach dir,$(INCDIRS),-I$(dir))
 
 # ------ Source & object lists ------
-# SOURCES 		:= $(shell find $(SRCDIRS) -name '*.c')
-SOURCES := src/main.c src/core/core.c src/core/listener.c src/core/worker.c src/core/logger.c
+SOURCES 		:= $(shell find $(SRCDIRS) -name '*.c')
+# SOURCES := src/main.c src/core/core.c src/core/listener.c src/core/worker.c src/core/logger.c
 OBJECTS 		:= $(patsubst %.c,$(OBJDIR)/%.o,$(SOURCES))
 DEPS            := $(OBJECTS:.o=.d)
 
@@ -60,53 +60,53 @@ else
 	@clang-format -i $(FILES)
 endif
 
-# # Static analysis ----------------------------------------------------------
-# lint:
-# 	@cppcheck --enable=all --inconclusive --std=c11 --language=c --quiet \
-# 		--suppress=missingIncludeSystem \
-# 		-Iinclude -Iinclude/core -Iinclude/browser -Iinclude/clients \
-# 		-Iexternal/cjson -Iexternal/llhttp \
-# 		src/ \
+# Static analysis ----------------------------------------------------------
+lint:
+	@cppcheck --enable=all --inconclusive --std=c11 --language=c --quiet \
+		--suppress=missingIncludeSystem \
+		-Iinclude -Iinclude/core -Iinclude/browser -Iinclude/clients \
+		-Iexternal/cjson -Iexternal/llhttp \
+		src/ \
 
-# # Better Static analysis
-# tidy:
-# 	@echo "🐻 Generating compile_commands.json using bear..."
-# 	bear -- make -B > /dev/null
+# Better Static analysis
+tidy:
+	@echo "🐻 Generating compile_commands.json using bear..."
+	bear -- make -B > /dev/null
 
-# 	@echo "🧠 Running clang-tidy (suppressing C11 unsafe API warnings)..."
-# 	clang-tidy \
-# 		-checks=-clang-analyzer-security.insecureAPI.DeprecatedOrUnsafeBufferHandling \
-# 		$(shell find src -name '*.c') -p . -- \
-# 		-Iinclude -Iinclude/core -Iinclude/browser -Iinclude/clients \
-# 		-Iexternal/cjson -Iexternal/llhttp
+	@echo "🧠 Running clang-tidy (suppressing C11 unsafe API warnings)..."
+	clang-tidy \
+		-checks=-clang-analyzer-security.insecureAPI.DeprecatedOrUnsafeBufferHandling \
+		$(shell find src -name '*.c') -p . -- \
+		-Iinclude -Iinclude/core -Iinclude/browser -Iinclude/clients \
+		-Iexternal/cjson -Iexternal/llhttp
 
-# 	@echo "🧼 Cleaning temporary build files..."
-# 	rm -f *.o */*.o */*/*.o
+	@echo "🧼 Cleaning temporary build files..."
+	rm -f *.o */*.o */*/*.o
 
-# # rm -f compile_commands.json // keep for now the compile_commands
-# 	rm -f *.o */*.o */*/*.o
+# rm -f compile_commands.json // keep for now the compile_commands
+	rm -f *.o */*.o */*/*.o
 
-# # ─── Build a manifest of all .puml diagrams and .md/.txt notes ───
-# NOTES_DIR := www/build_notes/notes
-# DIAG_DIR  := www/build_notes/diagrams
-# MANIFEST  := www/build_notes/manifest.json
+# ─── Build a manifest of all .puml diagrams and .md/.txt notes ───
+NOTES_DIR := www/build_notes/notes
+DIAG_DIR  := www/build_notes/diagrams
+MANIFEST  := www/build_notes/manifest.json
 
-# notes:
-# 	@echo "Generating $(MANIFEST)…"
-# 	@mkdir -p $(dir $(MANIFEST))
-# 	@echo "{"                                                          >  $(MANIFEST)
-# 	@echo '  "diagrams": ['                                           >> $(MANIFEST)
-# 	@find $(DIAG_DIR) -maxdepth 1 -type f -name '*.puml' \
-# 	  | sed -e 's@.*/\(.*\)$$@"\1"@' \
-# 	  | paste -sd ",\n    " -                                        >> $(MANIFEST)
-# 	@echo '  ],'                                                      >> $(MANIFEST)
-# 	@echo '  "notes": ['                                              >> $(MANIFEST)
-# 	@find $(NOTES_DIR) -maxdepth 1 -type f \( -name '*.md' -o -name '*.txt' \) \
-# 	  | sed -e 's@.*/\(.*\)$$@"\1"@' \
-# 	  | paste -sd ",\n    " -                                        >> $(MANIFEST)
-# 	@echo '  ]'                                                       >> $(MANIFEST)
-# 	@echo "}"                                                         >> $(MANIFEST)
-# 	@echo "$(MANIFEST) updated."
+notes:
+	@echo "Generating $(MANIFEST)…"
+	@mkdir -p $(dir $(MANIFEST))
+	@echo "{"                                                          >  $(MANIFEST)
+	@echo '  "diagrams": ['                                           >> $(MANIFEST)
+	@find $(DIAG_DIR) -maxdepth 1 -type f -name '*.puml' \
+	  | sed -e 's@.*/\(.*\)$$@"\1"@' \
+	  | paste -sd ",\n    " -                                        >> $(MANIFEST)
+	@echo '  ],'                                                      >> $(MANIFEST)
+	@echo '  "notes": ['                                              >> $(MANIFEST)
+	@find $(NOTES_DIR) -maxdepth 1 -type f \( -name '*.md' -o -name '*.txt' \) \
+	  | sed -e 's@.*/\(.*\)$$@"\1"@' \
+	  | paste -sd ",\n    " -                                        >> $(MANIFEST)
+	@echo '  ]'                                                       >> $(MANIFEST)
+	@echo "}"                                                         >> $(MANIFEST)
+	@echo "$(MANIFEST) updated."
 
 
 clean:

@@ -18,6 +18,13 @@ enum status
     CLIENT_MANAGER_CLIENT_EXISTS,       // new socket for an existing client
 };
 
+enum server_status
+{
+    SERVER_STATUS_INACTIVE = 0,       /* server is inactive */
+    SERVER_STATUS_ACTIVE = 1,         /* server is active */
+    SERVER_STATUS_SHUTDOWN = 2,       /* server is shutting down */
+};
+
 
 
 /****************************************************************************

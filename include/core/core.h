@@ -68,15 +68,5 @@ int server_init(const char *port);
  */
 void server_run(void);
 
-/**
- * @brief Gracefully shut down every subsystem.
- *
- * Closes listener sockets, frees the client‑manager, flushes/closes the log
- * file, and leaves the process in a clean state.  It is safe to call this
- * even if @ref server_init() returned `-1` – the function checks for
- * uninitialised pointers.
- */
-void server_shutdown(void);
-
 
 #endif /* SERVER_CORE_H */
