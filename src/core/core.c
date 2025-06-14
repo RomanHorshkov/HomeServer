@@ -2,22 +2,21 @@
 
 #include "core.h"
 
-#include <errno.h>       // errno, EADDRINUSE, etc.
-#include <netdb.h>       // socklen_t
-#include <stdlib.h>      // malloc(), calloc(), NULL etc
-#include <string.h>      // memset(), strcpy(), strlen(), etc.
-#include <sys/socket.h>  // socklen_t, socket(), bind(), setsockopt(), etc.
+#include <errno.h>          /* errno, EADDRINUSE, stdout, stdin. */
+#include <netdb.h>          /* socklen_t */
+#include <stdio.h>          /* printf(), fprintf(), etc. */
+#include <stdlib.h>         /* malloc(), calloc(), NULL etc */
+#include <string.h>         /* memset(), strcpy(), strlen(), etc. */
+#include <sys/socket.h>     /* socklen_t, socket(), bind(), setsockopt(), etc. */
 // #include <sys/wait.h>    // wait, who hang, pid_t
-#include <time.h>        // nanosleep()
-#include <unistd.h>      // fork(), close(), pipe(), read(), write(), etc.
-#include <pthread.h>     // pthread_create(), pthread_join()
+#include <time.h>           /* nanosleep() */
+#include <unistd.h>         /* fork(), close(), pipe(), read(), write(), etc. */
+#include <pthread.h>        /* pthread_create(), pthread_join() */
 
-// #include "client_manager.h" ////////////////////// ATTENZIONE QUI!!!!!!!!!!!!!!
-// #include "client.h" ////////////////////// ATTENZIONE QUI!!!!!!!!!!!!!!
+
 #include "listener.h"
 #include "worker.h"
 #include "logger.h"
-#include "server_input.h"
 #include "server_settings.h"
 
 /****************************************************************************
@@ -27,11 +26,24 @@
 
 typedef struct
 {
-    int pipe_fds[2];                   // pipe for stdin input
+    /* pipe for communication between listener and worker */
+    int pipe_fds[2];
+
+    /* listener instance */
     listener_t *listener;
+
+    /* worker instance */
     worker_t *worker;
+
+    /* listener thread */
     pthread_t listener_thread;
+
+    /* worker thread */
     pthread_t worker_thread;
+
+    /* control thread */
+    pthread_t control_thread;
+
     // future: config_t *config, tls_t *tls, etc.
 } server_t;
 
@@ -50,6 +62,7 @@ static server_t srv;
  ****************************************************************************
  */
 
+void *control_run(void *arg);
 
 
 /****************************************************************************
@@ -106,91 +119,59 @@ int server_init(const char *port)
 
 void server_run(void)
 {
-    /* main server run loop */
-
-    /* run the threads */
+    /* run threads */
     pthread_create(&srv.listener_thread, NULL, listener_run, srv.listener);
     pthread_create(&srv.worker_thread, NULL, worker_run, srv.worker);
+    pthread_create(&srv.control_thread, NULL, control_run, NULL);
 
-    /* Wait for threads to finish */
+    /* wait threads */
     pthread_join(srv.listener_thread, NULL);
     pthread_join(srv.worker_thread, NULL);
-
-
-
-    /* server'ss loop, seeking for q for shutdown */
-    // while(check_stdin_for_exit() != 0)
-    // {
-    //     struct timespec ts;
-    //     ts.tv_sec = SERVER_SLEEP_TIME_S;
-    //     ts.tv_nsec = SERVER_SLEEP_TIME_NS;
-    //     /* usleep and keep checking */
-    //     nanosleep(&ts, NULL);
-
-    // }
-
-}
-
-// void server_run(void)
-// {
-//     /* process id for fork() */
-//     pid_t pid;
-
-//     while(check_stdin_for_exit() != 0)
-//     {
-//         int new_client_socket = accept_client(/* an all listeners */);
-
-//         /* When a new client is incoming manage it */
-//         if(new_client_socket != -1)
-//         {
-//             /* Fork for a new client */
-//             pid = fork();
-
-//             /* Child process: */
-//             if(pid == 0)
-//             {
-//                 /* Close all listeners, no need for them in this process */
-//                 listener_close(&srv.listener);
-
-
-//                 /* Exit */
-//                 _exit(0);
-//             }
-
-//             /* Parent process: */
-//             else if(pid > 0)
-//             {
-//                 /* Set client's process id */
-//                 client_manager_set_pid(srv.client_mng, pid, new_client_socket);
-//             }
-//             else
-//             {
-//                 log_error("CORE: fork failure: %s", strerror(errno));
-//                 /* maybe should close the last client */
-//             }
-//         }
-//         else
-//         {
-//             struct timespec ts;
-//             ts.tv_sec = SERVER_SLEEP_TIME_S;
-//             ts.tv_nsec = SERVER_SLEEP_TIME_NS;
-//             /* No new client incoming, usleep and keep checking */
-//             nanosleep(&ts, NULL);
-//         }
-
-//         /* Reap zombie processes */
-//         reap_zombies();
-//     }
-// }
-
-void server_shutdown(void)
-{
-    listener_shutdown(&srv.listener);
-    // worker_shutdown(&srv.worker);
-    logger_close();
+    pthread_join(srv.control_thread, NULL);
 }
 
 /****************************************************************************
  * PRIVATE FUNCTIONS DEFINITIONS
  ****************************************************************************
  */
+
+void *control_run(void *arg)
+{
+    (void)arg; // Unused parameter
+
+    /* input from console */
+    char input[16];
+    while (1)
+    {
+        printf("\n--- Server Menu ---\n");
+        printf("1. Listeners\n");
+        printf("2. Clients\n");
+        printf("q. Shutdown\n");
+        printf("Select: ");
+        fflush(stdout);
+
+        if (fgets(input, sizeof(input), stdin) == NULL) continue;
+
+        if (input[0] == '1')
+        {
+            printf("Show listeners info here...\n");
+        }
+        else if (input[0] == '2')
+        {
+            printf("Show clients info here...\n");
+        }
+        else if (input[0] == 'q')
+        {
+            printf("Shutting down server...\n");
+            /* Set listener and worker status to shutdown */
+            worker_set_status(srv.worker, SERVER_STATUS_SHUTDOWN);
+            listener_set_status(srv.listener, SERVER_STATUS_SHUTDOWN);
+            break;
+        }
+        else
+        {
+            printf("Unknown option.\n");
+        }
+    }
+    return NULL;
+}

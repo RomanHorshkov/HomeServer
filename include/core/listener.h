@@ -22,7 +22,7 @@ int listener_init(listener_t **listener_ptr, const char *port, int *pipe_write_f
 
 void *listener_run(void *arg);
 
-void listener_shutdown(listener_t **listener_ptr);
+void listener_set_status(listener_t *listener_ptr, int status);
 
 
 
