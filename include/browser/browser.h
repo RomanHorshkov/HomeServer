@@ -13,18 +13,24 @@
  ****************************************************************************
  */
 
-/*
- * Public: browser_manage_client_req
- * ---------------------------------
- * Parses an incoming HTTP request, routes it, and sends the response.
- * Frees any heap-allocated body after sending.
- * Parameters:
- *   fd - Client socket descriptor
- *   recv_buf - Buffer containing raw HTTP request data
- *   n - Number of bytes in recv_buf
- *   client_connection_policy - OUT param set to CONNECTION_CLOSE or KEEP_ALIVE
- * Returns:
- *   Number of bytes of body sent on success, -1 on error.
+
+/**
+ * @brief Handle a single client HTTP request: parse, dispatch, and respond.
+ *
+ * This is the main entry point for processing a client request. It performs:
+ *   1. Parses the raw HTTP request buffer into a structured @ref HttpRequest.
+ *   2. Dispatches the request to the router, which fills a @ref HttpResponse.
+ *   3. Sends the HTTP response (headers and body) over the client socket.
+ *   4. Frees any heap-allocated response body (e.g., from static file serving).
+ *
+ * All errors are logged. The function is binary-safe and supports both
+ * keep-alive and close connection policies.
+ *
+ * @param fd                      Client socket descriptor.
+ * @param recv_buf                Pointer to the received HTTP request buffer.
+ * @param n                       Number of bytes in @p recv_buf.
+ * @param client_connection_policy Connection policy (in/out): HTTP_CONNECTION_CLOSE or KEEP_ALIVE.
+ * @return Number of body bytes sent (may be 0 for no-body), or -1 on error.
  */
 ssize_t browser_manage_client_req(int fd, const char* recv_buf, size_t n,
                                   int client_connection_policy);

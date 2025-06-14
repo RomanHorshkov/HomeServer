@@ -8,8 +8,6 @@
 #include <stdlib.h>         /* malloc(), calloc(), NULL etc */
 #include <string.h>         /* memset(), strcpy(), strlen(), etc. */
 #include <sys/socket.h>     /* socklen_t, socket(), bind(), setsockopt(), etc. */
-// #include <sys/wait.h>    // wait, who hang, pid_t
-#include <time.h>           /* nanosleep() */
 #include <unistd.h>         /* fork(), close(), pipe(), read(), write(), etc. */
 #include <pthread.h>        /* pthread_create(), pthread_join() */
 
@@ -53,7 +51,13 @@ typedef struct
  ****************************************************************************
  */
 
-/* Server's instantiation */
+/**
+ * @brief Singleton instance of the main server structure.
+ *
+ * Holds all core components (listener, worker, control threads, and pipe)
+ * for the lifetime of the server process. This instance is private to the
+ * core module and should not be accessed directly from outside.
+ */
 static server_t srv;
 
 
@@ -62,6 +66,17 @@ static server_t srv;
  ****************************************************************************
  */
 
+/**
+ * @brief Control thread entry point: handles interactive server menu and shutdown.
+ *
+ * Presents a simple menu on the controlling terminal, allowing the operator
+ * to inspect server state (listeners, clients, etc.) and to initiate a
+ * graceful shutdown by typing 'q' + ENTER. This function is intended to be
+ * run in a dedicated thread and blocks until shutdown is requested.
+ *
+ * @param arg  Unused (may be NULL).
+ * @return     NULL on exit.
+ */
 void *control_run(void *arg);
 
 

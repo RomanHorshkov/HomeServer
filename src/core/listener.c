@@ -1,19 +1,19 @@
 #define _POSIX_C_SOURCE 200112L
 #define _GNU_SOURCE
-#include "listener.h"  //  listener
+#include "listener.h"       /* listener */
 
-#include <errno.h>   // errno, EADDRINUSE, etc.
-#include <fcntl.h>   // fcntl(), F_GETFL, F_SETFL, O_NONBLOCK
-#include <netdb.h>   // getaddrinfo(), addrinfo, gai_strerror()
-#include <stdlib.h>  // malloc(), calloc() etc
-#include <string.h>  // memset(), strcpy(), strlen(), etc.
-#include <unistd.h>  // fork(), close(), read(), write(), etc.
-#include <sys/epoll.h>   // epoll_create1(), epoll_ctl(), epoll_wait(), struct epoll_event
-#include <arpa/inet.h>  // inet_ntop(), struct sockaddr_in, struct sockaddr_in6
+#include <errno.h>          /* errno, EADDRINUSE, etc. */
+#include <fcntl.h>          /* fcntl(), F_GETFL, F_SETFL, O_NONBLOCK */
+#include <netdb.h>          /* getaddrinfo(), addrinfo, gai_strerror() */
+#include <stdlib.h>         /* malloc(), calloc(), free, etc. */
+#include <string.h>         /* memset(), strcpy(), strlen(), etc. */
+#include <unistd.h>         /* fork(), close(), read(), write(), etc. */
+#include <sys/epoll.h>      /* epoll_create1(), epoll_ctl(), epoll_wait(), struct epoll_event */
+#include <arpa/inet.h>      /* inet_ntop(), struct sockaddr_in, struct sockaddr_in6 */
 #include <stdatomic.h>      /* atomic_int */
 
-#include "logger.h"           // logger
-#include "server_settings.h"  // settings
+#include "logger.h"           /* logger */
+#include "server_settings.h"  /* settings */
 
 /****************************************************************************
  * PRIVATE STUCTURED VARIABLES
@@ -46,24 +46,110 @@ struct listener
  ****************************************************************************
  */
 
-/* functions related to the creation of a listener */
+
+/**
+ * @brief Create and bind all listening sockets for the server.
+ *
+ * Iterates through the provided addrinfo list, creating, configuring, binding,
+ * and listening on each socket. Successfully created sockets are stored in the
+ * listener instance. Supports both IPv4 and IPv6 as available.
+ *
+ * @param server_info_out   Linked list of addrinfo structures from getaddrinfo().
+ * @param listener_ptr      Address of a pointer to the listener instance.
+ * @retval  0  Success (at least one socket created and listening).
+ * @retval -1 Failure (no sockets created; see log for details).
+ */
 static int create_listener(struct addrinfo *server_info_out, listener_t **listener_ptr);
 
+
+/**
+ * @brief Allocate and initialize memory for a new listener instance.
+ *
+ * Frees any existing listener instance pointed to by @p listener_ptr, then
+ * allocates and zero-initializes a new listener structure.
+ *
+ * @param listener_ptr  Address of a pointer to the listener instance.
+ * @retval  0  Success.
+ * @retval -1 Failure (memory allocation failed).
+ */
 static int init_memory(listener_t **listener_ptr);
 
+
+/**
+ * @brief Set recommended socket options in the addrinfo hints structure.
+ *
+ * Initializes the provided hints structure for getaddrinfo() with recommended
+ * values for dual-stack TCP listening sockets.
+ *
+ * @param hints  Pointer to the addrinfo structure to initialize.
+ * @retval  0  Success.
+ * @retval -1 Failure (invalid pointer).
+ */
 static int set_socket_hints(struct addrinfo *hints);
 
+
+/**
+ * @brief Enable address reuse on a socket.
+ *
+ * Sets the SO_REUSEADDR option on the provided socket file descriptor,
+ * allowing the server to restart without waiting for old sockets to time out.
+ *
+ * @param socket_fd  Pointer to the socket file descriptor.
+ * @retval  0  Success.
+ * @retval -1 Failure (setsockopt failed).
+ */
 static int set_listener_socket_reusability(const int *socket_fd);
 
+
+/**
+ * @brief Enable fast restart on a socket by setting SO_LINGER.
+ *
+ * Configures the socket to discard unsent data and close immediately on shutdown,
+ * which is suitable for listener sockets.
+ *
+ * @param socket_fd  Pointer to the socket file descriptor.
+ * @retval  0  Success.
+ * @retval -1 Failure (setsockopt failed).
+ */
 static int set_listener_socket_restartability(const int *socket_fd);
 
 
+/**
+ * @brief Apply all recommended socket options for a listener socket.
+ *
+ * Sets SO_REUSEADDR, SO_LINGER, and O_NONBLOCK on the provided socket, and
+ * restricts IPv6 sockets to IPv6-only if required.
+ *
+ * @param listener_socket_fd  Pointer to the socket file descriptor.
+ * @param ai_family          Pointer to the address family (AF_INET/AF_INET6).
+ * @retval  0  Success.
+ * @retval -1 Failure (one or more options failed).
+ */
 static int set_listener_socket_options(const int *listener_socket_fd, const int32_t *ai_family);
 
-/* functions related to the destruction of a listener */
+
+/**
+ * @brief Close all active listening sockets and reset the listener state.
+ *
+ * Iterates through all sockets in the listener, closes them, and resets the
+ * socket count to zero. Safe to call multiple times.
+ *
+ * @param listener_ptr  Address of a pointer to the listener instance.
+ */
 static void listener_close(listener_t **listener_ptr);
 
+
+/**
+ * @brief Shutdown the listener and release all associated resources.
+ *
+ * Closes all sockets and frees the listener structure. Should be called when
+ * the listener thread is exiting.
+ *
+ * @param listener_ptr  Address of a pointer to the listener instance.
+ */
 static void listener_shutdown(listener_t **listener_ptr);
+
+
 
 /****************************************************************************
  * PUBLIC FUNCTIONS DEFINITIONS
@@ -272,6 +358,8 @@ static void listener_close(listener_t **listener_ptr)
         (*listener_ptr)->active_sockets_no = 0;
     }
 }
+
+
 
 /****************************************************************************
  * PRIVATE FUNCTIONS DEFINITIONS
