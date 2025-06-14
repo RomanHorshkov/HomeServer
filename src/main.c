@@ -1,5 +1,5 @@
 /**
- * @file server.c
+ * @file main.c
  * @brief Stand‑alone entry point for the micro‑HTTP server.
  *
  * The translation unit contains **only** the `main()` function; every other
@@ -45,14 +45,13 @@ int main()
 
     if(server_init(port) == -1)
     {
+        /* do nothing, server not initialized */
     }
     else
     {
-        log_info("Server initialized successfully. Starting server...");
+        log_info("Server initialized successfully. Starting...");
         server_run();
     }
-    
-    server_shutdown();
 
     return 0;
 }

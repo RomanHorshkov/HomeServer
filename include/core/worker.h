@@ -21,4 +21,6 @@ int worker_init(worker_t **worker_ptr, int *pipe_read_fd);
 
 void *worker_run(void *arg);
 
+void worker_set_status(worker_t *worker_ptr, int status);
+
 #endif /* SERVER_WORKER_H */

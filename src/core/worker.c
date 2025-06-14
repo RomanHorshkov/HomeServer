@@ -1,17 +1,19 @@
 #define _POSIX_C_SOURCE 200112L
 #define _GNU_SOURCE
-#include "worker.h"           // worker
+#include "worker.h"          /* worker */
 
-#include <errno.h>      // errno, EADDRINUSE, etc.
-#include <fcntl.h>      // fcntl(), F_GETFL, F_SETFL, O_NONBLOCK
-#include <netdb.h>      // getaddrinfo(), addrinfo, gai_strerror()
-#include <stdlib.h>     // malloc(), calloc() etc
-#include <string.h>     // memset(), strcpy(), strlen(), etc.
-#include <unistd.h>     // fork(), close(), read(), write(), etc.
-#include <sys/epoll.h>   // epoll_create1(), epoll_ctl(), epoll_wait(), struct epoll_event
+#include <errno.h>          /* errno, EADDRINUSE, etc. */
+#include <fcntl.h>          /* fcntl(), F_GETFL, F_SETFL, O_NONBLOCK */
+#include <netdb.h>          /* getaddrinfo(), addrinfo, gai_strerror() */
+#include <stdlib.h>         /* malloc(), calloc() etc */
+#include <string.h>         /* memset(), strcpy(), strlen(), etc. */
+#include <unistd.h>         /* fork(), close(), read(), write(), etc. */
+#include <sys/epoll.h>      /* epoll_create1(), epoll_ctl(), epoll_wait(), struct epoll_event */
+#include <stdatomic.h>      /* atomic_int */
 
-#include "logger.h"           // logger
-#include "server_settings.h"  // settings
+#include "browser.h"         /* browser_manage_client_req */
+#include "logger.h"          /* logger */
+#include "server_settings.h" /* settings */
 
 /****************************************************************************
  * PRIVATE STUCTURED VARIABLES
@@ -28,6 +30,9 @@ struct worker
 
     /* pipe read fd */
     int pipe_read_fd;
+
+    /* status variable */
+    atomic_int status;      /* 0 = inactive, 1 = active */
 };
 
 
@@ -65,6 +70,9 @@ int worker_init(worker_t **worker_ptr, int *pipe_read_fd)
 
         /* Initialize the worker's active sockets number */
         (*worker_ptr)->active_sockets_no = 0;
+
+        /* Initialize the worker's state */
+        (*worker_ptr)->status = SERVER_STATUS_ACTIVE;
 
         /* set return to success */
         res = STATUS_SUCCESS;
@@ -108,7 +116,7 @@ void *worker_run(void *arg)
         }
         
         /* Main worker thread loop */
-        while (1)
+        while (atomic_load(&worker_ptr->status) == SERVER_STATUS_ACTIVE)
         {
             log_info("[worker] Sleeping in epoll_wait...");
 
@@ -153,9 +161,9 @@ void *worker_run(void *arg)
                 /* Otherwise, the event is on a client socket */
                 else
                 {
-                    char buf[HTTP_RECEIVE_BUFFER_LEN];
+                    char recv_buf[HTTP_RECEIVE_BUFFER_LEN];
                     /* Read data from the client socket */
-                    int n = read(fd, buf, HTTP_RECEIVE_BUFFER_LEN- 1);
+                    ssize_t n = read(fd, recv_buf, HTTP_RECEIVE_BUFFER_LEN- 1);
 
                     if (n <= 0)
                     {
@@ -166,17 +174,37 @@ void *worker_run(void *arg)
                     }
                     else
                     {
-                        buf[n] = '\0';
-                        log_info("[worker] recv from fd %d: %s", fd, buf);
-                        /* Optionally, write a response here */
+                        recv_buf[n] = '\0';
+#ifdef DEBUG_MODE
+                        log_info("[worker] Received from fd %d: %.*s", fd, (int)n, recv_buf);
+#endif /* DEBUG_MODE */
+                        
+                        browser_manage_client_req(fd, recv_buf, n, HTTP_CONNECTION_KEEP_ALIVE);
+
                     }
                 }
             }
         }
 
-        /* Clean up epoll instance (unreachable in this infinite loop) */
+        /* Close the epoll file descriptor */
         close(epfd);
     }
 
     return NULL;
+}
+
+void worker_set_status(worker_t *worker_ptr, int status)
+{
+    if (worker_ptr == NULL)
+    {
+        log_error("listener_set_status: invalid listener pointer");
+    }
+    else
+    {
+        /* Set the status */
+        atomic_store(&worker_ptr->status, status);
+
+        /* Log the status change */
+        log_info("Listener status set to %d", status);
+    }
 }

@@ -10,6 +10,7 @@
 #include <unistd.h>  // fork(), close(), read(), write(), etc.
 #include <sys/epoll.h>   // epoll_create1(), epoll_ctl(), epoll_wait(), struct epoll_event
 #include <arpa/inet.h>  // inet_ntop(), struct sockaddr_in, struct sockaddr_in6
+#include <stdatomic.h>      /* atomic_int */
 
 #include "logger.h"           // logger
 #include "server_settings.h"  // settings
@@ -29,6 +30,9 @@ struct listener
 
     /* pipe write fd */
     int pipe_write_fd;
+
+    /* status variable */
+    atomic_int status;      /* 0 = inactive, 1 = active */
 };
 
 /****************************************************************************
@@ -58,6 +62,8 @@ static int set_listener_socket_options(const int *listener_socket_fd, const int3
 
 /* functions related to the destruction of a listener */
 static void listener_close(listener_t **listener_ptr);
+
+static void listener_shutdown(listener_t **listener_ptr);
 
 /****************************************************************************
  * PUBLIC FUNCTIONS DEFINITIONS
@@ -111,9 +117,14 @@ int listener_init(listener_t **listener_ptr, const char *port, int *pipe_write_f
         /* Set the pipe write file descriptor */
         (*listener_ptr)->pipe_write_fd = *pipe_write_fd;
 
+        /* Set the status to on */
+        atomic_store(&(*listener_ptr)->status, SERVER_STATUS_ACTIVE);
+        (*listener_ptr)->status = SERVER_STATUS_ACTIVE;
+
+        res = STATUS_SUCCESS;
+
         log_info("getaddrinfo(NULL, %s) succeeded. Printing address info list results:\n", port);
         log_addrinfo_list(server_info_out);
-        res = STATUS_SUCCESS;
     }
 
     /* now can freeup the memory allocated in server_info out */
@@ -148,11 +159,19 @@ void *listener_run(void *arg)
             epoll_ctl(epfd, EPOLL_CTL_ADD, listener_ptr->sockets_fds[i], &ev);
         }
 
-        while (1)
+        /* While the listener is active */
+        while (atomic_load(&listener_ptr->status) == SERVER_STATUS_ACTIVE)
         {
+#ifdef DEBUG_MODE
             log_info("listener: waiting for incoming connections...");
+#endif /* DEBUG_MODE */
+
+            /* Wait for incoming connections */
             int nfds = epoll_wait(epfd, events, MAX_LISTENERS, -1);
+
+#ifdef DEBUG_MODE
             log_info("listener: epoll_wait returned %d events", nfds);
+#endif /* DEBUG_MODE */
 
             if (nfds < 0)
             {
@@ -181,25 +200,52 @@ void *listener_run(void *arg)
                             addr = &((struct sockaddr_in6 *)&client_addr)->sin6_addr;
                         }
                         inet_ntop(client_addr.ss_family, addr, ipstr, sizeof(ipstr));
+#ifdef DEBUG_MODE
                         log_info("[listener] Accepted client from %s, fd %d", ipstr, client_fd);
-
+#endif /* DEBUG_MODE */
                         /* Write the client_fd to the pipe for the worker */
                         write(listener_ptr->pipe_write_fd, &client_fd, sizeof(client_fd));
                     }
                 }
             }
         }
+
+        /* if got out of the while loop then switching off is required */
+        listener_shutdown(&listener_ptr);
+
+        /* Close the epoll file descriptor */
+        close(epfd);
+
     }
     return NULL;
 }
 
+void listener_set_status(listener_t *listener_ptr, int status)
+{
+    if (listener_ptr == NULL)
+    {
+        log_error("listener_set_status: invalid listener pointer");
+    }
+    else
+    {
+        /* Set the status */
+        atomic_store(&listener_ptr->status, status);
+
+#ifdef DEBUG_MODE
+        /* Log the status change */
+        log_info("Listener status set to %d", status);
+#endif /* DEBUG_MODE */
+    }
+}
+
 static void listener_close(listener_t **listener_ptr)
 {
-    log_info("listener: closing all listening sockets");
-    
+#ifdef DEBUG_MODE
+    log_info("[listener]: listener_close: closing all listening sockets");
+#endif /* DEBUG_MODE */
     if (listener_ptr == NULL || *listener_ptr == NULL)
     {
-        log_error("listener_close: invalid listener pointer");
+        log_error("[listener]: listener_close: invalid listener pointer");
     }
 
     /* loop through all listener's sockets */
@@ -215,23 +261,16 @@ static void listener_close(listener_t **listener_ptr)
 
                 /* reset to 0 */
                 (*listener_ptr)->sockets_fds[i] = 0;
-
-                /* decrease listener number */
-                (*listener_ptr)->active_sockets_no--;
             }
             else
             {
                 continue;
             }
         }
+        
+        /* reset listener sockets number */
+        (*listener_ptr)->active_sockets_no = 0;
     }
-}
-
-void listener_shutdown(listener_t **listener_ptr)
-{
-    log_info("Listeners: -- shutdown -- ");
-    listener_close(listener_ptr);
-    free(*listener_ptr);
 }
 
 /****************************************************************************
@@ -468,4 +507,13 @@ static int set_listener_socket_options(const int *listener_socket_fd, const int3
     }
 
     return res;
+}
+
+static void listener_shutdown(listener_t **listener_ptr)
+{
+#ifdef DEBUG_MODE
+    log_info("[listener]: shutting down...");
+#endif /* DEBUG_MODE */
+    listener_close(listener_ptr);
+    free(*listener_ptr);
 }
