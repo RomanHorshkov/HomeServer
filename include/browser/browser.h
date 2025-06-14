@@ -13,7 +13,6 @@
  ****************************************************************************
  */
 
-
 /**
  * @brief Handle a single client HTTP request: parse, dispatch, and respond.
  *

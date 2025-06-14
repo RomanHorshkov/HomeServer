@@ -25,13 +25,13 @@
  *
  * ### Command-Line Arguments
  * For simplicity, the listening port is currently hard-wired to **3490**.
- * 
+ *
  * @author  Roman Horshkov <roman.horshkov@gmail.com>
  * @date    2025‑05‑11
  * (c) 2025
  */
 
-#include "core.h" /* server_init / run / shutdown                        */
+#include "core.h"   /* server_init / run / shutdown                        */
 #include "logger.h" /* loginfo / log_error / logger_init                  */
 
 /****************************************************************************

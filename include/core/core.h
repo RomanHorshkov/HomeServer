@@ -16,7 +16,6 @@
 #ifndef SERVER_CORE_H
 #define SERVER_CORE_H
 
-
 /****************************************************************************
  * PUBLIC DEFINES
  ****************************************************************************
@@ -39,19 +38,19 @@
  *
  * **Initialization steps performed:**
  *
- *   1. **Pipe Creation:**  
+ *   1. **Pipe Creation:**
  *      - Establishes a unidirectional pipe for inter-thread communication between
  *        the listener (producer of new client sockets) and the worker (consumer).
  *      - Both ends of the pipe are set to non-blocking mode to prevent deadlocks
  *        and ensure responsiveness under high load or during shutdown.
  *
- *   2. **Logger Subsystem:**  
+ *   2. **Logger Subsystem:**
  *      - Opens (or creates) the log file (`server.log`) and prepares the logging
  *        infrastructure for all subsequent operations.
  *      - Ensures that all errors, warnings, and informational messages are
  *        captured from the very beginning of the server's lifecycle.
  *
- *   3. **Listener Initialization:**  
+ *   3. **Listener Initialization:**
  *      - Allocates and configures the listener instance, which is responsible for
  *        accepting new incoming TCP connections on the specified @p port.
  *      - Supports dual-stack IPv4/IPv6 sockets when available, maximizing
@@ -59,25 +58,25 @@
  *      - The listener is given the write end of the pipe to forward accepted
  *        client file descriptors to the worker.
  *
- *   4. **Worker Initialization:**  
+ *   4. **Worker Initialization:**
  *      - Allocates and configures the worker instance, which manages all active
  *        client sockets and handles their requests.
  *      - The worker is given the read end of the pipe to receive new client
  *        connections from the listener.
  *      - Prepares the worker for event-driven, scalable I/O using epoll.
  *
- *   5. **Final State:**  
+ *   5. **Final State:**
  *      - If all steps succeed, the server is fully initialized and ready to run.
  *      - The next step is to call @ref server_run(), which will start all threads
  *        and begin accepting and processing client connections.
  *      - If any step fails, the function logs the error and returns immediately.
  *        No resources are leaked, and it is safe for the caller to terminate.
  *
- * **Thread Safety:**  
+ * **Thread Safety:**
  * This function is not thread-safe and must be called exactly once, before any
  * other server API. It must not be called concurrently with @ref server_run().
  *
- * **Error Handling:**  
+ * **Error Handling:**
  * On failure, the function logs a detailed error message for each failed
  * subsystem. The global `errno` is left untouched; consult the log file for
  * diagnostics.
@@ -129,6 +128,5 @@ int server_init(const char *port);
  *
  */
 void server_run(void);
-
 
 #endif /* SERVER_CORE_H */
