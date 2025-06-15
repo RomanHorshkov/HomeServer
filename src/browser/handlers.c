@@ -189,19 +189,16 @@ int drive_json_handler(const HttpRequest *req, HttpResponse *resp)
     // return 0; /* early abort     */
 
     /* ---------- 2. basic sanitisation --------------------------------------- */
-
     if(strstr(path, ".."))                   /* path traversal? */
         respond_400(resp, ("invalid path")); /* reject          */
 
     /* ---------- 3. build absolute filesystem path --------------------------- */
-
     char full[FULLPATH_MAX];                              /* "www" + path    */
     int len = snprintf(full, sizeof full, "www%s", path); /* join components */
     if(len < 0 || len >= (int)sizeof full)                /* buffer overflow */
         respond_400(resp, ("path too long"));
-
+    
     /* ---------- 4. open the target directory ------------------------------- */
-
     log_info("Opening dir: %s", full); /* trace           */
     DIR *dir = opendir(full);          /* try to open     */
     if(!dir)                           /* failure?        */
@@ -216,7 +213,6 @@ int drive_json_handler(const HttpRequest *req, HttpResponse *resp)
     }
 
     /* ---------- 5. iterate entries and build JSON --------------------------- */
-
     cJSON *root = cJSON_CreateObject();                   /* { }             */
     cJSON *items = cJSON_AddArrayToObject(root, "items"); /* "items": [ ]    */
     cJSON_AddStringToObject(root, "path", path);          /* echo request    */
@@ -232,7 +228,6 @@ int drive_json_handler(const HttpRequest *req, HttpResponse *resp)
         cJSON_AddStringToObject(obj, "name", name); /* "name": "foo"   */
 
         /* ---- decide file vs directory ------------------------------------ */
-
         char child[CHILDFULL_MAX]; /* full child path */
         int l = snprintf(child, sizeof child, "%s/%s", full, name);
         if(l < 0 || l >= (int)sizeof child) /* overflow guard  */
