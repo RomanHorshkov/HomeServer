@@ -11,7 +11,13 @@
 #include "logger.h"
 
 /****************************************************************************
- * PRIVATE FUNCTIONS DECLARATIONS
+ * PRIVATE DEFINES
+ ****************************************************************************
+ */
+/* None */
+
+/****************************************************************************
+ * PRIVATE FUNCTIONS PROTOTYPES
  ****************************************************************************
  */
 
@@ -22,14 +28,16 @@ static int on_method(llhttp_t* parser, const char* at, size_t length);
 static void determine_connection_policy(HttpRequest* req, int* client_connection_policy);
 
 /****************************************************************************
+ * PRIVATE STRUCTURED VARIABLES
+ ****************************************************************************
+ */
+/* None */
+
+/****************************************************************************
  * PUBLIC FUNCTIONS DEFINITIONS
  ****************************************************************************
  */
 
-/**
- * Parses a basic HTTP request.
- * Fills HttpRequest with method and path if successful.
- */
 int http_parse_request(const char* buffer, const size_t buffer_len, HttpRequest* req,
                        int* client_connection_policy)
 {
@@ -93,7 +101,6 @@ int http_parse_request(const char* buffer, const size_t buffer_len, HttpRequest*
  ****************************************************************************
  */
 
-// Called for URL
 static int on_url(llhttp_t* parser, const char* at, size_t length)
 {
     LlhttpParserContext* ctx = (LlhttpParserContext*)parser->data;
@@ -101,9 +108,6 @@ static int on_url(llhttp_t* parser, const char* at, size_t length)
     return 0;
 }
 
-/**
- * Called when header name is parsed
- */
 static int on_header_field(llhttp_t* parser, const char* at, size_t length)
 {
     LlhttpParserContext* ctx = (LlhttpParserContext*)parser->data;
@@ -123,9 +127,6 @@ static int on_header_field(llhttp_t* parser, const char* at, size_t length)
     return 0;
 }
 
-/**
- * Called when header value is parsed
- */
 static int on_header_value(llhttp_t* parser, const char* at, size_t length)
 {
     LlhttpParserContext* ctx = (LlhttpParserContext*)parser->data;
@@ -134,9 +135,6 @@ static int on_header_value(llhttp_t* parser, const char* at, size_t length)
     return 0;
 }
 
-/**
- * Called when method is detected
- */
 static int on_method(llhttp_t* parser, const char* at, size_t length)
 {
     LlhttpParserContext* ctx = (LlhttpParserContext*)parser->data;
@@ -144,10 +142,6 @@ static int on_method(llhttp_t* parser, const char* at, size_t length)
     return 0;
 }
 
-/**
- * Analyze headers in an HttpRequest to determine if the client wants to close the connection.
- * Sets req->should_close accordingly.
- */
 static void determine_connection_policy(HttpRequest* req, int* client_connection_policy)
 {
     req->should_close = 0;  // Default for HTTP/1.1 is keep-alive

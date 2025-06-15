@@ -1,7 +1,12 @@
 #ifndef SERVER_STATIC_PAGE_H
 #define SERVER_STATIC_PAGE_H
 
-#include "http_manager.h"
+/****************************************************************************
+ * PUBLIC INCLUDES
+ ****************************************************************************
+ */
+
+#include "http_manager.h" /* HttpRequest, HttpResponse */
 
 /****************************************************************************
  * PUBLIC FUNCTIONS PROTOTYPES
@@ -20,6 +25,6 @@
  * @param response     Pointer to an HttpResponse struct to populate
  * @return 0 on success, non-zero on error
  */
-int static_page_serve_file(const char* filepath, const char* content_type, HttpResponse* response);
+int handler_static_page(const char* filepath, const char* content_type, HttpResponse* response);
 
 #endif /* SERVER_STATIC_PAGE_H */
