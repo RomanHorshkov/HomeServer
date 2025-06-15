@@ -56,7 +56,7 @@ typedef struct
     char path[HTTP_MAX_PATH_LEN]; /* Request path */
     char header_names[HTTP_MAX_HEADER_COUNT][HTTP_MAX_HEADER_NAME_LEN];   /* Header names */
     char header_values[HTTP_MAX_HEADER_COUNT][HTTP_MAX_HEADER_VALUE_LEN]; /* Header values */
-    int header_count;                        /* Number of headers parsed */
+    int header_count;                       /* Number of headers parsed */
     HTTPConnectionPolicy connection_policy; /* Connection policy (keep-alive or close) */
 
 } HttpRequest;

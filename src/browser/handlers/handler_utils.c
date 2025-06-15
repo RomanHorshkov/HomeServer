@@ -19,7 +19,6 @@
 /* Public interface */
 #include "handler_utils.h"
 
-
 /****************************************************************************
  * PRIVATE STRUCTURED VARIABLES
  ****************************************************************************
@@ -40,7 +39,6 @@ const struct
     {".jpg", "image/jpeg"},   {".jpeg", "image/jpeg"},   {".png", "image/png"},
     {".gif", "image/gif"},    {".svg", "image/svg+xml"}, {".json", "application/json"},
     {".md", "text/markdown"}, {".puml", "text/plain"}};
-
 
 /****************************************************************************
  * PUBLIC FUNCTIONS DEFINITIONS
