@@ -3,8 +3,11 @@
 
 #include "http_manager.h"  // for HttpRequest and HttpResponse structs
 
-/* Handles the incoming request based on the method and path.
- * Builds the response to send back into the out_response structure.
+/**
+ * @brief Main router: finds a matching route and calls its handler.
+ * @param request   The HTTP request.
+ * @param response  The HTTP response to populate.
+ * @return          0 on success, -1 on error.
  */
 int router_handle_request(const HttpRequest* req, HttpResponse* res);
 

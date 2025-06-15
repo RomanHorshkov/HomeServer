@@ -7,10 +7,10 @@
 #include <sys/socket.h> /* send(), recv() */
 #include <unistd.h>     /* ssize_t */
 
-#include "logger.h"          /* log_info, log_error */
-#include "router.h"          /* router_handle_request */
-#include "server_settings.h" /* HTTP constants */
-#include "static_page.h"     /* static_page_serve_file */
+#include "handler_static_page.h" /* handler_static_page */
+#include "logger.h"              /* log_info, log_error */
+#include "router.h"              /* router_handle_request */
+#include "server_settings.h"     /* HTTP constants */
 
 /****************************************************************************
  * PRIVATE DEFINES
@@ -58,40 +58,45 @@ static ssize_t send_all(int fd, const void *buf, size_t len);
 ssize_t browser_manage_client_req(int fd, const char *recv_buf, size_t n,
                                   int client_connection_policy)
 {
-    HttpRequest request;
-    HttpResponse response;
-    ssize_t result = -1;
+    /* return variable */
+    static ssize_t res = STATUS_FAILURE;
+
+    /* create the request variable and set it to 0 */
+    static HttpRequest request;
+    memset(&request, 0, sizeof(HttpRequest));
+
+    /* create the response variable and set it to 0 */
+    static HttpResponse response;
+    memset(&response, 0, sizeof(HttpResponse));
 
     /* 1) Parse raw HTTP request into HttpRequest struct */
     if(http_parse_request(recv_buf, n, &request, &client_connection_policy) < 0)
     {
         log_error("browser_manage_client_req: parse failed", strerror(errno));
-        return -1;
     }
 
     /* 2) Route request to generate HttpResponse (status, headers, body) */
-    if(router_handle_request(&request, &response) < 0)
+    else if(router_handle_request(&request, &response) < 0)
     {
         log_error("browser_manage_client_req: routing failed", strerror(errno));
-        return -1;
     }
 
     /* 3) Send HTTP response over TCP (headers + binary body) */
-    if(send_response(fd, &response, client_connection_policy) < 0)
+    else if(send_response(fd, &response, client_connection_policy) < 0)
     {
         log_error("browser_manage_client_req: send_response failed", strerror(errno));
-        result = -1;
     }
+
     else
     {
         /* Return the number of body bytes sent (may be 0 for no-body) */
-        result = (ssize_t)response.body_length;
+        res = (ssize_t)response.body_length;
     }
 
-    /* 4) Free any heap buffer allocated by static_page_serve_file */
+    /* 4) Free any heap buffer allocated by handler_static_page */
     free((void *)response.body);
 
-    return result;
+    return res;
 }
 
 /****************************************************************************
