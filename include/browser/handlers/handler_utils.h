@@ -110,4 +110,12 @@ void send_404(HttpResponse *response);
  */
 void send_405(HttpResponse *response);
 
+/**
+ * @brief Guess the MIME type for a file based on its extension.
+ *
+ * @param path Path to the file.
+ * @return MIME type string (e.g., "text/html").
+ */
+const char *guess_mime_type(const char *path);
+
 #endif /* SERVER_BROWSER_HANDLER_UTILS_H */

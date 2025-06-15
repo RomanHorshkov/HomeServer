@@ -39,7 +39,7 @@
 
 #include "handler_drive.h"
 #include "handler_expenses.h"
-#include "handler_static_page.h"
+#include "handler_static.h"
 #include "handler_whoami.h"
 #include "server_settings.h"
 

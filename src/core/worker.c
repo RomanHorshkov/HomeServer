@@ -180,18 +180,27 @@ void *worker_run(void *arg)
                     if(n <= 0)
                     {
                         /* Connection closed or error, clean up */
+#ifdef DEBUG_MODE
                         log_info("[worker] Closing fd %d", fd);
+#endif /* DEBUG_MODE */
                         epoll_ctl(epfd, EPOLL_CTL_DEL, fd, NULL);
                         close(fd);
                     }
                     else
                     {
-                        recv_buf[n] = '\0';
 #ifdef DEBUG_MODE
                         log_info("[worker] Received from fd %d: %.*s", fd, (int)n, recv_buf);
 #endif /* DEBUG_MODE */
 
-                        browser_manage_client_req(fd, recv_buf, n, HTTP_CONNECTION_KEEP_ALIVE);
+                        if(browser_manage_client_req(fd, recv_buf, n) != STATUS_SUCCESS)
+                        {
+#ifdef DEBUG_MODE
+                            log_info("[worker] browser_manage_client_req failed fd %d", fd);
+#endif /* DEBUG_MODE */
+                            /* Close the socket and remove from epoll */
+                            epoll_ctl(epfd, EPOLL_CTL_DEL, fd, NULL);
+                            close(fd);
+                        }
                     }
                 }
             }

@@ -8,8 +8,8 @@
 
 enum status
 {
-    STATUS_FAILURE = -1,               // error occurred
-    STATUS_SUCCESS = 0,                // everything is fine
+    STATUS_FAILURE = -1,               /* error occurred */
+    STATUS_SUCCESS = 0,                /* everything is fine */
     CLIENT_NEW_CLIENT_CREATED,         // new client created
     CLIENT_NEW_SOCKET_CREATED,         // new socket created for an existing client
     CLIENT_MANAGER_NEW_CLIENT_NONE,    // no new client
@@ -34,7 +34,6 @@ enum server_status
 
 /****************************************************************************
  * SERVER PROPERTIES
- ****************************************************************************
  */
 
 /* Max listeners amount */
@@ -60,7 +59,6 @@ enum server_status
 
 /****************************************************************************
  * SOCKET PROPERTIES
- ****************************************************************************
  */
 
 /* Client short timeout [s] */
@@ -74,7 +72,6 @@ enum server_status
 
 /****************************************************************************
  * HTTP PROPERTIES
- ****************************************************************************
  */
 
 #define HTTP_RECEIVE_BUFFER_LEN 4096

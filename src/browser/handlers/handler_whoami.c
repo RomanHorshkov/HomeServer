@@ -80,8 +80,9 @@ int handler_whoami(const HttpRequest *req, HttpResponse *res)
      *---------------------------------------------------------------------*/
     cJSON *root = cJSON_CreateObject();                     /* { }                       */
     cJSON_AddStringToObject(root, "server_time", iso_time); /* "server_time": "…"        */
-    cJSON_AddStringToObject(root, "method", req->method);   /* "method": "GET"           */
-    cJSON_AddStringToObject(root, "path", req->path);       /* "path":   "/api/whoami"   */
+    cJSON_AddStringToObject(root, "method",
+                            http_method_to_string(req->method)); /* "method": "GET"           */
+    cJSON_AddStringToObject(root, "path", req->path);            /* "path":   "/api/whoami"   */
 
     cJSON *hdrs = cJSON_AddObjectToObject(root, "headers"); /* nested object            */
     for(int i = 0; i < req->header_count; ++i)              /* copy every header        */
