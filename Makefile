@@ -4,7 +4,7 @@ CFLAGS          := -std=c11 -Wall -Werror -Wextra -pedantic -g
 LDLIBS 			+= -Lexternal/llhttp -lllhttp\
                    -Lexternal/cjson -lcjson
 
-INCDIRS 		:= include include/core include/browser include/clients external/llhttp external/cjson
+INCDIRS 		:= include include/core include/browser include/browser/handlers external/llhttp external/cjson
 SRCDIRS         := src
 BUILDDIR        := build
 OBJDIR          := $(BUILDDIR)/obj

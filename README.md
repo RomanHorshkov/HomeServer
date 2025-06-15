@@ -204,8 +204,8 @@ Main thread (core)
   | `/drive`         | `drive.html` (static JS page)                 |
   | `/build_notes`   | `build_notes/index.html` (static + client JS) |
   | `/build_notes/…` | Static files under `www/build_notes/`         |
-  | `/api/whoami`    | `whoami_json_handler()` (JSON API)            |
-  | `/api/drive`     | `drive_json_handler()` (directory listing)    |
+  | `/api/whoami`    | `handler_whoami()` (JSON API)            |
+  | `/api/drive`     | `handler_drive()` (directory listing)    |
   | `/images/…`      | Binary files under `www/images/`              |
   | `/assets/…`      | Shared HTML/JS bits under `www/assets/`       |
   | *anything else*  | `404 Not Found`                               |

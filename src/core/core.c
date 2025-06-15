@@ -59,7 +59,7 @@ typedef struct
 static server_t srv;
 
 /****************************************************************************
- * PRIVATE FUNCTIONS DECLARATIONS
+ * PRIVATE FUNCTIONS PROTOTYPES
  ****************************************************************************
  */
 

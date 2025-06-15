@@ -17,45 +17,186 @@
 
 #include "handlers.h"
 #include "logger.h"
-#include "static_page.h"
 
 /****************************************************************************
- * @section Defines and Constants
- ****************************************************************************/
+ * PRIVATE DEFINES
+ ****************************************************************************
+ */
 
-/** Root directory for all static assets */
-#define PATH_MAX 4096 /* # chars in a path name including nul */
-#define STATIC_ROOT "www"
+/* --- Path and File Limits --- */
+#define STATIC_ROOT "www" /* Root directory for all static assets */
 
-/** Default file paths */
+/* --- Default Static File Paths --- */
 #define INDEX_PAGE STATIC_ROOT "/index.html"
 #define WHOAMI_PAGE STATIC_ROOT "/whoami.html"
 #define DYNAMIC_PAGE STATIC_ROOT "/dynamic.html"
 #define STYLE_PAGE STATIC_ROOT "/style.css"
+#define EXPENSES_PAGE STATIC_ROOT "/expenses.html"
+#define BUILD_NOTES_PAGE STATIC_ROOT "/build_notes/index.html"
+#define BUILD_NOTES_DIR STATIC_ROOT "/build_notes/diagrams/"
 
-/** URI prefixes and routes */
+/* --- URI Route Patterns --- */
 #define URI_HOME "/"
 #define URI_HOME_ALIAS "/home"
 #define URI_STYLE "/style.css"
+#define URI_ASSETS_PREFIX "/assets/"
 #define URI_WHOAMI "/whoami"
 #define URI_WHOAMI_API "/api/whoami"
 #define URI_DYNAMIC "/dynamic"
+#define URI_BUILD_NOTES_PREFIX "/build_notes"
+#define URI_DRIVE_PREFIX "/drive"
+#define URI_API_DRIVE_PREFIX "/api/drive"
+#define URI_IMAGES_PREFIX "/images/"
+#define URI_EXPENSES_PREFIX "/expenses/"
 #define URI_EXPENSES_PAGE "/expenses"
 #define URI_EXPENSES_MONTHS "/api/expenses/months"
-#define URI_IMAGES_PREFIX "/images/"
 
-/** Content types */
+/* --- Content Types --- */
 #define CONTENT_HTML "text/html"
 #define CONTENT_CSS "text/css"
-#define BUILD_NOTES_DIR "www/build_notes/diagrams/"
-#define BUILD_NOTES_PAGE "www/build_notes/index.html"
+#define CONTENT_MARKDOWN "text/markdown"
+#define CONTENT_PUML "text/plain"
+#define CONTENT_PNG "image/png"
+#define CONTENT_JPEG "image/jpeg"
+#define CONTENT_SVG "image/svg+xml"
+#define CONTENT_GIF "image/gif"
+#define CONTENT_JSON "application/json"
+#define CONTENT_JS "application/javascript"
+#define CONTENT_OCTET "application/octet-stream"
 
-/** HTTP methods */
+/* --- HTTP Methods --- */
 #define HTTP_GET "GET"
+
+/****************************************************************************
+ * PRIVATE FUNCTIONS PROTOTYPES
+ ****************************************************************************
+ */
+
+/**
+ * @brief Serve a static file in response to a request.
+ *
+ * @param req         Parsed HTTP request structure.
+ * @param res         HTTP response structure to populate.
+ * @param file_path   Absolute or relative path to the static file.
+ * @param content_type MIME type string to use in the response.
+ * @return            0 on success, -1 on error (file not found, etc.).
+ */
+static int handle_static(const HttpRequest *req, HttpResponse *res, const char *file_path,
+                         const char *content_type);
+
+/**
+ * @brief Handle the /api/whoami endpoint (returns server info as JSON).
+ *
+ * @param req         Parsed HTTP request structure.
+ * @param res         HTTP response structure to populate.
+ * @param unused1     Unused parameter (for handler signature compatibility).
+ * @param unused2     Unused parameter (for handler signature compatibility).
+ * @return            0 on success, -1 on error.
+ */
+static int handle_whoami_api(const HttpRequest *req, HttpResponse *res, const char *unused1,
+                             const char *unused2);
+
+/**
+ * @brief Handle the /api/drive endpoint (returns directory listing as JSON).
+ *
+ * @param req         Parsed HTTP request structure.
+ * @param res         HTTP response structure to populate.
+ * @param unused1     Unused parameter (for handler signature compatibility).
+ * @param unused2     Unused parameter (for handler signature compatibility).
+ * @return            0 on success, -1 on error.
+ */
+static int handle_drive_api(const HttpRequest *req, HttpResponse *res, const char *unused1,
+                            const char *unused2);
+
+/**
+ * @brief Handle the /api/expenses/months endpoint (returns months as JSON).
+ *
+ * @param req         Parsed HTTP request structure.
+ * @param res         HTTP response structure to populate.
+ * @param unused1     Unused parameter (for handler signature compatibility).
+ * @param unused2     Unused parameter (for handler signature compatibility).
+ * @return            0 on success, -1 on error.
+ */
+static int handle_expenses_months(const HttpRequest *req, HttpResponse *res, const char *unused1,
+                                  const char *unused2);
+
+/**
+ * @brief Serve static images under the /images/ prefix.
+ *
+ * @param req         Parsed HTTP request structure.
+ * @param res         HTTP response structure to populate.
+ * @param unused1     Unused parameter.
+ * @param unused2     Unused parameter.
+ * @return            0 on success, -1 on error.
+ */
+static int handle_prefix_images(const HttpRequest *req, HttpResponse *res, const char *unused1,
+                                const char *unused2);
+
+/**
+ * @brief Serve static assets under the /assets/ prefix.
+ *
+ * @param req         Parsed HTTP request structure.
+ * @param res         HTTP response structure to populate.
+ * @param unused1     Unused parameter.
+ * @param unused2     Unused parameter.
+ * @return            0 on success, -1 on error.
+ */
+static int handle_prefix_assets(const HttpRequest *req, HttpResponse *res, const char *unused1,
+                                const char *unused2);
+
+/**
+ * @brief Serve build notes and files under the /build_notes prefix.
+ *
+ * @param req         Parsed HTTP request structure.
+ * @param res         HTTP response structure to populate.
+ * @param unused1     Unused parameter.
+ * @param unused2     Unused parameter.
+ * @return            0 on success, -1 on error.
+ */
+static int handle_prefix_build_notes(const HttpRequest *req, HttpResponse *res, const char *unused1,
+                                     const char *unused2);
+
+/**
+ * @brief Serve the drive UI page for /drive prefix.
+ *
+ * @param req         Parsed HTTP request structure.
+ * @param res         HTTP response structure to populate.
+ * @param unused1     Unused parameter.
+ * @param unused2     Unused parameter.
+ * @return            0 on success, -1 on error.
+ */
+static int handle_prefix_drive(const HttpRequest *req, HttpResponse *res, const char *unused1,
+                               const char *unused2);
+
+/**
+ * @brief Serve JSON files under the /expenses/ prefix.
+ *
+ * @param req         Parsed HTTP request structure.
+ * @param res         HTTP response structure to populate.
+ * @param unused1     Unused parameter.
+ * @param unused2     Unused parameter.
+ * @return            0 on success, -1 on error.
+ */
+static int handle_prefix_expenses_json(const HttpRequest *req, HttpResponse *res,
+                                       const char *unused1, const char *unused2);
+
+/**
+ * @brief Guess the MIME type for a file based on its extension.
+ *
+ * @param path        Path to the file.
+ * @return            MIME type string (e.g., "text/html").
+ */
+static const char *guess_mime_type(const char *path);
+
+/****************************************************************************
+ * PRIVATE STRUCTURED VARIABLES
+ ****************************************************************************
+ */
 
 /****************************************************************************
  * @section MIME type mapping
  * Table-driven mapping of file extensions to MIME types.
+ * When you serve a file, you need to tell the browser what kind of file it is.
  ****************************************************************************/
 static const struct
 {
@@ -70,195 +211,213 @@ static const struct
     {".png", "image/png"},
     {".gif", "image/gif"},
     {".svg", "image/svg+xml"},
-    {".json", "application/json"},  // for manifest
-    {".md", "text/markdown"},       // if ever want a real markdown mime
-    {".puml", "text/plain"}         // PlantUML source
+    {".json", "application/json"}, /*  manifest */
+    {".md", "text/markdown"},      /* if ever want a real markdown mime */
+    {".puml", "text/plain"}        /* PlantUML source */
+};
+
+/* Route matching type */
+typedef enum
+{
+    ROUTE_EXACT, /* Exact match */
+    ROUTE_PREFIX /* Prefix match (e.g. "/images/") */
+} route_match_t;
+
+/* Route handler signature */
+typedef int (*route_handler_t)(const HttpRequest *, HttpResponse *, const char *, const char *);
+
+/* Route table entry */
+typedef struct
+{
+    const char *method;
+    const char *path;
+    route_match_t match_type;
+    route_handler_t handler;
+    const char *file_path;    /* For static files */
+    const char *content_type; /* For static files */
+} route_t;
+
+/* Routing table */
+static const route_t routes[] = {
+    // --- Exact matches ---
+    {HTTP_GET, URI_HOME, ROUTE_EXACT, handle_static, INDEX_PAGE, CONTENT_HTML},
+    {HTTP_GET, URI_HOME_ALIAS, ROUTE_EXACT, handle_static, INDEX_PAGE, CONTENT_HTML},
+    {HTTP_GET, URI_STYLE, ROUTE_EXACT, handle_static, STYLE_PAGE, CONTENT_CSS},
+    {HTTP_GET, URI_WHOAMI, ROUTE_EXACT, handle_static, WHOAMI_PAGE, CONTENT_HTML},
+    {HTTP_GET, URI_WHOAMI_API, ROUTE_EXACT, handle_whoami_api, NULL, NULL},
+    {HTTP_GET, URI_DYNAMIC, ROUTE_EXACT, handle_static, DYNAMIC_PAGE, CONTENT_HTML},
+    {HTTP_GET, URI_EXPENSES_PAGE, ROUTE_EXACT, handle_static, STATIC_ROOT "/expenses.html",
+     CONTENT_HTML},
+    {HTTP_GET, URI_EXPENSES_MONTHS, ROUTE_EXACT, handle_expenses_months, NULL, NULL},
+
+    // --- Prefix matches ---
+    {HTTP_GET, URI_IMAGES_PREFIX, ROUTE_PREFIX, handle_prefix_images, NULL, NULL},
+    {HTTP_GET, URI_ASSETS_PREFIX, ROUTE_PREFIX, handle_prefix_assets, NULL, NULL},
+    {HTTP_GET, URI_BUILD_NOTES_PREFIX, ROUTE_PREFIX, handle_prefix_build_notes, NULL, NULL},
+    {HTTP_GET, URI_DRIVE_PREFIX, ROUTE_PREFIX, handle_prefix_drive, NULL, NULL},
+    {HTTP_GET, URI_API_DRIVE_PREFIX, ROUTE_PREFIX, handle_drive_api, NULL, NULL},
+    {HTTP_GET, URI_EXPENSES_PREFIX, ROUTE_PREFIX, handle_prefix_expenses_json, NULL, NULL},
 };
 
 /****************************************************************************
- * @section Private Function Prototypes
- ****************************************************************************/
-
-/** Guess MIME type by file extension */
-static const char *guess_mime_type(const char *path);
-
-/** Send a 404 Not Found response */
-static void send_404(HttpResponse *response);
-
-/** Send a 405 Method Not Allowed response */
-static void send_405(HttpResponse *response);
-
-static int has_suffix(const char *str, const char *suffix);
-
-/****************************************************************************
- * @section Public Functions
+ * PUBLIC FUNCTIONS DEFINITIONS
  ****************************************************************************/
 
 int router_handle_request(const HttpRequest *request, HttpResponse *response)
 {
-    if(!request || !response)
+    /* return variable */
+    int res = STATUS_FAILURE;
+
+    if(request == NULL || response == NULL)
     {
-        return -1;
+        log_error("router_handle_request: invalid arguments (request or response is NULL)", "");
+        // send_404(response);
     }
 
-    /* Only GET is supported */
-    if(strcmp(request->method, HTTP_GET) != 0)
+    else if(strcmp(request->method, HTTP_GET) != 0)
     {
-        send_405(response);
-        return 0;
+        // send_405(response);
     }
 
-    /* Route GET requests */
-    if(strcmp(request->path, URI_STYLE) == 0)
+    else
     {
-        return static_page_serve_file(STYLE_PAGE, CONTENT_CSS, response);
-    }
-    if(strcmp(request->path, URI_HOME) == 0 || strcmp(request->path, URI_HOME_ALIAS) == 0)
-    {
-        return static_page_serve_file(INDEX_PAGE, CONTENT_HTML, response);
-    }
-    if(strcmp(request->path, URI_WHOAMI) == 0)
-    {
-        return static_page_serve_file(WHOAMI_PAGE, CONTENT_HTML, response);
-    }
-    if(strcmp(request->path, URI_WHOAMI_API) == 0)
-    {
-        return whoami_json_handler(request, response);
-    }
-    if(strcmp(request->path, URI_DYNAMIC) == 0)
-    {
-        return static_page_serve_file(DYNAMIC_PAGE, CONTENT_HTML, response);
-    }
-
-    /* ------------------------------------------------------------------
-     * Serve Static assets (under /images)
-     * ------------------------------------------------------------------ */
-    if(strncmp(request->path, URI_IMAGES_PREFIX, sizeof(URI_IMAGES_PREFIX) - 1) == 0)
-    {
-        char file_path[PATH_MAX];
-        snprintf(file_path, sizeof(file_path), "%s%s", STATIC_ROOT, request->path);
-
-        log_info("ROUTER: Trying to serve image from disk: %s", file_path);
-        /* TODO: Sanitize file_path to prevent path traversal */
-        if(access(file_path, R_OK) != 0)
+        for(size_t i = 0; i < sizeof(routes) / sizeof(routes[0]); ++i)
         {
-            log_info("ROUTER: Image not found or unreadable: %s", file_path);
-            send_404(response);
-            return 0;
-        }
-        log_info("ROUTER: static_page_serve_file returned %s", file_path);
-        return static_page_serve_file(file_path, guess_mime_type(file_path), response);
-    }
-
-    /* ------------------------------------------------------------------
-     * Serve Drive page
-     * ------------------------------------------------------------------ */
-    /* Drive UI page */
-    if(strncmp(request->path, "/drive", 6) == 0)
-    {
-        return static_page_serve_file("www/drive.html", "text/html", response);
-    }
-
-    /* Drive UI page: JSON API: /api/drive?path=/some/subdir */
-    if(strncmp(request->path, "/api/drive", 10) == 0)
-    {
-        return drive_json_handler(request, response);
-    }
-
-    /* ------------------------------------------------------------------
-     * Serve build_notes page
-     * ------------------------------------------------------------------ */
-    if(strncmp(request->path, "/build_notes", 12) == 0)
-    {
-        const char *rest = request->path + 12;  // points at either '\0' or "/…"
-        if(*rest == '\0' || (rest[0] == '/' && rest[1] == '\0'))
-        {
-            // exact /build_notes or /build_notes/
-            return static_page_serve_file(BUILD_NOTES_PAGE, CONTENT_HTML, response);
-        }
-        if(rest[0] == '/')
-        {
-            // anything under /build_notes/…
-            char file_path[PATH_MAX];
-            snprintf(file_path, sizeof file_path, "%s%s", STATIC_ROOT, request->path);
-            if(strstr(request->path, "..") || access(file_path, R_OK) != 0)
+            if(routes[i].match_type == ROUTE_EXACT)
             {
-                send_404(response);
-                return 0;
+                if(strcmp(request->path, routes[i].path) == 0)
+                {
+                    res = STATUS_SUCCESS;
+                    return routes[i].handler(request, response, routes[i].file_path,
+                                             routes[i].content_type);
+                }
             }
-            const char *mime = guess_mime_type(file_path);
-            if(strstr(file_path, ".json")) mime = "application/json";
-            return static_page_serve_file(file_path, mime, response);
+            else if(routes[i].match_type == ROUTE_PREFIX)
+            {
+                size_t len = strlen(routes[i].path);
+                if(strncmp(request->path, routes[i].path, len) == 0)
+                {
+                    res = STATUS_SUCCESS;
+                    return routes[i].handler(request, response, routes[i].file_path,
+                                             routes[i].content_type);
+                }
+            }
         }
     }
 
-    /* ------------------------------------------------------------------
-     * Serve any file under /assets/ from disk
-     * ------------------------------------------------------------------ */
-    if(strncmp(request->path, "/assets/", 8) == 0)
-    {
-        char file_path[PATH_MAX];
-        snprintf(file_path, sizeof file_path, "%s%s", STATIC_ROOT, request->path);
-
-        /* Guard against “..” path‑traversal attempts */
-        if(strstr(file_path, ".."))
-        {
-            send_404(response);
-            return 0;
-        }
-
-        return static_page_serve_file(file_path, guess_mime_type(file_path), response);
-    }
-
-    /* ─────────────────────────────────────────────────────────────
-     * Expenses feature
-     * ───────────────────────────────────────────────────────────── */
-    /* “list months” API */
-    if(strcmp(request->path, "/api/expenses/months") == 0)
-    {
-        return expenses_months_handler(response);
-    }
-
-    /* Serve raw JSON files under /expenses/YYYY/MM.json */
-    if(strncmp(request->path, "/expenses/", 9) == 0 && has_suffix(request->path, ".json"))
-    {
-        /* build filesystem path: STATIC_ROOT + request->path */
-        char fullpath[PATH_MAX];
-        snprintf(fullpath, sizeof fullpath, STATIC_ROOT "%s", request->path);
-        return static_page_serve_file(fullpath, "application/json", response);
-    }
-
-    /* Serve the HTML page as before: */
-    if(strcmp(request->path, URI_EXPENSES_PAGE) == 0)
-    {
-        return static_page_serve_file(STATIC_ROOT "/expenses.html", CONTENT_HTML, response);
-    }
-
-    /* Fallback to 404 Not Found */
-    send_404(response);
-    return 0;
+    return res;
 }
 
 /****************************************************************************
- * @section Private Functions Definitions
+ * PRIVATE FUNCTIONS DEFINITIONS
  ****************************************************************************/
 
-static void send_404(HttpResponse *response)
+static int handle_static(const HttpRequest *req, HttpResponse *res, const char *file_path,
+                         const char *content_type)
 {
-    response->status_code = 404;
-    response->status_text = "Not Found";
-    response->content_type = CONTENT_HTML;
-    response->body = "<html><body><h1>404 Not Found</h1></body></html>";
-    response->body_length = strlen(response->body);
+    (void)req;
+    return handler_static_page(file_path, content_type, res);
 }
 
-static void send_405(HttpResponse *response)
+static int handle_whoami_api(const HttpRequest *req, HttpResponse *res, const char *unused1,
+                             const char *unused2)
 {
-    response->status_code = 405;
-    response->status_text = "Method Not Allowed";
-    response->content_type = CONTENT_HTML;
-    response->body = "<html><body><h1>405 Method Not Allowed</h1></body></html>";
-    response->body_length = strlen(response->body);
+    (void)unused1;
+    (void)unused2;
+    return handler_whoami(req, res);
+}
+
+static int handle_drive_api(const HttpRequest *req, HttpResponse *res, const char *unused1,
+                            const char *unused2)
+{
+    (void)unused1;
+    (void)unused2;
+    return handler_drive(req, res);
+}
+
+static int handle_expenses_months(const HttpRequest *req, HttpResponse *res, const char *unused1,
+                                  const char *unused2)
+{
+    (void)req;
+    (void)unused1;
+    (void)unused2;
+    return handler_expenses(res);
+}
+
+static int handle_prefix_images(const HttpRequest *req, HttpResponse *res, const char *unused1,
+                                const char *unused2)
+{
+    (void)unused1;
+    (void)unused2;
+
+    char file_path[HTTP_RECEIVE_BUFFER_LEN];
+    snprintf(file_path, sizeof(file_path), "%s%s", STATIC_ROOT, req->path);
+    if(access(file_path, R_OK) != 0)
+    {
+        // send_404(res);
+        return 0;
+    }
+    return handler_static_page(file_path, guess_mime_type(file_path), res);
+}
+
+static int handle_prefix_assets(const HttpRequest *req, HttpResponse *res, const char *unused1,
+                                const char *unused2)
+{
+    (void)unused1;
+    (void)unused2;
+
+    char file_path[HTTP_RECEIVE_BUFFER_LEN];
+    snprintf(file_path, sizeof(file_path), "%s%s", STATIC_ROOT, req->path);
+    if(strstr(file_path, ".."))
+    {
+        // send_404(res);
+        return 0;
+    }
+    return handler_static_page(file_path, guess_mime_type(file_path), res);
+}
+static int handle_prefix_build_notes(const HttpRequest *req, HttpResponse *res, const char *unused1,
+                                     const char *unused2)
+{
+    (void)unused1;
+    (void)unused2;
+    const char *rest = req->path + 12;
+    if(*rest == '\0' || (rest[0] == '/' && rest[1] == '\0'))
+    {
+        return handler_static_page(BUILD_NOTES_PAGE, CONTENT_HTML, res);
+    }
+    if(rest[0] == '/')
+    {
+        char file_path[HTTP_RECEIVE_BUFFER_LEN];
+        snprintf(file_path, sizeof file_path, "%s%s", STATIC_ROOT, req->path);
+        if(strstr(req->path, "..") || access(file_path, R_OK) != 0)
+        {
+            // // send_404(res);
+            return 0;
+        }
+        const char *mime = guess_mime_type(file_path);
+        if(strstr(file_path, ".json")) mime = "application/json";
+        return handler_static_page(file_path, mime, res);
+    }
+    // // send_404(res);
+    return 0;
+}
+static int handle_prefix_drive(const HttpRequest *req, HttpResponse *res, const char *unused1,
+                               const char *unused2)
+{
+    (void)req;
+    (void)unused1;
+    (void)unused2;
+    return handler_static_page("www/drive.html", "text/html", res);
+}
+
+static int handle_prefix_expenses_json(const HttpRequest *req, HttpResponse *res,
+                                       const char *unused1, const char *unused2)
+{
+    (void)unused1;
+    (void)unused2;
+    char fullpath[HTTP_RECEIVE_BUFFER_LEN];
+    snprintf(fullpath, sizeof fullpath, STATIC_ROOT "%s", req->path);
+    return handler_static_page(fullpath, "application/json", res);
 }
 
 static const char *guess_mime_type(const char *path)
@@ -276,30 +435,4 @@ static const char *guess_mime_type(const char *path)
         }
     }
     return "application/octet-stream";
-}
-
-/**
- * @brief  Check whether `str` ends with `suffix`.
- * @param  str     The full string to test.
- * @param  suffix  The ending substring to look for.
- * @return         1 if `str` ends with `suffix`, 0 otherwise.
- */
-static int has_suffix(const char *str, const char *suffix)
-{
-    if(!str || !suffix)
-    {
-        return 0;
-    }
-
-    size_t lenstr = strlen(str);
-    size_t lensuffix = strlen(suffix);
-
-    /* suffix longer than string? cannot match */
-    if(lensuffix > lenstr)
-    {
-        return 0;
-    }
-
-    /* compare tail of str with suffix */
-    return strcmp(str + (lenstr - lensuffix), suffix) == 0;
 }
