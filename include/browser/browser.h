@@ -31,7 +31,6 @@
  * @param client_connection_policy Connection policy (in/out): HTTP_CONNECTION_CLOSE or KEEP_ALIVE.
  * @return Number of body bytes sent (may be 0 for no-body), or -1 on error.
  */
-ssize_t browser_manage_client_req(int fd, const char* recv_buf, size_t n,
-                                  int client_connection_policy);
+int browser_manage_client_req(int fd, const char* recv_buf, size_t n);
 
 #endif /* SERVER_BROWSER_H */

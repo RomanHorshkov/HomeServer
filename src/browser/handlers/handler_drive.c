@@ -14,6 +14,9 @@
  * (c) 2025 Roman Horshkov
  */
 
+#ifndef SERVER_HANDLER_DRIVE_H
+#define SERVER_HANDLER_DRIVE_H
+
 #define _GNU_SOURCE
 
 #include "handler_drive.h"
@@ -133,3 +136,5 @@ int handler_drive(const HttpRequest *req, HttpResponse *resp)
 
     return 0; /* success         */
 }
+
+#endif /* SERVER_HANDLER_DRIVE_H */

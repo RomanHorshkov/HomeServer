@@ -5,12 +5,11 @@
 #include <stdlib.h>     /* free */
 #include <string.h>     /* strerror */
 #include <sys/socket.h> /* send(), recv() */
-#include <unistd.h>     /* ssize_t */
 
-#include "handler_static_page.h" /* handler_static_page */
-#include "logger.h"              /* log_info, log_error */
-#include "router.h"              /* router_handle_request */
-#include "server_settings.h"     /* HTTP constants */
+#include "handler_static.h"  /* handler_static_page */
+#include "logger.h"          /* log_info, log_error */
+#include "router.h"          /* router_handle_request */
+#include "server_settings.h" /* HTTP constants */
 
 /****************************************************************************
  * PRIVATE DEFINES
@@ -32,11 +31,10 @@
  *
  * @param fd                      Client socket descriptor.
  * @param resp                    Pointer to a populated HttpResponse structure.
- * @param client_connection_policy HTTP_CONNECTION_CLOSE or HTTP_CONNECTION_KEEP_ALIVE.
  * @retval  0  Success.
  * @retval -1 Failure (logged).
  */
-static int send_response(int fd, const HttpResponse *resp, int client_connection_policy);
+static int send_response(int fd, const HttpResponse *resp);
 
 /**
  * @brief Send exactly 'len' bytes from 'buf' over the socket, handling partial sends.
@@ -55,11 +53,10 @@ static ssize_t send_all(int fd, const void *buf, size_t len);
  * PUBLIC FUNCTIONS DEFINITIONS
  ****************************************************************************
  */
-ssize_t browser_manage_client_req(int fd, const char *recv_buf, size_t n,
-                                  int client_connection_policy)
+int browser_manage_client_req(int fd, const char *recv_buf, size_t n)
 {
     /* return variable */
-    static ssize_t res = STATUS_FAILURE;
+    static int res = STATUS_FAILURE;
 
     /* create the request variable and set it to 0 */
     static HttpRequest request;
@@ -69,31 +66,33 @@ ssize_t browser_manage_client_req(int fd, const char *recv_buf, size_t n,
     static HttpResponse response;
     memset(&response, 0, sizeof(HttpResponse));
 
-    /* 1) Parse raw HTTP request into HttpRequest struct */
-    if(http_parse_request(recv_buf, n, &request, &client_connection_policy) < 0)
+    /* Parse raw HTTP request into HttpRequest struct */
+    if(http_parse_request(recv_buf, n, &request) < 0)
     {
         log_error("browser_manage_client_req: parse failed", strerror(errno));
     }
 
-    /* 2) Route request to generate HttpResponse (status, headers, body) */
-    else if(router_handle_request(&request, &response) < 0)
+    /* Route request to generate HttpResponse (status, headers, body) */
+    else if(router_handle_request(&request, &response) != STATUS_SUCCESS)
     {
-        log_error("browser_manage_client_req: routing failed", strerror(errno));
+#ifdef DEBUG_MODE
+        log_info("[browser]: router_handle_request failed for fd %d", fd);
+#endif /* DEBUG_MODE */
     }
 
-    /* 3) Send HTTP response over TCP (headers + binary body) */
-    else if(send_response(fd, &response, client_connection_policy) < 0)
+    /* Send HTTP response over TCP (headers + binary body) */
+    else if(send_response(fd, &response) < 0)
     {
         log_error("browser_manage_client_req: send_response failed", strerror(errno));
     }
 
     else
     {
-        /* Return the number of body bytes sent (may be 0 for no-body) */
-        res = (ssize_t)response.body_length;
+        /* Set return variable to success */
+        res = STATUS_SUCCESS;
     }
 
-    /* 4) Free any heap buffer allocated by handler_static_page */
+    /* Free any heap buffer allocated by handler_static_page */
     free((void *)response.body);
 
     return res;
@@ -104,13 +103,7 @@ ssize_t browser_manage_client_req(int fd, const char *recv_buf, size_t n,
  ****************************************************************************
  */
 
-/*
- * send_response:
- *   Phase 1: Build and send the HTTP response headers (status, content-type,
- *   content-length, connection).
- *   Phase 2: Send the response body bytes (if any) using send_all().
- */
-static int send_response(int fd, const HttpResponse *resp, int client_connection_policy)
+static int send_response(int fd, const HttpResponse *resp)
 {
     char hdr_buf[1024]; /* stack buffer for headers */
     int hdr_len;
@@ -124,7 +117,7 @@ static int send_response(int fd, const HttpResponse *resp, int client_connection
                  "Connection: %s\r\n"
                  "\r\n",
                  resp->status_code, resp->status_text, resp->content_type, resp->body_length,
-                 (client_connection_policy == HTTP_CONNECTION_CLOSE) ? "close" : "keep-alive");
+                 "keep-alive"); /* keep alive here because with close send_response is not called */
 
     /* Validate header length */
     if(hdr_len < 0 || hdr_len >= (int)sizeof hdr_buf)

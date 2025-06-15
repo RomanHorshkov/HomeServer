@@ -16,6 +16,11 @@
  * (c) 2025 Roman Horshkov
  */
 
+
+#ifndef SERVER_HANDLER_EXPENSES_H
+#define SERVER_HANDLER_EXPENSES_H
+
+
 #define _GNU_SOURCE
 
 #include "handler_expenses.h"
@@ -46,8 +51,12 @@
  ****************************************************************************
  */
 
-int handler_expenses(HttpResponse *resp) /* entry‑point for GET /api/expenses/months */
+int handler_expenses(const HttpRequest *req,
+                     HttpResponse *resp) /* entry‑point for GET /api/expenses/months */
 {
+    /* unused variable */
+    (void)req;
+
     /* ---------- 1. open root directory that holds yearly folders ------------- */
 
     const char *EXP_ROOT = "www/expenses"; /* constant root path      */
@@ -143,3 +152,6 @@ int handler_expenses(HttpResponse *resp) /* entry‑point for GET /api/expenses/
  ****************************************************************************
  */
 /* None */
+
+
+#endif /* SERVER_HANDLER_EXPENSES_H */

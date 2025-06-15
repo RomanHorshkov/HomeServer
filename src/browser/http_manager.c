@@ -17,15 +17,82 @@
 /* None */
 
 /****************************************************************************
+ * PRIVATE ENUMERATED VARIABLES
+ ****************************************************************************
+ */
+/* None */
+
+/****************************************************************************
  * PRIVATE FUNCTIONS PROTOTYPES
  ****************************************************************************
  */
 
+/**
+ * @brief llhttp callback: called when the URL is parsed.
+ *
+ * Copies the parsed URL/path into the request structure.
+ *
+ * @param parser   Pointer to the llhttp parser.
+ * @param at       Pointer to the start of the URL string.
+ * @param length   Length of the URL string.
+ * @return         0 on success.
+ */
 static int on_url(llhttp_t* parser, const char* at, size_t length);
+
+/**
+ * @brief llhttp callback: called when a header field is parsed.
+ *
+ * Stores the header field name in the parser context. If a previous header
+ * was being parsed, stores the previous header name and value in the request.
+ *
+ * @param parser   Pointer to the llhttp parser.
+ * @param at       Pointer to the start of the header field string.
+ * @param length   Length of the header field string.
+ * @return         0 on success.
+ */
 static int on_header_field(llhttp_t* parser, const char* at, size_t length);
+
+/**
+ * @brief llhttp callback: called when a header value is parsed.
+ *
+ * Stores the header value in the parser context.
+ *
+ * @param parser   Pointer to the llhttp parser.
+ * @param at       Pointer to the start of the header value string.
+ * @param length   Length of the header value string.
+ * @return         0 on success.
+ */
 static int on_header_value(llhttp_t* parser, const char* at, size_t length);
+
+/**
+ * @brief llhttp callback: called when the HTTP method is parsed.
+ *
+ * Converts the parsed method string to an enum and stores it in the request.
+ *
+ * @param parser   Pointer to the llhttp parser.
+ * @param at       Pointer to the start of the method string.
+ * @param length   Length of the method string.
+ * @return         0 on success.
+ */
 static int on_method(llhttp_t* parser, const char* at, size_t length);
-static void determine_connection_policy(HttpRequest* req, int* client_connection_policy);
+
+/**
+ * @brief Converts a method string to the http_method_t enum.
+ *
+ * @param at       Pointer to the method string.
+ * @param length   Length of the method string.
+ * @return         Corresponding http_method_t value.
+ */
+static http_method_t parse_http_method(const char* at, size_t length);
+
+/**
+ * @brief Determines the connection policy (keep-alive or close) from headers.
+ *
+ * Scans the parsed headers for "Connection: close" and sets the policy in the request.
+ *
+ * @param req      Pointer to the HttpRequest structure to update.
+ */
+static void determine_connection_policy(HttpRequest* req);
 
 /****************************************************************************
  * PRIVATE STRUCTURED VARIABLES
@@ -38,8 +105,7 @@ static void determine_connection_policy(HttpRequest* req, int* client_connection
  ****************************************************************************
  */
 
-int http_parse_request(const char* buffer, const size_t buffer_len, HttpRequest* req,
-                       int* client_connection_policy)
+int http_parse_request(const char* buffer, const size_t buffer_len, HttpRequest* req)
 {
     llhttp_t parser;
     llhttp_settings_t settings;
@@ -60,23 +126,23 @@ int http_parse_request(const char* buffer, const size_t buffer_len, HttpRequest*
 
     llhttp_errno_t err = llhttp_execute(&parser, buffer, buffer_len);
 
-    // Store last header if not already stored
+    /* Store last header if not already stored */
     if(ctx.current_field[0] && ctx.req->header_count < HTTP_MAX_HEADER_COUNT)
     {
         int i = ctx.req->header_count++;
-        // Copy header name
+        /* Copy header name */
         size_t name_len = strnlen(ctx.current_field, HTTP_MAX_HEADER_NAME_LEN - 1);
         memcpy(ctx.req->header_names[i], ctx.current_field, name_len);
         ctx.req->header_names[i][name_len] = '\0';
 
-        // Copy header value
+        /* Copy header value */
         size_t value_len = strnlen(ctx.current_value, HTTP_MAX_HEADER_VALUE_LEN - 1);
         memcpy(ctx.req->header_values[i], ctx.current_value, value_len);
         ctx.req->header_values[i][value_len] = '\0';
     }
 
     /* Determine if the client requested Connection: close */
-    determine_connection_policy(req, client_connection_policy);
+    determine_connection_policy(req);
 
     if(err != HPE_OK)
     {
@@ -86,7 +152,7 @@ int http_parse_request(const char* buffer, const size_t buffer_len, HttpRequest*
     else
     {
         /* log all the html headers */
-        log_info("METHOD: %s, PATH: %s", req->method, req->path);
+        log_info("METHOD: %s, PATH: %s", http_method_to_string(req->method), req->path);
         // for(int i = 0; i < req->header_count; ++i)
         // {
         //     log_info("%s: %s\n", req->header_names[i], req->header_values[i]);
@@ -138,22 +204,27 @@ static int on_header_value(llhttp_t* parser, const char* at, size_t length)
 static int on_method(llhttp_t* parser, const char* at, size_t length)
 {
     LlhttpParserContext* ctx = (LlhttpParserContext*)parser->data;
-    snprintf(ctx->req->method, HTTP_MAX_METHOD_LEN, "%.*s", (int)length, at);
+    ctx->req->method = parse_http_method(at, length);
     return 0;
 }
 
-static void determine_connection_policy(HttpRequest* req, int* client_connection_policy)
+static http_method_t parse_http_method(const char* at, size_t length)
 {
-    req->should_close = 0;  // Default for HTTP/1.1 is keep-alive
-    *client_connection_policy = HTTP_CONNECTION_KEEP_ALIVE;
+    if(length == 3 && strncmp(at, "GET", 3) == 0) return HTTP_METHOD_GET;
+    if(length == 4 && strncmp(at, "POST", 4) == 0) return HTTP_METHOD_POST;
+    if(length == 3 && strncmp(at, "PUT", 3) == 0) return HTTP_METHOD_PUT;
+    if(length == 6 && strncmp(at, "DELETE", 6) == 0) return HTTP_METHOD_DELETE;
+    return HTTP_METHOD_UNKNOWN;
+}
 
+static void determine_connection_policy(HttpRequest* req)
+{
     for(int i = 0; i < req->header_count; ++i)
     {
         if(strcasecmp(req->header_names[i], "Connection") == 0 &&
            strcasestr(req->header_values[i], "close"))
         {
-            req->should_close = 1;
-            *client_connection_policy = HTTP_CONNECTION_CLOSE;
+            req->connection_policy = HTTP_CONNECTION_CLOSE;
             break;
         }
     }
