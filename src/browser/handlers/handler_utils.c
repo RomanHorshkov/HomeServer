@@ -19,14 +19,28 @@
 /* Public interface */
 #include "handler_utils.h"
 
-// #include <errno.h>    /* errno                                                */
-// #include <limits.h>   /* PATH_MAX, NAME_MAX                                   */
 
 /****************************************************************************
  * PRIVATE STRUCTURED VARIABLES
  ****************************************************************************
  */
-/* None */
+
+/****************************************************************************
+ * MIME type mapping
+ ****************************************************************************
+ * Table-driven mapping of file extensions to MIME types.
+ * Used by guess_mime_type() to set the Content-Type header.
+ */
+const struct
+{
+    const char *extension;
+    const char *mime_type;
+} mime_map[] = {
+    {".html", "text/html"},   {".css", "text/css"},      {".js", "application/javascript"},
+    {".jpg", "image/jpeg"},   {".jpeg", "image/jpeg"},   {".png", "image/png"},
+    {".gif", "image/gif"},    {".svg", "image/svg+xml"}, {".json", "application/json"},
+    {".md", "text/markdown"}, {".puml", "text/plain"}};
+
 
 /****************************************************************************
  * PUBLIC FUNCTIONS DEFINITIONS
@@ -104,4 +118,21 @@ void send_405(HttpResponse *response)
     response->content_type = "text/html";
     response->body = "<html><body><h1>405 Method Not Allowed</h1></body></html>";
     response->body_length = strlen(response->body);
+}
+
+const char *guess_mime_type(const char *path)
+{
+    const char *ext = strrchr(path, '.');
+    if(!ext)
+    {
+        return "application/octet-stream";
+    }
+    for(size_t i = 0; i < sizeof(mime_map) / sizeof(mime_map[0]); ++i)
+    {
+        if(strcmp(ext, mime_map[i].extension) == 0)
+        {
+            return mime_map[i].mime_type;
+        }
+    }
+    return "application/octet-stream";
 }
