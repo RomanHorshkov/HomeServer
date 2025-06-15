@@ -16,10 +16,8 @@
  * (c) 2025 Roman Horshkov
  */
 
-
 #ifndef SERVER_HANDLER_EXPENSES_H
 #define SERVER_HANDLER_EXPENSES_H
-
 
 #define _GNU_SOURCE
 
@@ -152,6 +150,5 @@ int handler_expenses(const HttpRequest *req,
  ****************************************************************************
  */
 /* None */
-
 
 #endif /* SERVER_HANDLER_EXPENSES_H */
