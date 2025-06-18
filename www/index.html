@@ -14,10 +14,11 @@
     <p>Here the navigation bar</p>
     <nav>
         <a href="/">Home</a> |
-        <a href="/whoami">Who Am I</a> |
-        <a href="/dynamic">Dynamic</a> |
-        <a href="/drive">Drive</a>
-        <a href="/expenses">Expenses</a>
+        <a href="/whoami.html">Who Am I</a> |
+        <a href="/dynamic.html">Dynamic</a> |
+        <a href="/build_notes/index.html">Build Notes</a> |
+        <a href="/drive.html">Drive</a> |
+        <a href="/expenses.html">Expenses</a>
     </nav>
 
     <!-- Server time section -->
@@ -26,7 +27,7 @@
       <div id="server-time">Loading…</div>
     </section>
 
-    <!-- Fetch /api/whoami JSON and update the time -->
+    <!-- Fetch /api/whoami JSON and update the time
     <script>
     document.addEventListener('DOMContentLoaded', () => {
       fetch('/api/whoami')
@@ -42,7 +43,7 @@
           console.error('Failed to fetch server time:', err);
           document.getElementById('server-time').textContent = 'Error loading time';
         });
-    });
+    }); -->
     </script>
 </body>
 </html>
