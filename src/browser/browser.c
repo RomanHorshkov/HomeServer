@@ -56,34 +56,31 @@ static ssize_t send_all(int fd, const void *buf, size_t len);
 int browser_manage_client_req(int fd, const char *recv_buf, size_t n)
 {
     /* return variable */
-    static int res = STATUS_FAILURE;
+    int res = STATUS_FAILURE;
 
-    /* create the request variable and set it to 0 */
-    static HttpRequest request;
+    /* create the request and response variables */
+    HttpRequest request;
+    HttpResponse response;
+
     memset(&request, 0, sizeof(HttpRequest));
-
-    /* create the response variable and set it to 0 */
-    static HttpResponse response;
     memset(&response, 0, sizeof(HttpResponse));
 
-    /* Parse raw HTTP request into HttpRequest struct */
-    if(http_parse_request(recv_buf, n, &request) < 0)
+    /* manage http request */
+    if(http_manage_request(recv_buf, n, &request) != STATUS_SUCCESS)
     {
-        log_error("browser_manage_client_req: parse failed", strerror(errno));
+        log_error("[browser] http_manage_request failed", strerror(errno));
     }
 
     /* Route request to generate HttpResponse (status, headers, body) */
     else if(router_handle_request(&request, &response) != STATUS_SUCCESS)
     {
-#ifdef DEBUG_MODE
-        log_info("[browser]: router_handle_request failed for fd %d", fd);
-#endif /* DEBUG_MODE */
+        log_error("[browser] router_handle_request failed for fd %d", fd);
     }
 
     /* Send HTTP response over TCP (headers + binary body) */
     else if(send_response(fd, &response) < 0)
     {
-        log_error("browser_manage_client_req: send_response failed", strerror(errno));
+        log_error("[browser] send_response failed", strerror(errno));
     }
 
     else
@@ -122,14 +119,14 @@ static int send_response(int fd, const HttpResponse *resp)
     /* Validate header length */
     if(hdr_len < 0 || hdr_len >= (int)sizeof hdr_buf)
     {
-        log_error("send_response: headers too large", "");
+        log_error("[browser]: response headers too large", "");
         return -1;
     }
 
     /* Send all header bytes */
     if(send_all(fd, hdr_buf, (size_t)hdr_len) < 0)
     {
-        log_error("send_response: header send failed", strerror(errno));
+        log_error("[browser]: response header send failed", strerror(errno));
         return -1;
     }
 
@@ -138,7 +135,7 @@ static int send_response(int fd, const HttpResponse *resp)
     {
         if(send_all(fd, resp->body, resp->body_length) < 0)
         {
-            log_error("send_response: body send failed", strerror(errno));
+            log_error("[browser]: response body send failed", strerror(errno));
             return -1;
         }
     }

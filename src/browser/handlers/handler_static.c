@@ -24,35 +24,8 @@
  * PRIVATE DEFINES
  ****************************************************************************
  */
-#define PATH_MAX 4096
 #define STATIC_ROOT "www"
-
-#define INDEX_PAGE STATIC_ROOT "/index.html"
-#define WHOAMI_PAGE STATIC_ROOT "/whoami.html"
-#define DYNAMIC_PAGE STATIC_ROOT "/dynamic.html"
-#define STYLE_PAGE STATIC_ROOT "/style.css"
-
 #define URI_HOME "/"
-#define URI_HOME_ALIAS "/home"
-#define URI_STYLE "/style.css"
-#define URI_WHOAMI "/whoami"
-// #define URI_WHOAMI_API "/api/whoami"
-#define URI_DYNAMIC "/dynamic"
-#define URI_EXPENSES_PAGE "/expenses"
-// #define URI_EXPENSES_MONTHS "/api/expenses/months"
-#define URI_IMAGES_PREFIX "/images/"
-#define URI_ASSETS_PREFIX "/assets/"
-#define URI_CSS_PREFIX "/css/"
-#define URI_JS_PREFIX "/js/"
-
-#define CONTENT_HTML "text/html"
-#define CONTENT_CSS "text/css"
-#define CONTENT_JS "application/javascript"
-#define CONTENT_JSON "application/json"
-#define CONTENT_JPEG "image/jpeg"
-#define CONTENT_PNG "image/png"
-#define CONTENT_SVG "image/svg+xml"
-#define CONTENT_GIF "image/gif"
 
 /****************************************************************************
  * PRIVATE FUNCTIONS PROTOTYPES
@@ -73,9 +46,9 @@
 int handler_static(const HttpRequest *req, HttpResponse *response)
 {
     int res = STATUS_FAILURE;
-    char file_path[PATH_MAX];
+    char file_path[HTTP_MAX_PATH_LEN];
 
-    // Prevent directory traversal
+    /* Prevent directory traversal */
     if(strstr(req->path, ".."))
     {
         log_error("static_page: directory traversal attempt: %s", req->path);
@@ -83,53 +56,55 @@ int handler_static(const HttpRequest *req, HttpResponse *response)
         return res;
     }
 
-    // Special case: "/" should serve index.html
+    /* Map "/" to "www/index.html", otherwise map directly under www/ */
     if(strcmp(req->path, URI_HOME) == 0)
     {
-        snprintf(file_path, sizeof(file_path), "%s", INDEX_PAGE);
+        snprintf(file_path, sizeof(file_path), "%s/index.html", STATIC_ROOT);
     }
-    else if(strcmp(req->path, URI_HOME_ALIAS) == 0)
+    else
     {
-        snprintf(file_path, sizeof(file_path), "%s", INDEX_PAGE);
-    }
-    else if(strcmp(req->path, URI_STYLE) == 0)
-    {
-        snprintf(file_path, sizeof(file_path), "%s", STYLE_PAGE);
-    }
-    else if(strcmp(req->path, URI_WHOAMI) == 0)
-    {
-        snprintf(file_path, sizeof(file_path), "%s", WHOAMI_PAGE);
-    }
-    else if(strcmp(req->path, URI_DYNAMIC) == 0)
-    {
-        snprintf(file_path, sizeof(file_path), "%s", DYNAMIC_PAGE);
-    }
-    
+        /* Remove leading slash for correct path join */
+        const char *rel_path = req->path[0] == '/' ? req->path + 1 : req->path;
+        size_t root_len = strlen(STATIC_ROOT);
+        size_t rel_len = strlen(rel_path);
 
-    log_info("[handler static]: file path %s", file_path);
+        /* +1 for '/', +1 for '\0' */
+        if(root_len + 1 + rel_len + 1 > sizeof(file_path))
+        {
+            log_error("static_page: requested path too long: %s", req->path);
+            send_404(response);
+            return res;
+        }
+        memcpy(file_path, STATIC_ROOT, root_len);
+        file_path[root_len] = '/';
+        memcpy(file_path + root_len + 1, rel_path, rel_len);
+        file_path[root_len + 1 + rel_len] = '\0';
+
+#ifdef DEBUG_MODE
+        log_info("[handler static]: file path %s; opening...", file_path);
+#endif /* DEBUG_MODE */
+    }
 
     FILE *file = fopen(file_path, "rb");
-    long file_size = 0;
-
     if(!file)
     {
-        log_error("static_page: failed to open file %s: %s", file_path, strerror(errno));
+        log_error("[handler static]: failed to open file %s: %s", file_path, strerror(errno));
         send_404(response);
         return res;
     }
 
     if(fseek(file, 0, SEEK_END) != 0)
     {
-        log_error("static_page: fseek to end failed %s: %s", file_path, strerror(errno));
+        log_error("[handler static]: fseek to end failed %s: %s", file_path, strerror(errno));
         fclose(file);
         send_404(response);
         return res;
     }
 
-    file_size = ftell(file);
+    long file_size = ftell(file);
     if(file_size < 0)
     {
-        log_error("static_page: ftell failed %s: %s", file_path, strerror(errno));
+        log_error("[handler static]: ftell failed %s: %s", file_path, strerror(errno));
         fclose(file);
         send_404(response);
         return res;

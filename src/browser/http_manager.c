@@ -86,6 +86,34 @@ static int on_method(llhttp_t* parser, const char* at, size_t length);
 static http_method_t parse_http_method(const char* at, size_t length);
 
 /**
+ * @brief Parses a raw HTTP request buffer into an HttpRequest structure.
+ *
+ * This function processes the provided HTTP request buffer, extracting the HTTP method,
+ * path, headers, and other relevant information, and populates the given HttpRequest struct.
+ *
+ * @param buffer      Pointer to the raw HTTP request buffer.
+ * @param buffer_len  Length of the buffer in bytes.
+ * @param req         Pointer to the HttpRequest structure to populate.
+ * @return            0 on success, negative value on failure.
+ */
+static int http_parse_request(const char* buffer, const size_t buffer_len, HttpRequest* req);
+
+/**
+ * @brief Validates and sanitizes a parsed HttpRequest structure.
+ *
+ * This function checks the HttpRequest for security and protocol compliance, including:
+ *   - Non-empty and safe path (no traversal, no control chars)
+ *   - Valid HTTP method
+ *   - Header count and length limits
+ *   - Safe header names and values (no control chars, no nulls)
+ *   - Logs any issues found
+ *
+ * @param req         Pointer to the parsed HttpRequest structure to validate.
+ * @return            STATUS_SUCCESS if valid, STATUS_FAILURE otherwise.
+ */
+static int sanitize_http_request(HttpRequest* req);
+
+/**
  * @brief Determines the connection policy (keep-alive or close) from headers.
  *
  * Scans the parsed headers for "Connection: close" and sets the policy in the request.
@@ -105,12 +133,52 @@ static void determine_connection_policy(HttpRequest* req);
  ****************************************************************************
  */
 
-int http_parse_request(const char* buffer, const size_t buffer_len, HttpRequest* req)
+int http_manage_request(const char* recv_buf, const size_t buffer_len, HttpRequest* request)
 {
+    /* result variable */
+    int res = STATUS_FAILURE;
+
+    /* Parse raw HTTP request into HttpRequest struct */
+    if(http_parse_request(recv_buf, buffer_len, request) != STATUS_SUCCESS)
+    {
+        log_error("[browser] parse failed", strerror(errno));
+    }
+
+    /* Sanitize parsed HTTP reuest */
+    else if(sanitize_http_request(request) != STATUS_SUCCESS)
+    {
+        log_error("[browser] sanitize_http_request failed", strerror(errno));
+    }
+
+    else
+    {
+        /* Set return variable to success */
+        res = STATUS_SUCCESS;
+
+        /* Determine connection policy based on headers */
+        determine_connection_policy(request);
+    }
+
+    return res;
+}
+
+/****************************************************************************
+ * PRIVATE FUNCTIONS DEINITIONS
+ ****************************************************************************
+ */
+
+static int http_parse_request(const char* buffer, const size_t buffer_len, HttpRequest* req)
+{
+    /* return variable */
+    int res = STATUS_FAILURE;
+
+    /* llhttp parser declare */
     llhttp_t parser;
     llhttp_settings_t settings;
 
+    /* llhttp parser initialize */
     llhttp_settings_init(&settings);
+
     settings.on_url = on_url;
     settings.on_method = on_method;
     settings.on_header_field = on_header_field;
@@ -118,18 +186,22 @@ int http_parse_request(const char* buffer, const size_t buffer_len, HttpRequest*
 
     llhttp_init(&parser, HTTP_REQUEST, &settings);
 
+    /* Create parsing context to keep track of parsing */
     LlhttpParserContext ctx = {.req = req, .in_header_field = 1};
 
+    /* Assign the context to parser */
     parser.data = &ctx;
 
     memset(req, 0, sizeof(HttpRequest));  // zero fields
 
+    /* execute the parser over the raw received buffer */
     llhttp_errno_t err = llhttp_execute(&parser, buffer, buffer_len);
 
     /* Store last header if not already stored */
     if(ctx.current_field[0] && ctx.req->header_count < HTTP_MAX_HEADER_COUNT)
     {
         int i = ctx.req->header_count++;
+
         /* Copy header name */
         size_t name_len = strnlen(ctx.current_field, HTTP_MAX_HEADER_NAME_LEN - 1);
         memcpy(ctx.req->header_names[i], ctx.current_field, name_len);
@@ -141,31 +213,129 @@ int http_parse_request(const char* buffer, const size_t buffer_len, HttpRequest*
         ctx.req->header_values[i][value_len] = '\0';
     }
 
-    /* Determine if the client requested Connection: close */
-    determine_connection_policy(req);
-
     if(err != HPE_OK)
     {
-        log_error("llhttp parse error", llhttp_errno_name(err));
-        return -1;
+        log_error("[http]: llhttp parse error", llhttp_errno_name(err));
     }
     else
     {
-        /* log all the html headers */
-        log_info("METHOD: %s, PATH: %s", http_method_to_string(req->method), req->path);
+        /* set return variable to success */
+        res = STATUS_SUCCESS;
+
+#ifdef DEBUG_MODE
+        log_info("[http]: METHOD: %s, PATH: %s", http_method_to_string(req->method), req->path);
+        // log_info("[http]: Parsed %d headers:", req->header_count);
         // for(int i = 0; i < req->header_count; ++i)
         // {
-        //     log_info("%s: %s\n", req->header_names[i], req->header_values[i]);
+        //     log_info("[http]: %s: %s\n", req->header_names[i], req->header_values[i]);
         // }
+#endif /* DEBUG_MODE */
     }
 
-    return 0;
+    return res;
 }
 
-/****************************************************************************
- * PRIVATE FUNCTIONS DEINITIONS
- ****************************************************************************
- */
+static int sanitize_http_request(HttpRequest* req)
+{
+    /* Check for null pointers */
+    if(!req)
+    {
+        log_error("[http]: Null pointer argument to sanitize_http_request", "");
+        return STATUS_FAILURE;
+    }
+
+    /* Ensure the request path is not empty */
+    if(req->path[0] == '\0')
+    {
+        log_error("[http]: Request path is empty", "");
+        return STATUS_FAILURE;
+    }
+
+    /* Ensure the method is valid */
+    if(req->method == HTTP_METHOD_UNKNOWN)
+    {
+        log_error("[http]: Invalid HTTP method", "");
+        return STATUS_FAILURE;
+    }
+
+    /* Ensure headers are within limits */
+    if(req->header_count > HTTP_MAX_HEADER_COUNT)
+    {
+        log_error("[http]: Too many headers", "");
+        return STATUS_FAILURE;
+    }
+
+    /* Check for path traversal attempts */
+    if(strstr(req->path, "/..") || strstr(req->path, "%2f%2e%2e") || strstr(req->path, "%2F%2E%2E"))
+    {
+        log_error("[http]: Path traversal attempt detected", req->path);
+        return STATUS_FAILURE;
+    }
+
+    /* Path traversal and dangerous character checks */
+    const char* p = req->path;
+    size_t path_len = strlen(req->path);
+    for(size_t i = 0; i < path_len; ++i)
+    {
+        unsigned char c = (unsigned char)p[i];
+        if(c == '\0' || c < 0x20 || c == 0x7F)
+        {
+            log_error("[http]: Path contains control or null character %s", req->path);
+            return STATUS_FAILURE;
+        }
+        if(!(isalnum(c) || c == '/' || c == '-' || c == '_' || c == '.' || c == '~' || c == '?' || c == '=' || c == '&' || c == '+' || c == '%'))
+        {
+            /* Allow alphanumeric, '/', '-', '_', '.', '~', '?', '=', '&', '+', '%' */
+            log_error("[http]: Path contains suspicious character %s", req->path);
+            return STATUS_FAILURE;
+        }
+    }
+
+    /* Ensure header names and values are within limits and safe */
+    for(int i = 0; i < req->header_count; ++i)
+    {
+        const char* hname = req->header_names[i];
+        const char* hval = req->header_values[i];
+        if(!hname || !hval)
+        {
+            log_error("[http]: Null header name or value", "");
+            return STATUS_FAILURE;
+        }
+
+        if(strlen(hname) >= HTTP_MAX_HEADER_NAME_LEN)
+        {
+            log_error("[http]: Header name too long", hname);
+            return STATUS_FAILURE;
+        }
+
+        if(strlen(hval) >= HTTP_MAX_HEADER_VALUE_LEN)
+        {
+            log_error("[http]: Header value too long", hname);
+            return STATUS_FAILURE;
+        }
+
+        for(size_t j = 0; j < strlen(hname); ++j)
+        {
+            unsigned char c = (unsigned char)hname[j];
+            if(c == '\0' || c < 0x20 || c == 0x7F)
+            {
+                log_error("[http]: Header name contains control or null character", hname);
+                return STATUS_FAILURE;
+            }
+        }
+        for(size_t j = 0; j < strlen(hval); ++j)
+        {
+            unsigned char c = (unsigned char)hval[j];
+            if(c == '\0' || c < 0x20 || c == 0x7F)
+            {
+                log_error("[http]: Header value contains control or null character", hname);
+                return STATUS_FAILURE;
+            }
+        }
+    }
+
+    return STATUS_SUCCESS;
+}
 
 static int on_url(llhttp_t* parser, const char* at, size_t length)
 {
@@ -221,6 +391,7 @@ static void determine_connection_policy(HttpRequest* req)
 {
     for(int i = 0; i < req->header_count; ++i)
     {
+        /* Check for the header Connection */
         if(strcasecmp(req->header_names[i], "Connection") == 0 &&
            strcasestr(req->header_values[i], "close"))
         {
