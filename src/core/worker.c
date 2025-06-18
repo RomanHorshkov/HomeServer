@@ -128,12 +128,12 @@ void *worker_run(void *arg)
         /* Main worker thread loop */
         while(atomic_load(&worker_ptr->status) == SERVER_STATUS_ACTIVE)
         {
-            log_info("[worker] Sleeping in epoll_wait...");
+            // log_info("[worker] Sleeping in epoll_wait...");
 
             /* Wait for events on the pipe or client sockets */
             int nfds = epoll_wait(epfd, events, MAX_CLIENTS, -1);
 
-            log_info("[worker] Woke up with %d event(s)", nfds);
+            // log_info("[worker] Woke up with %d event(s)", nfds);
 
             /* Check for errors */
             if(nfds < 0)
@@ -189,7 +189,7 @@ void *worker_run(void *arg)
                     else
                     {
 #ifdef DEBUG_MODE
-                        log_info("[worker] Received from fd %d: %.*s", fd, (int)n, recv_buf);
+                        // log_info("[worker] Received from fd %d:\n%.*s", fd, (int)n, recv_buf);
 #endif /* DEBUG_MODE */
 
                         if(browser_manage_client_req(fd, recv_buf, n) != STATUS_SUCCESS)

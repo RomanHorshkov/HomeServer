@@ -74,26 +74,30 @@ typedef struct
  * For static files, handler_static will deduce the file path and MIME type.
  */
 static const route_t routes[] = {
-    // --- Exact matches for static files ---
+    /* Exact matches for static files */
     {HTTP_METHOD_GET, "/", ROUTE_EXACT, handler_static},
     {HTTP_METHOD_GET, "/home", ROUTE_EXACT, handler_static},
+    {HTTP_METHOD_GET, "/whoami.html", ROUTE_EXACT, handler_static},
+    {HTTP_METHOD_GET, "/build_notes/index.html", ROUTE_EXACT, handler_static},
+    {HTTP_METHOD_GET, "/dynamic.html", ROUTE_EXACT, handler_static},
+    {HTTP_METHOD_GET, "/expenses.html", ROUTE_EXACT, handler_static},
+    {HTTP_METHOD_GET, "/drive.html", ROUTE_EXACT, handler_static},
     {HTTP_METHOD_GET, "/style.css", ROUTE_EXACT, handler_static},
-    {HTTP_METHOD_GET, "/whoami", ROUTE_EXACT, handler_static},
-    {HTTP_METHOD_GET, "/dynamic", ROUTE_EXACT, handler_static},
-    {HTTP_METHOD_GET, "/expenses", ROUTE_EXACT, handler_static},
+    {HTTP_METHOD_GET, "/assets/footer.html", ROUTE_EXACT, handler_static},
+    {HTTP_METHOD_GET, "/assets/header.html", ROUTE_EXACT, handler_static},
+    {HTTP_METHOD_GET, "/assets/header.js", ROUTE_EXACT, handler_static},
 
-    // --- API endpoints ---
+    /* API endpoints */
     {HTTP_METHOD_GET, "/api/whoami", ROUTE_EXACT, handler_whoami},
     {HTTP_METHOD_GET, "/api/expenses/months", ROUTE_EXACT, handler_expenses},
     {HTTP_METHOD_GET, "/api/drive", ROUTE_PREFIX, handler_drive},
 
-    // --- Prefix matches for static directories ---
-    {HTTP_METHOD_GET, "/images/", ROUTE_PREFIX, handler_static},
-    {HTTP_METHOD_GET, "/assets/", ROUTE_PREFIX, handler_static},
-    {HTTP_METHOD_GET, "/build_notes", ROUTE_PREFIX, handler_static},
-    {HTTP_METHOD_GET, "/drive", ROUTE_PREFIX, handler_static},
-    {HTTP_METHOD_GET, "/expenses/", ROUTE_PREFIX, handler_static}
-    // Add more as needed
+    /* Prefix matches for static directories */
+    {HTTP_METHOD_GET, "/images", ROUTE_PREFIX, handler_static},
+    {HTTP_METHOD_GET, "/assets", ROUTE_PREFIX, handler_static},
+    {HTTP_METHOD_GET, "/expenses/", ROUTE_PREFIX, handler_static},
+    {HTTP_METHOD_GET, "/build_notes/", ROUTE_PREFIX, handler_static}
+
 };
 
 /****************************************************************************
@@ -129,19 +133,41 @@ int router_handle_request(const HttpRequest *request, HttpResponse *response)
         case HTTP_METHOD_GET:
             for(size_t i = 0; i < sizeof(routes) / sizeof(routes[0]); ++i)
             {
-                if(routes[i].method != request->method) continue;
+                if(routes[i].method != request->method)
+                {
+                    continue;
+                }
 
-                if(routes[i].match_type == ROUTE_EXACT &&
+                else if(routes[i].match_type == ROUTE_EXACT &&
                    strcmp(request->path, routes[i].path) == 0)
                 {
                     return routes[i].handler(request, response);
                 }
-                if(routes[i].match_type == ROUTE_PREFIX &&
+
+                else if(routes[i].match_type == ROUTE_PREFIX &&
                    strncmp(request->path, routes[i].path, strlen(routes[i].path)) == 0)
                 {
                     return routes[i].handler(request, response);
                 }
+
+                else
+                {
+                    /* 
+                    TODO:
+                    The iterations every time ends up here!!!
+                    It is wasting a ton of time in checks!!! */
+#ifdef DEBUG_MODE
+                    // log_info("[router]: No match for: %s %s", http_method_to_string(request->method), request->path);
+#endif /* DEBUG_MODE */
+                    continue;
+                }
             }
+            /* No match case */
+            res = STATUS_SUCCESS;
+#ifdef DEBUG_MODE
+            log_info("[router]: No match for: %s %s", http_method_to_string(request->method), request->path);
+#endif /* DEBUG_MODE */
+
             break;
 
         case HTTP_METHOD_POST:
@@ -149,7 +175,7 @@ int router_handle_request(const HttpRequest *request, HttpResponse *response)
         case HTTP_METHOD_DELETE:
         case HTTP_METHOD_UNKNOWN:
         default:
-            // send_405(response);
+            log_error("[router]: invalid method", "");
             break;
     }
 

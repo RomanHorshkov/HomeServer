@@ -238,14 +238,14 @@ void *listener_run(void *arg)
         while(atomic_load(&listener_ptr->status) == SERVER_STATUS_ACTIVE)
         {
 #ifdef DEBUG_MODE
-            log_info("listener: waiting for incoming connections...");
+            // log_info("listener: waiting for incoming connections...");
 #endif /* DEBUG_MODE */
 
             /* Wait for incoming connections */
             int nfds = epoll_wait(epfd, events, MAX_LISTENERS, -1);
 
 #ifdef DEBUG_MODE
-            log_info("listener: epoll_wait returned %d events", nfds);
+            // log_info("listener: epoll_wait returned %d events", nfds);
 #endif /* DEBUG_MODE */
 
             if(nfds < 0)

@@ -112,11 +112,13 @@ static inline const char* http_method_to_string(http_method_t method)
 }
 
 /**
- * @brief Parse a raw HTTP request buffer into a structured HttpRequest.
+ * @brief Parse a raw HTTP request buffer into a structured HttpRequest
+ * and sanitize it.
  *
  * Uses llhttp to parse the HTTP request line, headers, and path.
  * Populates the HttpRequest struct with method, path, and headers.
  * Determines the connection policy (keep-alive/close).
+ * Sanitizes the request for malformed headers.
  *
  * @param buffer        Pointer to the raw HTTP request buffer.
  * @param buffer_len    Length of the buffer.
@@ -124,6 +126,6 @@ static inline const char* http_method_to_string(http_method_t method)
  * @retval  0  Success.
  * @retval -1  Parse error (malformed request).
  */
-int http_parse_request(const char* buffer, size_t buffer_len, HttpRequest* req);
+int http_manage_request(const char* recv_buf, const size_t buffer_len, HttpRequest* request);
 
 #endif /* HTTP_MANAGER_H */
