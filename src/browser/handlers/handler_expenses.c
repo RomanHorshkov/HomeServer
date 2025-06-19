@@ -1,17 +1,11 @@
 /*
  * handler_expenses.c
  * ------------------
- * Implements the /api/expenses/months endpoint handler for the web server.
+ * Implements the /api/expenses endpoint handler for the web server.
  *
- * Responds with a JSON array of "YYYY-MM" strings, representing months
- * for which expense records exist under www/expenses/<year>/<month>.json.
- *
- * Traverses the expenses directory, collects valid year/month pairs,
- * sorts them, and serializes the result as a compact JSON array.
- *
- * Each handler receives a parsed HttpRequest and fills a fresh HttpResponse.
- * No socket I/O is performed here; the caller is responsible for network
- * transmission and memory cleanup.
+ * - GET: Responds with a JSON array of "YYYY-MM" strings, representing months
+ *        for which expense records exist under www/expenses/<year>/<month>.json.
+ * - (Future) PUT/POST: Add new expense records (not implemented here).
  *
  * (c) 2025 Roman Horshkov
  */
@@ -23,132 +17,242 @@
 
 #include "handler_expenses.h"
 
+#include <ctype.h>
+#include <dirent.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <sys/stat.h>
+
 #include "handler_utils.h"
 #include "server_settings.h"
 
 /****************************************************************************
  * PRIVATE DEFINES
- ****************************************************************************
- */
-/* None */
+ ****************************************************************************/
+#define EXP_ROOT "www/expenses" /* constant root path */
+#define MAX_MONTHS 256          /* max months to collect */
 
 /****************************************************************************
- * PRIVATE FUNCTIONS PROTOTYPES
- ****************************************************************************
- */
-/* None */
+ * PRIVATE FUNCTION PROTOTYPES
+ ****************************************************************************/
 
+/* Checks if a directory entry is a valid year (4 digits) */
+static int is_valid_year_dir(const struct dirent *de);
+/* Checks if a directory entry is a valid month file (MM.json) */
+static int is_valid_month_file(const struct dirent *de);
+/* Collects all valid months from EXP_ROOT, fills months[] with "YYYY-MM" strings */
+static int collect_expense_months(char **months, int max_months);
+/* Builds a compact JSON array string from months[] */
+static char *build_months_json(char **months, int count);
 /****************************************************************************
- * PRIVATE STRUCTURED VARIABLES
- ****************************************************************************
- */
-/* None */
+ * PUBLIC FUNCTION DEFINITIONS
+ ****************************************************************************/
 
-/****************************************************************************
- * PUBLIC FUNCTIONS DEFINITIONS
- ****************************************************************************
- */
-
-int handler_expenses(const HttpRequest *req,
-                     HttpResponse *resp) /* entry‑point for GET /api/expenses/months */
+// Entry point for /api/expenses (GET: list months, PUT: add expense)
+int handler_expenses(const HttpRequest *req, HttpResponse *resp)
 {
-    /* unused variable */
-    (void)req;
-
-    /* ---------- 1. open root directory that holds yearly folders ------------- */
-
-    const char *EXP_ROOT = "www/expenses"; /* constant root path      */
-    DIR *d_year = opendir(EXP_ROOT);       /* open "www/expenses"     */
-    if(!d_year)                            /* opendir failed ?        */
+    if(req->method == HTTP_METHOD_GET)
     {
-        resp->status_code = 200;                 /* still HTTP OK           */
-        resp->content_type = "application/json"; /* MIME type               */
-        resp->body = strdup("[]");               /* empty JSON array        */
-        resp->body_length = 2;                   /* strlen("[]")            */
-        return 0;                                /* early exit              */
+        // 1. Collect all months with expense files
+        char *months[MAX_MONTHS];
+        int count = collect_expense_months(months, MAX_MONTHS);
+        // 2. Build JSON array string
+        char *out = build_months_json(months, count);
+        // 3. Fill response
+        resp->status_code = 200;
+        resp->content_type = "application/json";
+        resp->body = out;
+        resp->body_length = strlen(out);
+        return 0;
     }
-
-    /* ---------- 2. traverse years and collect “YYYY‑MM” strings -------------- */
-
-    char *months[256]; /* fixed scratch array     */
-    int count = 0;     /* number of entries found */
-
-    const struct dirent *ye;      /* iterator: years         */
-    while((ye = readdir(d_year))) /* loop over EXP_ROOT      */
+    else if(req->method == HTTP_METHOD_PUT)
     {
-        /* ---- accept only directories whose name is exactly four digits ---- */
-
-        if(strlen(ye->d_name) != 4) /* length must be 4        */
-            continue;
-        int digits = 1;            /* flag: true until fail   */
-        for(int i = 0; i < 4; i++) /* validate each char      */
-            if(!isdigit((unsigned char)ye->d_name[i])) digits = 0;
-        if(!digits) /* skip non‑digit names    */
-            continue;
-
-        /* ---- build full path of year directory and validate via stat() ---- */
-
-        char yearpath[PATH_MAX]; /* buffer for path         */
-        snprintf(yearpath, sizeof yearpath, "%s/%s", EXP_ROOT, ye->d_name);
-        struct stat st;
-        if(stat(yearpath, &st) < 0 || !S_ISDIR(st.st_mode)) continue; /* not a directory         */
-
-        /* ---- iterate files inside “YYYY/” looking for “MM.json” ------------ */
-
-        DIR *d_mon = opendir(yearpath); /* open year dir           */
-        if(!d_mon) continue;            /* couldn’t open, skip     */
-
-        const struct dirent *me;     /* iterator: months        */
-        while((me = readdir(d_mon))) /* loop inside year dir    */
+        // --- Parse JSON body ---
+        cJSON *root = cJSON_ParseWithLength(req->body, req->body_len);
+        if(!root)
         {
-            const char *ext = strrchr(me->d_name, '.'); /* locate last '.'         */
-            if(!ext || strcmp(ext, ".json") != 0)       /* require .json suffix    */
-                continue;
-            if((ext - me->d_name) != 2) /* base name length must 2 */
-                continue;
-            if(!isdigit((unsigned char)me->d_name[0]) || /* ensure “00”–“99”        */
-               !isdigit((unsigned char)me->d_name[1]))
-                continue;
-
-            /* ---- build canonical "YYYY‑MM" string ------------------------- */
-
-            char m[8]; /* "YYYY-MM\0"             */
-            snprintf(m, sizeof m, "%.4s-%.2s", ye->d_name, me->d_name);
-            months[count++] = strdup(m); /* store heap copy         */
+            resp->status_code = 400;
+            resp->content_type = "text/plain";
+            resp->body = strdup("Invalid JSON");
+            resp->body_length = strlen(resp->body);
+            return 0;
         }
-        closedir(d_mon); /* close year dir          */
+        // --- Extract fields ---
+        const cJSON *date = cJSON_GetObjectItem(root, "date");
+        const cJSON *category = cJSON_GetObjectItem(root, "category");
+        const cJSON *amount = cJSON_GetObjectItem(root, "amount");
+        const cJSON *comment = cJSON_GetObjectItem(root, "comment");
+        if(!cJSON_IsString(date) || !cJSON_IsString(category) || !cJSON_IsNumber(amount))
+        {
+            cJSON_Delete(root);
+            resp->status_code = 400;
+            resp->content_type = "text/plain";
+            resp->body = strdup("Missing or invalid fields");
+            resp->body_length = strlen(resp->body);
+            return 0;
+        }
+        // --- Parse date to get year/month ---
+        int d, m, y;
+        if(sscanf(date->valuestring, "%d/%d/%d", &d, &m, &y) != 3)
+        {
+            cJSON_Delete(root);
+            resp->status_code = 400;
+            resp->content_type = "text/plain";
+            resp->body = strdup("Invalid date format");
+            resp->body_length = strlen(resp->body);
+            return 0;
+        }
+        char yearstr[8], monthstr[4];
+        snprintf(yearstr, sizeof yearstr, "%04d", y);
+        snprintf(monthstr, sizeof monthstr, "%02d", m);
+        // --- Build file path ---
+        char dirpath[PATH_MAX];
+        char monthfile[16];
+        char filepath[PATH_MAX];
+        snprintf(dirpath, sizeof dirpath, "%s/%s", EXP_ROOT, yearstr);
+        snprintf(monthfile, sizeof monthfile, "%s.json", monthstr);
+        // Use strncat for extra safety
+        if (snprintf(filepath, sizeof filepath, "%s/", dirpath) < (int)sizeof(filepath)) {
+            strncat(filepath, monthfile, sizeof(filepath) - strlen(filepath) - 1);
+        } else {
+            // fallback: ensure null-termination
+            filepath[sizeof(filepath)-1] = '\0';
+        }
+        // --- Ensure directory exists ---
+        mkdir(EXP_ROOT, 0775);
+        mkdir(dirpath, 0775);
+        // --- Read or create file ---
+        FILE *f = fopen(filepath, "r+");
+        cJSON *arr = NULL;
+        if(f)
+        {
+            fseek(f, 0, SEEK_END);
+            long len = ftell(f);
+            fseek(f, 0, SEEK_SET);
+            char *buf = malloc(len + 1);
+            fread(buf, 1, len, f);
+            buf[len] = 0;
+            arr = cJSON_Parse(buf);
+            free(buf);
+            if(!cJSON_IsArray(arr))
+            {
+                cJSON_Delete(arr);
+                arr = cJSON_CreateArray();
+            }
+        }
+        else
+        {
+            arr = cJSON_CreateArray();
+            f = fopen(filepath, "w+");
+        }
+        // --- Append new expense ---
+        cJSON *obj = cJSON_CreateObject();
+        cJSON_AddStringToObject(obj, "date", date->valuestring);
+        cJSON_AddStringToObject(obj, "category", category->valuestring);
+        cJSON_AddNumberToObject(obj, "amount", amount->valuedouble);
+        if(cJSON_IsString(comment))
+        {
+            cJSON_AddStringToObject(obj, "comment", comment->valuestring);
+        }
+        else
+        {
+            cJSON_AddStringToObject(obj, "comment", "");
+        }
+        cJSON_AddItemToArray(arr, obj);
+
+        // --- Write back to file ---
+        // char *out = cJSON_PrintUnformatted(arr);
+        char *out = cJSON_Print(arr); // Use pretty-print instead of unformatted
+        fseek(f, 0, SEEK_SET);
+        fwrite(out, 1, strlen(out), f);
+        fflush(f);
+        ftruncate(fileno(f), strlen(out));
+        fclose(f);
+        cJSON_Delete(arr);
+        cJSON_Delete(root);
+        free(out);
+        /* Respond OK */
+        resp->status_code = 200;
+        resp->content_type = "text/plain";
+        resp->body = strdup("OK");
+        resp->body_length = 2;
+        return 0;
     }
-    closedir(d_year); /* close root dir          */
-
-    /* ---------- 3. sort collected strings lexicographically ----------------- */
-
-    qsort(months, count, sizeof months[0], (int (*)(const void *, const void *))strcmp);
-
-    /* ---------- 4. serialise list into compact JSON ------------------------- */
-
-    cJSON *arr = cJSON_CreateArray(); /* new JSON array          */
-    for(int i = 0; i < count; i++)    /* push each month         */
-    {
-        cJSON_AddItemToArray(arr, cJSON_CreateString(months[i]));
-        free(months[i]); /* free temp copy          */
-    }
-
-    char *out = cJSON_PrintUnformatted(arr); /* "[ ... ]" string        */
-    cJSON_Delete(arr);                       /* release DOM             */
-
-    /* ---------- 5. fill HttpResponse ---------------------------------------- */
-
-    resp->status_code = 200;                 /* HTTP OK                 */
-    resp->content_type = "application/json"; /* MIME                    */
-    resp->body = out;                        /* transfer ownership      */
-    resp->body_length = strlen(out);         /* compute size            */
-    return 0;                                /* success                 */
+    /* Method not allowed */
+    resp->status_code = 405;
+    resp->content_type = "text/plain";
+    resp->body = strdup("Method Not Allowed");
+    resp->body_length = strlen(resp->body);
+    return 0;
 }
 
 /****************************************************************************
- * PRIVATE FUNCTIONS DEFINITIONS
- ****************************************************************************
+ * PRIVATE FUNCTION DEFINITIONS
+ ***************************************************************************
  */
-/* None */
+
+static int is_valid_year_dir(const struct dirent *de)
+{
+    if(de->d_type != DT_DIR) return 0;
+    if(strlen(de->d_name) != 4) return 0;
+    for(int i = 0; i < 4; i++)
+        if(!isdigit((unsigned char)de->d_name[i])) return 0;
+    return 1;
+}
+
+// Checks if a file entry is a valid month file (MM.json)
+static int is_valid_month_file(const struct dirent *de)
+{
+    if(de->d_type != DT_REG) return 0;
+    const char *ext = strrchr(de->d_name, '.');
+    if(!ext || strcmp(ext, ".json") != 0) return 0;
+    if((ext - de->d_name) != 2) return 0;
+    if(!isdigit((unsigned char)de->d_name[0]) || !isdigit((unsigned char)de->d_name[1])) return 0;
+    return 1;
+}
+
+// Scans EXP_ROOT for year/month files, fills months[] with "YYYY-MM" strings, returns count
+static int collect_expense_months(char **months, int max_months)
+{
+    DIR *d_year = opendir(EXP_ROOT);
+    if(!d_year) return 0;
+    int count = 0;
+    struct dirent *ye;
+    while((ye = readdir(d_year)))
+    {
+        if(!is_valid_year_dir(ye)) continue;
+        char yearpath[PATH_MAX];
+        snprintf(yearpath, sizeof yearpath, "%s/%s", EXP_ROOT, ye->d_name);
+        DIR *d_mon = opendir(yearpath);
+        if(!d_mon) continue;
+        struct dirent *me;
+        while((me = readdir(d_mon)))
+        {
+            if(!is_valid_month_file(me)) continue;
+            char m[8];
+            snprintf(m, sizeof m, "%.4s-%.2s", ye->d_name, me->d_name);
+            if(count < max_months) months[count++] = strdup(m);
+        }
+        closedir(d_mon);
+    }
+    closedir(d_year);
+    return count;
+}
+
+// Builds a compact JSON array string from months[]
+static char *build_months_json(char **months, int count)
+{
+    qsort(months, count, sizeof months[0], (int (*)(const void *, const void *))strcmp);
+    cJSON *arr = cJSON_CreateArray();
+    for(int i = 0; i < count; i++)
+    {
+        cJSON_AddItemToArray(arr, cJSON_CreateString(months[i]));
+        free(months[i]);
+    }
+    char *out = cJSON_PrintUnformatted(arr);
+    cJSON_Delete(arr);
+    return out;
+}
 
 #endif /* SERVER_HANDLER_EXPENSES_H */
