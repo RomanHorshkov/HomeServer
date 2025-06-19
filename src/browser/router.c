@@ -74,6 +74,8 @@ typedef struct
  * For static files, handler_static will deduce the file path and MIME type.
  */
 static const route_t routes[] = {
+
+    /* Servicing */
     /* Exact matches for static files */
     {HTTP_METHOD_GET, "/", ROUTE_EXACT, handler_static},
     {HTTP_METHOD_GET, "/home", ROUTE_EXACT, handler_static},
@@ -89,14 +91,15 @@ static const route_t routes[] = {
 
     /* API endpoints */
     {HTTP_METHOD_GET, "/api/whoami", ROUTE_EXACT, handler_whoami},
-    {HTTP_METHOD_GET, "/api/expenses/months", ROUTE_EXACT, handler_expenses},
+    {HTTP_METHOD_GET, "/api/expenses", ROUTE_EXACT, handler_expenses},
+    {HTTP_METHOD_PUT, "/api/expenses", ROUTE_EXACT, handler_expenses},
     {HTTP_METHOD_GET, "/api/drive", ROUTE_PREFIX, handler_drive},
 
     /* Prefix matches for static directories */
     {HTTP_METHOD_GET, "/images", ROUTE_PREFIX, handler_static},
     {HTTP_METHOD_GET, "/assets", ROUTE_PREFIX, handler_static},
     {HTTP_METHOD_GET, "/expenses/", ROUTE_PREFIX, handler_static},
-    {HTTP_METHOD_GET, "/build_notes/", ROUTE_PREFIX, handler_static}
+    {HTTP_METHOD_GET, "/build_notes/", ROUTE_PREFIX, handler_static},
 
 };
 
@@ -130,7 +133,8 @@ int router_handle_request(const HttpRequest *request, HttpResponse *response)
 
     switch(request->method)
     {
-        case HTTP_METHOD_GET:
+        case HTTP_METHOD_GET: /* TO DO: check fall-through mechanism */
+        case HTTP_METHOD_PUT:
             for(size_t i = 0; i < sizeof(routes) / sizeof(routes[0]); ++i)
             {
                 if(routes[i].method != request->method)
@@ -139,25 +143,26 @@ int router_handle_request(const HttpRequest *request, HttpResponse *response)
                 }
 
                 else if(routes[i].match_type == ROUTE_EXACT &&
-                   strcmp(request->path, routes[i].path) == 0)
+                        strcmp(request->path, routes[i].path) == 0)
                 {
                     return routes[i].handler(request, response);
                 }
 
                 else if(routes[i].match_type == ROUTE_PREFIX &&
-                   strncmp(request->path, routes[i].path, strlen(routes[i].path)) == 0)
+                        strncmp(request->path, routes[i].path, strlen(routes[i].path)) == 0)
                 {
                     return routes[i].handler(request, response);
                 }
 
                 else
                 {
-                    /* 
+                    /*
                     TODO:
                     The iterations every time ends up here!!!
                     It is wasting a ton of time in checks!!! */
 #ifdef DEBUG_MODE
-                    // log_info("[router]: No match for: %s %s", http_method_to_string(request->method), request->path);
+                    // log_info("[router]: No match for: %s %s",
+                    // http_method_to_string(request->method), request->path);
 #endif /* DEBUG_MODE */
                     continue;
                 }
@@ -165,13 +170,13 @@ int router_handle_request(const HttpRequest *request, HttpResponse *response)
             /* No match case */
             res = STATUS_SUCCESS;
 #ifdef DEBUG_MODE
-            log_info("[router]: No match for: %s %s", http_method_to_string(request->method), request->path);
+            log_info("[router]: No match for: %s %s", http_method_to_string(request->method),
+                     request->path);
 #endif /* DEBUG_MODE */
 
             break;
 
         case HTTP_METHOD_POST:
-        case HTTP_METHOD_PUT:
         case HTTP_METHOD_DELETE:
         case HTTP_METHOD_UNKNOWN:
         default:

@@ -174,3 +174,39 @@ details[open] > summary .arrow { transform: rotate(90deg); }
 .entry-icon      { min-width: 1rem; text-align: center; }
 .directory       { font-weight: 600; color: var(--text); }
 .file            { color: var(--accent); font-family: monospace; }
+
+/* =========================
+   Responsive Chart Layout
+   ========================= */
+.charts-row {
+  display: flex;                /* Flexbox: charts side by side on large screens */
+  gap: 2rem;                    /* Space between charts */
+  justify-content: center;      /* Center charts horizontally */
+  align-items: flex-start;      /* Align charts to top */
+  flex-wrap: wrap;              /* Allow wrapping if not enough space */
+  margin-bottom: 2rem;          /* Space below charts */
+}
+.chart-wrapper {
+  max-width: 800px;             /* INCREASE THIS for wider/larger charts (e.g. 800px, 1000px, etc) */
+  width: 100%;                  /* Chart fills available width up to max-width */
+  flex: 1 1 300px;              /* Flex-grow/shrink, min width 300px */
+  min-width: 250px;             /* Prevents charts from getting too small */
+  box-sizing: border-box;
+}
+.chart-wrapper canvas {
+  width: 100% !important;       /* Canvas always fills wrapper width */
+  height: auto !important;      /* Height auto-scales with width */
+  max-height: 400px;            /* << INCREASE THIS for taller charts (e.g. 600px, 800px, etc) */
+  display: block;
+}
+@media (max-width: 1100px) {
+  .charts-row {
+    flex-direction: column;     /* Stack charts vertically on smaller screens */
+    gap: 1.5rem;
+    align-items: stretch;
+  }
+  .chart-wrapper {
+    max-width: 100%;            /* Chart takes full width on small screens */
+    min-width: 0;
+  }
+}

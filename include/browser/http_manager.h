@@ -27,8 +27,8 @@
 typedef enum
 {
     HTTP_METHOD_GET,    /* GET method */
-    HTTP_METHOD_POST,   /* POST method */
     HTTP_METHOD_PUT,    /* PUT method */
+    HTTP_METHOD_POST,   /* POST method */
     HTTP_METHOD_DELETE, /* DELETE method */
     HTTP_METHOD_UNKNOWN /* Unknown method */
 } http_method_t;
@@ -57,6 +57,8 @@ typedef struct
     char header_names[HTTP_MAX_HEADER_COUNT][HTTP_MAX_HEADER_NAME_LEN];   /* Header names */
     char header_values[HTTP_MAX_HEADER_COUNT][HTTP_MAX_HEADER_VALUE_LEN]; /* Header values */
     int header_count;                       /* Number of headers parsed */
+    char* body;                             /* Pointer to dynamically allocated request body */
+    size_t body_len;                        /* Length of the body in bytes */
     HTTPConnectionPolicy connection_policy; /* Connection policy (keep-alive or close) */
 
 } HttpRequest;

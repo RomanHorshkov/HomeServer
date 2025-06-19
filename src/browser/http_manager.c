@@ -6,6 +6,7 @@
 #include <errno.h>  // errno, EADDRINUSE, etc.
 #include <stdio.h>
 #include <string.h>  // memset(), strcpy(), strlen(), etc.
+#include <stdlib.h>  // malloc(), free()
 
 #include "llhttp.h"
 #include "logger.h"
@@ -222,6 +223,35 @@ static int http_parse_request(const char* buffer, const size_t buffer_len, HttpR
         /* set return variable to success */
         res = STATUS_SUCCESS;
 
+        /* --- BODY PARSING LOGIC --- */
+        /* Find end of headers (\r\n\r\n) */
+        const char* header_end = strstr(buffer, "\r\n\r\n");
+        if(header_end)
+        {
+            size_t header_bytes = header_end + 4 - buffer;
+            if(buffer_len > header_bytes)
+            {
+                /* Allocate and copy the body */
+                req->body_len = buffer_len - header_bytes;
+                req->body = malloc(req->body_len + 1);
+                if(req->body)
+                {
+                    memcpy(req->body, buffer + header_bytes, req->body_len);
+                    req->body[req->body_len] = '\0';  // null-terminate for safety
+                }
+            }
+            else
+            {
+                req->body = NULL;
+                req->body_len = 0;
+            }
+        }
+        else
+        {
+            req->body = NULL;
+            req->body_len = 0;
+        }
+
 #ifdef DEBUG_MODE
         log_info("[http]: METHOD: %s, PATH: %s", http_method_to_string(req->method), req->path);
         // log_info("[http]: Parsed %d headers:", req->header_count);
@@ -283,7 +313,8 @@ static int sanitize_http_request(HttpRequest* req)
             log_error("[http]: Path contains control or null character %s", req->path);
             return STATUS_FAILURE;
         }
-        if(!(isalnum(c) || c == '/' || c == '-' || c == '_' || c == '.' || c == '~' || c == '?' || c == '=' || c == '&' || c == '+' || c == '%'))
+        if(!(isalnum(c) || c == '/' || c == '-' || c == '_' || c == '.' || c == '~' || c == '?' ||
+             c == '=' || c == '&' || c == '+' || c == '%'))
         {
             /* Allow alphanumeric, '/', '-', '_', '.', '~', '?', '=', '&', '+', '%' */
             log_error("[http]: Path contains suspicious character %s", req->path);
