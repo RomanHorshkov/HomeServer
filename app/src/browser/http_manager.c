@@ -5,8 +5,8 @@
 #include <ctype.h>
 #include <errno.h>  // errno, EADDRINUSE, etc.
 #include <stdio.h>
-#include <string.h>  // memset(), strcpy(), strlen(), etc.
 #include <stdlib.h>  // malloc(), free()
+#include <string.h>  // memset(), strcpy(), strlen(), etc.
 
 #include "llhttp.h"
 #include "logger.h"
@@ -122,6 +122,25 @@ static int sanitize_http_request(HttpRequest* req);
  * @param req      Pointer to the HttpRequest structure to update.
  */
 static void determine_connection_policy(HttpRequest* req);
+
+/**
+ * @brief Validates the HTTP request path for security and protocol compliance.
+ * Checks for empty, traversal, control chars, and suspicious chars.
+ * @return STATUS_SUCCESS if valid, STATUS_FAILURE otherwise.
+ */
+static int validate_http_path(const char* path);
+
+/**
+ * @brief Validates a header name for length and safe characters.
+ * @return STATUS_SUCCESS if valid, STATUS_FAILURE otherwise.
+ */
+static int validate_http_header_name(const char* hname);
+
+/**
+ * @brief Validates a header value for length and safe characters.
+ * @return STATUS_SUCCESS if valid, STATUS_FAILURE otherwise.
+ */
+static int validate_http_header_value(const char* hval, const char* hname);
 
 /****************************************************************************
  * PRIVATE STRUCTURED VARIABLES
@@ -265,6 +284,74 @@ static int http_parse_request(const char* buffer, const size_t buffer_len, HttpR
     return res;
 }
 
+static int validate_http_path(const char* path)
+{
+    if (!path || path[0] == '\0') {
+        log_error("[http]: Request path is empty", "");
+        return STATUS_FAILURE;
+    }
+    // Check for path traversal attempts (any ".." in the path)
+    if (strstr(path, "..")) {
+        log_error("[http]: Path traversal attempt detected", path);
+        return STATUS_FAILURE;
+    }
+    // Check for dangerous or suspicious characters
+    size_t path_len = strlen(path);
+    for (size_t i = 0; i < path_len; ++i) {
+        unsigned char c = (unsigned char)path[i];
+        if (c == '\0' || c < 0x20 || c == 0x7F) {
+            log_error("[http]: Path contains control or null character %s", path);
+            return STATUS_FAILURE;
+        }
+        if (!(isalnum(c) || c == '/' || c == '-' || c == '_' || c == '.' || c == '~' || c == '?' ||
+              c == '=' || c == '&' || c == '+' || c == '%')) {
+            log_error("[http]: Path contains suspicious character %s", path);
+            return STATUS_FAILURE;
+        }
+    }
+    return STATUS_SUCCESS;
+}
+
+static int validate_http_header_name(const char* hname)
+{
+    if (!hname) {
+        log_error("[http]: Null header name", "");
+        return STATUS_FAILURE;
+    }
+    if (strlen(hname) >= HTTP_MAX_HEADER_NAME_LEN) {
+        log_error("[http]: Header name too long", hname);
+        return STATUS_FAILURE;
+    }
+    for (size_t j = 0; j < strlen(hname); ++j) {
+        unsigned char c = (unsigned char)hname[j];
+        if (c == '\0' || c < 0x20 || c == 0x7F) {
+            log_error("[http]: Header name contains control or null character", hname);
+            return STATUS_FAILURE;
+        }
+    }
+    return STATUS_SUCCESS;
+}
+
+static int validate_http_header_value(const char* hval, const char* hname)
+{
+    if (!hval) {
+        log_error("[http]: Null header value", hname ? hname : "");
+        return STATUS_FAILURE;
+    }
+    if (strlen(hval) >= HTTP_MAX_HEADER_VALUE_LEN) {
+        log_error("[http]: Header value too long", hname ? hname : "");
+        return STATUS_FAILURE;
+    }
+    for (size_t j = 0; j < strlen(hval); ++j) {
+        unsigned char c = (unsigned char)hval[j];
+        if (c == '\0' || c < 0x20 || c == 0x7F) {
+            log_error("[http]: Header value contains control or null character", hname ? hname : "");
+            return STATUS_FAILURE;
+        }
+    }
+    return STATUS_SUCCESS;
+}
+
 static int sanitize_http_request(HttpRequest* req)
 {
     /* Check for null pointers */
@@ -274,12 +361,9 @@ static int sanitize_http_request(HttpRequest* req)
         return STATUS_FAILURE;
     }
 
-    /* Ensure the request path is not empty */
-    if(req->path[0] == '\0')
-    {
-        log_error("[http]: Request path is empty", "");
+    /* Validate the request path */
+    if(validate_http_path(req->path) != STATUS_SUCCESS)
         return STATUS_FAILURE;
-    }
 
     /* Ensure the method is valid */
     if(req->method == HTTP_METHOD_UNKNOWN)
@@ -295,74 +379,15 @@ static int sanitize_http_request(HttpRequest* req)
         return STATUS_FAILURE;
     }
 
-    /* Check for path traversal attempts */
-    if(strstr(req->path, "/..") || strstr(req->path, "%2f%2e%2e") || strstr(req->path, "%2F%2E%2E"))
-    {
-        log_error("[http]: Path traversal attempt detected", req->path);
-        return STATUS_FAILURE;
-    }
-
-    /* Path traversal and dangerous character checks */
-    const char* p = req->path;
-    size_t path_len = strlen(req->path);
-    for(size_t i = 0; i < path_len; ++i)
-    {
-        unsigned char c = (unsigned char)p[i];
-        if(c == '\0' || c < 0x20 || c == 0x7F)
-        {
-            log_error("[http]: Path contains control or null character %s", req->path);
-            return STATUS_FAILURE;
-        }
-        if(!(isalnum(c) || c == '/' || c == '-' || c == '_' || c == '.' || c == '~' || c == '?' ||
-             c == '=' || c == '&' || c == '+' || c == '%'))
-        {
-            /* Allow alphanumeric, '/', '-', '_', '.', '~', '?', '=', '&', '+', '%' */
-            log_error("[http]: Path contains suspicious character %s", req->path);
-            return STATUS_FAILURE;
-        }
-    }
-
     /* Ensure header names and values are within limits and safe */
     for(int i = 0; i < req->header_count; ++i)
     {
         const char* hname = req->header_names[i];
         const char* hval = req->header_values[i];
-        if(!hname || !hval)
-        {
-            log_error("[http]: Null header name or value", "");
+        if(validate_http_header_name(hname) != STATUS_SUCCESS)
             return STATUS_FAILURE;
-        }
-
-        if(strlen(hname) >= HTTP_MAX_HEADER_NAME_LEN)
-        {
-            log_error("[http]: Header name too long", hname);
+        if(validate_http_header_value(hval, hname) != STATUS_SUCCESS)
             return STATUS_FAILURE;
-        }
-
-        if(strlen(hval) >= HTTP_MAX_HEADER_VALUE_LEN)
-        {
-            log_error("[http]: Header value too long", hname);
-            return STATUS_FAILURE;
-        }
-
-        for(size_t j = 0; j < strlen(hname); ++j)
-        {
-            unsigned char c = (unsigned char)hname[j];
-            if(c == '\0' || c < 0x20 || c == 0x7F)
-            {
-                log_error("[http]: Header name contains control or null character", hname);
-                return STATUS_FAILURE;
-            }
-        }
-        for(size_t j = 0; j < strlen(hval); ++j)
-        {
-            unsigned char c = (unsigned char)hval[j];
-            if(c == '\0' || c < 0x20 || c == 0x7F)
-            {
-                log_error("[http]: Header value contains control or null character", hname);
-                return STATUS_FAILURE;
-            }
-        }
     }
 
     return STATUS_SUCCESS;
