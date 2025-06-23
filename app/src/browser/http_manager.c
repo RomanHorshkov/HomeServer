@@ -286,25 +286,30 @@ static int http_parse_request(const char* buffer, const size_t buffer_len, HttpR
 
 static int validate_http_path(const char* path)
 {
-    if (!path || path[0] == '\0') {
+    if(!path || path[0] == '\0')
+    {
         log_error("[http]: Request path is empty", "");
         return STATUS_FAILURE;
     }
     // Check for path traversal attempts (any ".." in the path)
-    if (strstr(path, "..")) {
+    if(strstr(path, ".."))
+    {
         log_error("[http]: Path traversal attempt detected", path);
         return STATUS_FAILURE;
     }
     // Check for dangerous or suspicious characters
     size_t path_len = strlen(path);
-    for (size_t i = 0; i < path_len; ++i) {
+    for(size_t i = 0; i < path_len; ++i)
+    {
         unsigned char c = (unsigned char)path[i];
-        if (c == '\0' || c < 0x20 || c == 0x7F) {
+        if(c == '\0' || c < 0x20 || c == 0x7F)
+        {
             log_error("[http]: Path contains control or null character %s", path);
             return STATUS_FAILURE;
         }
-        if (!(isalnum(c) || c == '/' || c == '-' || c == '_' || c == '.' || c == '~' || c == '?' ||
-              c == '=' || c == '&' || c == '+' || c == '%')) {
+        if(!(isalnum(c) || c == '/' || c == '-' || c == '_' || c == '.' || c == '~' || c == '?' ||
+             c == '=' || c == '&' || c == '+' || c == '%'))
+        {
             log_error("[http]: Path contains suspicious character %s", path);
             return STATUS_FAILURE;
         }
@@ -314,17 +319,21 @@ static int validate_http_path(const char* path)
 
 static int validate_http_header_name(const char* hname)
 {
-    if (!hname) {
+    if(!hname)
+    {
         log_error("[http]: Null header name", "");
         return STATUS_FAILURE;
     }
-    if (strlen(hname) >= HTTP_MAX_HEADER_NAME_LEN) {
+    if(strlen(hname) >= HTTP_MAX_HEADER_NAME_LEN)
+    {
         log_error("[http]: Header name too long", hname);
         return STATUS_FAILURE;
     }
-    for (size_t j = 0; j < strlen(hname); ++j) {
+    for(size_t j = 0; j < strlen(hname); ++j)
+    {
         unsigned char c = (unsigned char)hname[j];
-        if (c == '\0' || c < 0x20 || c == 0x7F) {
+        if(c == '\0' || c < 0x20 || c == 0x7F)
+        {
             log_error("[http]: Header name contains control or null character", hname);
             return STATUS_FAILURE;
         }
@@ -334,18 +343,23 @@ static int validate_http_header_name(const char* hname)
 
 static int validate_http_header_value(const char* hval, const char* hname)
 {
-    if (!hval) {
+    if(!hval)
+    {
         log_error("[http]: Null header value", hname ? hname : "");
         return STATUS_FAILURE;
     }
-    if (strlen(hval) >= HTTP_MAX_HEADER_VALUE_LEN) {
+    if(strlen(hval) >= HTTP_MAX_HEADER_VALUE_LEN)
+    {
         log_error("[http]: Header value too long", hname ? hname : "");
         return STATUS_FAILURE;
     }
-    for (size_t j = 0; j < strlen(hval); ++j) {
+    for(size_t j = 0; j < strlen(hval); ++j)
+    {
         unsigned char c = (unsigned char)hval[j];
-        if (c == '\0' || c < 0x20 || c == 0x7F) {
-            log_error("[http]: Header value contains control or null character", hname ? hname : "");
+        if(c == '\0' || c < 0x20 || c == 0x7F)
+        {
+            log_error("[http]: Header value contains control or null character",
+                      hname ? hname : "");
             return STATUS_FAILURE;
         }
     }
@@ -362,8 +376,7 @@ static int sanitize_http_request(HttpRequest* req)
     }
 
     /* Validate the request path */
-    if(validate_http_path(req->path) != STATUS_SUCCESS)
-        return STATUS_FAILURE;
+    if(validate_http_path(req->path) != STATUS_SUCCESS) return STATUS_FAILURE;
 
     /* Ensure the method is valid */
     if(req->method == HTTP_METHOD_UNKNOWN)
@@ -384,10 +397,8 @@ static int sanitize_http_request(HttpRequest* req)
     {
         const char* hname = req->header_names[i];
         const char* hval = req->header_values[i];
-        if(validate_http_header_name(hname) != STATUS_SUCCESS)
-            return STATUS_FAILURE;
-        if(validate_http_header_value(hval, hname) != STATUS_SUCCESS)
-            return STATUS_FAILURE;
+        if(validate_http_header_name(hname) != STATUS_SUCCESS) return STATUS_FAILURE;
+        if(validate_http_header_value(hval, hname) != STATUS_SUCCESS) return STATUS_FAILURE;
     }
 
     return STATUS_SUCCESS;
