@@ -41,7 +41,7 @@ Everything builds with **`gcc -std=c11 -Wall -Wextra -Werror -pedantic`** and on
 ## Quick start
 
 ```bash
-$ make            # or `make debug` / `make release`
+$ make all            # or `make debug` / `make release`
 $ ./build/bin/server
 ```
 
@@ -194,9 +194,9 @@ Main thread (core)
 | **Listener sockets** | **NON‑blocking** | Managed by listener thread, epoll-based, dual-stack (IPv4/6)   |
 | **Client sockets**   | **NON‑blocking** | Managed by worker thread, epoll-based, persistent connections  |
 
-- **Admission control:** Max-clients cap enforced in worker.
-- **Shutdown:** Atomic status flags signal threads to exit cleanly.
-- **Inter-thread communication:** Pipe (listener → worker) for new client FDs.
+**Admission control:** Max-clients cap enforced in worker.
+**Shutdown:** Atomic status flags signal threads to exit cleanly.
+**Inter-thread communication:** Pipe (listener → worker) for new client FDs.
 
 ---
 
@@ -212,7 +212,6 @@ Main thread (core)
 | `SERVER_LOOP_SLEEP_USEC`  | Main loop pause between polls     | **50 ms** |
 
 ---
-
 
 ## HTTP capabilities & dynamic features
 
@@ -311,15 +310,6 @@ Feel free to extend the hook with `make tidy` or unit‑test execution once the 
 
 ---
 
-## Logging semantics
-
-* Log file: **`var/www/server.log`** (overwritten each run)
-* Format: `[YYYY‑MM‑DD hh:mm:ss] [LEVEL] message`
-* Levels: `INFO`, `ERROR` (extend as you wish)
-* Every write is flushed so `tail -f var/www/server.log` shows live traffic.
-
----
-
 ## Testing matrix
 
 | Scenario                                      | Expected result                                                                                   |
@@ -337,6 +327,7 @@ Feel free to extend the hook with `make tidy` or unit‑test execution once the 
 | Press `q` in server                           | Parent stops accepting, reaps children, exits cleanly                                             |
 
 ---
+
 ## Security Concerns
 
 Below is a deep‑dive catalogue of security issues identified in the current multithreaded, event-driven server implementation.  
@@ -439,7 +430,6 @@ For each item you will find **the underlying cause**, **the practical impact/a
 
 ---
 
-
 ## Future work
 
 * Chunked‑encoding & streamed responses
@@ -451,6 +441,5 @@ For each item you will find **the underlying cause**, **the practical impact/a
 * In‑band metrics (`/api/metrics`) for Prometheus
 * Hot‑reload configuration with `inotify`
 * Fuzz tests with libFuzzer
-
 
 Pull requests & ideas welcome — **happy coding!**
