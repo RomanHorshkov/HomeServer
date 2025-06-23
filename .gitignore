@@ -1,8 +1,25 @@
+#Ignore gitignore file
+.gitignore
+# Ignore clang-format file
 .clang-format
 /docs
+#ignore vs code files
 .vscode/
-www/images/
-copy_project.sh
+# Ignore for now utilities directory
+utils/
+#Ignore build files
 build/
+# Ignore log files
 server.log
-www/expenses/2025*
+# Ignore whole private directory
+/var/lib/
+# Ignore compile commands
+compile_commands.json
+
+
+# # Ignore all yaml files in config directory
+# /config/*.yaml
+# # Except config.example.yaml
+# !/config/config.example.yaml
+# # Ignore environment variable file
+# .env

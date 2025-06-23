@@ -22,9 +22,7 @@
  * PRIVATE DEFINES
  ****************************************************************************
  */
-
-/* --- Path and File Limits --- */
-#define STATIC_ROOT "www" /* Root directory for all static assets */
+/* None */
 
 /****************************************************************************
  * PRIVATE FUNCTION PROTOTYPES
@@ -38,15 +36,6 @@
  */
 
 /**
- * @brief Route matching type.
- */
-typedef enum
-{
-    ROUTE_EXACT,  ///< Exact path match
-    ROUTE_PREFIX  ///< Prefix match (e.g., "/images/")
-} route_match_t;
-
-/**
  * @brief Handler function signature for all HTTP endpoints.
  *
  * @param req   Pointer to the parsed HttpRequest.
@@ -56,15 +45,22 @@ typedef enum
  */
 typedef int (*route_handler_t)(const HttpRequest *req, HttpResponse *resp);
 
+typedef enum
+{
+    ROUTE_EXACT,
+    ROUTE_PREFIX
+} route_match_t;
+
 /**
  * @brief Routing table entry.
  */
 typedef struct
 {
-    http_method_t method;      ///< HTTP method for this route
-    const char *path;          ///< Path or prefix
-    route_match_t match_type;  ///< Exact or prefix match
-    route_handler_t handler;   ///< Handler function
+    http_method_t method; /* HTTP method for this route */
+    const char *path;     /* Path */
+    size_t path_len;      /* Length of the path for optimization */
+    route_match_t match_type;
+    route_handler_t handler; /* Handler function */
 } route_t;
 
 /****************************************************************************
@@ -74,33 +70,26 @@ typedef struct
  * For static files, handler_static will deduce the file path and MIME type.
  */
 static const route_t routes[] = {
-
-    /* Servicing */
-    /* Exact matches for static files */
-    {HTTP_METHOD_GET, "/", ROUTE_EXACT, handler_static},
-    {HTTP_METHOD_GET, "/home", ROUTE_EXACT, handler_static},
-    {HTTP_METHOD_GET, "/whoami.html", ROUTE_EXACT, handler_static},
-    {HTTP_METHOD_GET, "/build_notes/index.html", ROUTE_EXACT, handler_static},
-    {HTTP_METHOD_GET, "/dynamic.html", ROUTE_EXACT, handler_static},
-    {HTTP_METHOD_GET, "/expenses.html", ROUTE_EXACT, handler_static},
-    {HTTP_METHOD_GET, "/drive.html", ROUTE_EXACT, handler_static},
-    {HTTP_METHOD_GET, "/style.css", ROUTE_EXACT, handler_static},
-    {HTTP_METHOD_GET, "/assets/footer.html", ROUTE_EXACT, handler_static},
-    {HTTP_METHOD_GET, "/assets/header.html", ROUTE_EXACT, handler_static},
-    {HTTP_METHOD_GET, "/assets/header.js", ROUTE_EXACT, handler_static},
+    /* Exact matches */
+    {HTTP_METHOD_GET, "/", 1, ROUTE_EXACT, handler_static},
+    {HTTP_METHOD_GET, "/whoami.html", 12, ROUTE_EXACT, handler_static},
+    {HTTP_METHOD_GET, "/build_notes/index.html", 22, ROUTE_EXACT, handler_static},
+    {HTTP_METHOD_GET, "/dynamic.html", 13, ROUTE_EXACT, handler_static},
+    {HTTP_METHOD_GET, "/expenses.html", 14, ROUTE_EXACT, handler_static},
+    {HTTP_METHOD_GET, "/drive.html", 11, ROUTE_EXACT, handler_static},
+    {HTTP_METHOD_GET, "/style.css", 10, ROUTE_EXACT, handler_static},
 
     /* API endpoints */
-    {HTTP_METHOD_GET, "/api/whoami", ROUTE_EXACT, handler_whoami},
-    {HTTP_METHOD_GET, "/api/expenses", ROUTE_EXACT, handler_expenses},
-    {HTTP_METHOD_PUT, "/api/expenses", ROUTE_EXACT, handler_expenses},
-    {HTTP_METHOD_GET, "/api/drive", ROUTE_PREFIX, handler_drive},
+    {HTTP_METHOD_GET, "/api/whoami", 12, ROUTE_EXACT, handler_whoami},
+    {HTTP_METHOD_GET, "/api/expenses", 14, ROUTE_EXACT, handler_expenses},
+    {HTTP_METHOD_PUT, "/api/expenses", 14, ROUTE_EXACT, handler_expenses},
+    {HTTP_METHOD_GET, "/api/drive", 11, ROUTE_EXACT, handler_drive},
 
     /* Prefix matches for static directories */
-    {HTTP_METHOD_GET, "/images", ROUTE_PREFIX, handler_static},
-    {HTTP_METHOD_GET, "/assets", ROUTE_PREFIX, handler_static},
-    {HTTP_METHOD_GET, "/expenses/", ROUTE_PREFIX, handler_static},
-    {HTTP_METHOD_GET, "/build_notes/", ROUTE_PREFIX, handler_static},
-
+    {HTTP_METHOD_GET, "/images/", 8, ROUTE_PREFIX, handler_static},
+    {HTTP_METHOD_GET, "/build_notes/", 13, ROUTE_PREFIX, handler_static},
+    {HTTP_METHOD_GET, "/assets/", 8, ROUTE_PREFIX, handler_static},
+    {HTTP_METHOD_GET, "/pages/", 7, ROUTE_PREFIX, handler_static},
 };
 
 /****************************************************************************
@@ -133,38 +122,21 @@ int router_handle_request(const HttpRequest *request, HttpResponse *response)
 
     switch(request->method)
     {
-        case HTTP_METHOD_GET: /* TO DO: check fall-through mechanism */
+        case HTTP_METHOD_GET:
         case HTTP_METHOD_PUT:
             for(size_t i = 0; i < sizeof(routes) / sizeof(routes[0]); ++i)
             {
-                if(routes[i].method != request->method)
-                {
-                    continue;
-                }
+                if(routes[i].method != request->method) continue;
 
-                else if(routes[i].match_type == ROUTE_EXACT &&
-                        strcmp(request->path, routes[i].path) == 0)
+                if(routes[i].match_type == ROUTE_EXACT &&
+                   strcmp(request->path, routes[i].path) == 0)
                 {
                     return routes[i].handler(request, response);
                 }
-
                 else if(routes[i].match_type == ROUTE_PREFIX &&
-                        strncmp(request->path, routes[i].path, strlen(routes[i].path)) == 0)
+                        strncmp(request->path, routes[i].path, routes[i].path_len) == 0)
                 {
                     return routes[i].handler(request, response);
-                }
-
-                else
-                {
-                    /*
-                    TODO:
-                    The iterations every time ends up here!!!
-                    It is wasting a ton of time in checks!!! */
-#ifdef DEBUG_MODE
-                    // log_info("[router]: No match for: %s %s",
-                    // http_method_to_string(request->method), request->path);
-#endif /* DEBUG_MODE */
-                    continue;
                 }
             }
             /* No match case */

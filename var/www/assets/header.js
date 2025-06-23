@@ -20,4 +20,3 @@ document.addEventListener('DOMContentLoaded', async () => {
         console.error("Error loading header or footer:", error);
     }
 });
-
