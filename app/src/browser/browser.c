@@ -81,7 +81,7 @@ int browser_manage_client_req(int fd, const char *recv_buf, size_t n)
     else if(send_response(fd, &response) < 0)
     {
         log_error("[browser] send_response failed", strerror(errno));
-        
+
         /* Free any heap buffer allocated by handler_static_page */
         free((void *)response.body);
     }
@@ -94,7 +94,6 @@ int browser_manage_client_req(int fd, const char *recv_buf, size_t n)
         /* Free any heap buffer allocated by handler_static_page */
         free((void *)response.body);
     }
-
 
     return res;
 }

@@ -42,13 +42,14 @@ int handler_static(const HttpRequest *req, HttpResponse *response)
 {
     /* Initialize result as failure by default */
     int res = STATUS_FAILURE;
-    
+
     /* Buffer to store the resolved file path to serve */
     char file_path[HTTP_MAX_PATH_LEN];
 
     /*
      * Map the root URI ("/") to "pages/index.html" under the current working directory (var/www).
-     * For all other URIs, map them directly under the current working directory, preserving the relative path.
+     * For all other URIs, map them directly under the current working directory, preserving the
+     * relative path.
      */
     if(strcmp(req->path, URI_HOME) == 0)
     {
