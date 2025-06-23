@@ -113,11 +113,14 @@ int handler_expenses(const HttpRequest *req, HttpResponse *resp)
         snprintf(dirpath, sizeof dirpath, "%s/%s", EXP_ROOT, yearstr);
         snprintf(monthfile, sizeof monthfile, "%s.json", monthstr);
         // Use strncat for extra safety
-        if (snprintf(filepath, sizeof filepath, "%s/", dirpath) < (int)sizeof(filepath)) {
+        if(snprintf(filepath, sizeof filepath, "%s/", dirpath) < (int)sizeof(filepath))
+        {
             strncat(filepath, monthfile, sizeof(filepath) - strlen(filepath) - 1);
-        } else {
+        }
+        else
+        {
             // fallback: ensure null-termination
-            filepath[sizeof(filepath)-1] = '\0';
+            filepath[sizeof(filepath) - 1] = '\0';
         }
         // --- Ensure directory exists ---
         mkdir(EXP_ROOT, 0775);
@@ -163,7 +166,7 @@ int handler_expenses(const HttpRequest *req, HttpResponse *resp)
 
         // --- Write back to file ---
         // char *out = cJSON_PrintUnformatted(arr);
-        char *out = cJSON_Print(arr); // Use pretty-print instead of unformatted
+        char *out = cJSON_Print(arr);  // Use pretty-print instead of unformatted
         fseek(f, 0, SEEK_SET);
         fwrite(out, 1, strlen(out), f);
         fflush(f);

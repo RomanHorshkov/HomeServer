@@ -31,7 +31,9 @@
  * (c) 2025
  */
 
-#include "core.h"   /* server_init / run / shutdown                        */
+#include <unistd.h> /* chdir                                              */
+
+#include "core.h"   /* server_init / run / shutdown                       */
 #include "logger.h" /* loginfo / log_error / logger_init                  */
 
 /****************************************************************************
@@ -44,10 +46,17 @@ int main()
     /* server's listening port */
     const char *port = "3490";
 
-    if(server_init(port) == -1)
+    // Change working directory to var/www for static file serving
+    if(chdir("var/www") != 0)
+    {
+        log_error("chdir to var/www failed", strerror(errno));
+    }
+
+    else if(server_init(port) == -1)
     {
         /* do nothing, server not initialized */
     }
+
     else
     {
         log_info("Server started on port %s...", port);
