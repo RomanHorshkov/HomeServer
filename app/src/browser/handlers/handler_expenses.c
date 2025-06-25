@@ -10,9 +10,6 @@
  * (c) 2025 Roman Horshkov
  */
 
-#ifndef SERVER_HANDLER_EXPENSES_H
-#define SERVER_HANDLER_EXPENSES_H
-
 #define _GNU_SOURCE
 
 #include "handler_expenses.h"
@@ -30,7 +27,10 @@
 /****************************************************************************
  * PRIVATE DEFINES
  ****************************************************************************/
-#define EXP_ROOT "www/expenses" /* constant root path */
+
+#define EXP_ROOT "/home/roman/HomeServer/var/lib/expenses"
+
+#define SETTINGS_FILE "/home/roman/HomeServer/var/lib/expenses/settings.json"
 #define MAX_MONTHS 256          /* max months to collect */
 
 /****************************************************************************
@@ -45,6 +45,8 @@ static int is_valid_month_file(const struct dirent *de);
 static int collect_expense_months(char **months, int max_months);
 /* Builds a compact JSON array string from months[] */
 static char *build_months_json(char **months, int count);
+/* Helper: serve a static JSON file from EXP_ROOT or absolute path */
+static int serve_static_json(const char *filename, HttpResponse *resp);
 /****************************************************************************
  * PUBLIC FUNCTION DEFINITIONS
  ****************************************************************************/
@@ -52,21 +54,67 @@ static char *build_months_json(char **months, int count);
 // Entry point for /api/expenses (GET: list months, PUT: add expense)
 int handler_expenses(const HttpRequest *req, HttpResponse *resp)
 {
-    if(req->method == HTTP_METHOD_GET)
+    /* result variable */
+    int res = STATUS_FAILURE;
+
+    log_info("[handler_expenses]: called with method %d, path %s", req->method, req->path);
+    // ^^^ Add path to log for easier debugging
+
+    switch (req->method)
     {
-        // 1. Collect all months with expense files
-        char *months[MAX_MONTHS];
-        int count = collect_expense_months(months, MAX_MONTHS);
-        // 2. Build JSON array string
-        char *out = build_months_json(months, count);
-        // 3. Fill response
-        resp->status_code = 200;
-        resp->content_type = "application/json";
-        resp->body = out;
-        resp->body_length = strlen(out);
-        return 0;
+    case HTTP_METHOD_GET:
+    {
+        res = STATUS_SUCCESS;
+
+        // 1. Serve the settings file if requested
+        if (strcmp(req->path, "/api/expenses/settings.json") == 0)
+        {
+            // Serve the static settings.json file
+            return serve_static_json(SETTINGS_FILE, resp);
+        }
+        // 2. List all available months if requesting the root endpoint
+        else if (strcmp(req->path, "/api/expenses/") == 0 || strcmp(req->path, "/api/expenses") == 0)
+        {
+            // Collect all months with expense files
+            char *months[MAX_MONTHS];
+            int count = collect_expense_months(months, MAX_MONTHS);
+
+            // Build a compact JSON array string
+            char *out = build_months_json(months, count);
+
+            // Fill the response
+            resp->status_code = 200;
+            resp->content_type = "application/json";
+            resp->body = out;
+            resp->body_length = strlen(out);
+        }
+        // 3. Serve a specific month file: /api/expenses/YYYY/MM.json
+        else
+        {
+            // Try to match the pattern /api/expenses/YYYY/MM.json
+            int year, month;
+            char extra[32];
+            // sscanf returns 2 if it matches exactly "/api/expenses/YYYY/MM.json"
+            if (sscanf(req->path, "/api/expenses/%4d/%2d.json%31s", &year, &month, extra) == 2)
+            {
+                // Build the file path to the requested month
+                char filepath[PATH_MAX];
+                snprintf(filepath, sizeof(filepath), "%s/%04d/%02d.json", EXP_ROOT, year, month);
+
+                // Serve the static JSON file for the requested month
+                return serve_static_json(filepath, resp);
+            }
+
+            // 4. If none of the above, return 404 Not Found
+            resp->status_code = 404;
+            resp->content_type = "text/plain";
+            resp->body = strdup("Not found");
+            resp->body_length = strlen(resp->body);
+            res = STATUS_FAILURE;
+        }
+        break;
     }
-    else if(req->method == HTTP_METHOD_PUT)
+    case HTTP_METHOD_PUT:
     {
         // --- Parse JSON body ---
         cJSON *root = cJSON_ParseWithLength(req->body, req->body_len);
@@ -165,29 +213,37 @@ int handler_expenses(const HttpRequest *req, HttpResponse *resp)
         cJSON_AddItemToArray(arr, obj);
 
         // --- Write back to file ---
-        // char *out = cJSON_PrintUnformatted(arr);
-        char *out = cJSON_Print(arr);  // Use pretty-print instead of unformatted
+        char *out2 = cJSON_Print(arr);  // Use pretty-print instead of unformatted
         fseek(f, 0, SEEK_SET);
-        fwrite(out, 1, strlen(out), f);
+        fwrite(out2, 1, strlen(out2), f);
         fflush(f);
-        ftruncate(fileno(f), strlen(out));
+        ftruncate(fileno(f), strlen(out2));
         fclose(f);
         cJSON_Delete(arr);
         cJSON_Delete(root);
-        free(out);
+        free(out2);
         /* Respond OK */
         resp->status_code = 200;
         resp->content_type = "text/plain";
         resp->body = strdup("OK");
         resp->body_length = 2;
-        return 0;
+
+        res = STATUS_SUCCESS;
+        break;
     }
-    /* Method not allowed */
-    resp->status_code = 405;
-    resp->content_type = "text/plain";
-    resp->body = strdup("Method Not Allowed");
-    resp->body_length = strlen(resp->body);
-    return 0;
+    case HTTP_METHOD_POST:
+    case HTTP_METHOD_DELETE:
+    case HTTP_METHOD_UNKNOWN:
+    default:
+        /* Method not allowed */
+        resp->status_code = 405;
+        resp->content_type = "text/plain";
+        resp->body = strdup("Method Not Allowed");
+        resp->body_length = strlen(resp->body);
+        break;
+    }
+
+    return res;
 }
 
 /****************************************************************************
@@ -258,4 +314,42 @@ static char *build_months_json(char **months, int count)
     return out;
 }
 
-#endif /* SERVER_HANDLER_EXPENSES_H */
+// Helper: serve a static JSON file from EXP_ROOT or absolute path
+static int serve_static_json(const char *filename, HttpResponse *resp)
+{
+    char path[PATH_MAX];
+    // If filename is absolute, use as is; else prepend EXP_ROOT
+    if (filename[0] == '/') {
+        snprintf(path, sizeof path, "%s", filename);
+    } else {
+        snprintf(path, sizeof path, "%s/%s", EXP_ROOT, filename);
+    }
+    FILE *f = fopen(path, "rb");
+    if (!f) {
+        resp->status_code = 404;
+        resp->content_type = "text/plain";
+        resp->body = strdup("Not found");
+        resp->body_length = strlen(resp->body);
+        return STATUS_FAILURE;
+    }
+    fseek(f, 0, SEEK_END);
+    long len = ftell(f);
+    fseek(f, 0, SEEK_SET);
+    char *buf = malloc(len + 1);
+    fread(buf, 1, len, f);
+    buf[len] = 0;
+    fclose(f);
+
+    resp->status_code = 200;
+    resp->content_type = "application/json";
+    resp->body = buf;
+    resp->body_length = len;
+    return STATUS_SUCCESS;
+}
+
+/*
+ * Note:
+ * This handler only serves /api/expenses and /api/expenses/settings.json.
+ * Requests for /expenses/<year>/<month>.json should be handled by the static file handler,
+ * mapped to the directory: /home/roman/HomeServer/var/lib/expenses/<year>/<month>.json
+ */
