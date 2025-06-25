@@ -14,6 +14,8 @@
   --radius:        8px;
   --shadow:        0 4px 8px rgba(0, 0, 0, .45);
   --font-base:     'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  --fab-blue:      #0cf;
+  --fab-blue-hover:#0ae;
 }
 
 /* ---------------------------------------------------------------------
