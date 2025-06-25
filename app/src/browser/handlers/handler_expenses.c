@@ -8,6 +8,7 @@
  * - (Future) PUT/POST: Add new expense records (not implemented here).
  *
  * (c) 2025 Roman Horshkov
+ *
  */
 
 #define _GNU_SOURCE
@@ -31,27 +32,54 @@
 #define EXP_ROOT "/home/roman/HomeServer/var/lib/expenses"
 
 #define SETTINGS_FILE "/home/roman/HomeServer/var/lib/expenses/settings.json"
-#define MAX_MONTHS 256          /* max months to collect */
+#define MAX_MONTHS 256 /* max months to collect */
 
 /****************************************************************************
  * PRIVATE FUNCTION PROTOTYPES
  ****************************************************************************/
 
-/* Checks if a directory entry is a valid year (4 digits) */
+/**
+ * @brief Checks if a directory entry is a valid year directory (format: YYYY).
+ * @param de Pointer to directory entry.
+ * @return 1 if valid year directory, 0 otherwise.
+ */
 static int is_valid_year_dir(const struct dirent *de);
-/* Checks if a directory entry is a valid month file (MM.json) */
+
+/**
+ * @brief Checks if a directory entry is a valid month file (format: MM.json).
+ * @param de Pointer to directory entry.
+ * @return 1 if valid month file, 0 otherwise.
+ */
 static int is_valid_month_file(const struct dirent *de);
-/* Collects all valid months from EXP_ROOT, fills months[] with "YYYY-MM" strings */
+
+/**
+ * @brief Collects all valid months from EXP_ROOT, fills months[] with "YYYY-MM" strings.
+ * @param months Output array of strings (allocated with strdup).
+ * @param max_months Maximum number of months to collect.
+ * @return Number of months found.
+ */
 static int collect_expense_months(char **months, int max_months);
-/* Builds a compact JSON array string from months[] */
+
+/**
+ * @brief Builds a compact JSON array string from months[].
+ * @param months Array of "YYYY-MM" strings.
+ * @param count Number of months in the array.
+ * @return Pointer to a heap-allocated JSON string (must be freed by caller).
+ */
 static char *build_months_json(char **months, int count);
-/* Helper: serve a static JSON file from EXP_ROOT or absolute path */
+
+/**
+ * @brief Helper to serve a static JSON file from EXP_ROOT or absolute path.
+ * @param filename Absolute or relative path to JSON file.
+ * @param resp Pointer to HttpResponse to populate.
+ * @return STATUS_SUCCESS on success, STATUS_FAILURE on error.
+ */
 static int serve_static_json(const char *filename, HttpResponse *resp);
+
 /****************************************************************************
  * PUBLIC FUNCTION DEFINITIONS
  ****************************************************************************/
 
-// Entry point for /api/expenses (GET: list months, PUT: add expense)
 int handler_expenses(const HttpRequest *req, HttpResponse *resp)
 {
     /* result variable */
@@ -60,187 +88,204 @@ int handler_expenses(const HttpRequest *req, HttpResponse *resp)
     log_info("[handler_expenses]: called with method %d, path %s", req->method, req->path);
     // ^^^ Add path to log for easier debugging
 
-    switch (req->method)
+    switch(req->method)
     {
-    case HTTP_METHOD_GET:
-    {
-        res = STATUS_SUCCESS;
-
-        // 1. Serve the settings file if requested
-        if (strcmp(req->path, "/api/expenses/settings.json") == 0)
+        case HTTP_METHOD_GET:
         {
-            // Serve the static settings.json file
-            return serve_static_json(SETTINGS_FILE, resp);
-        }
-        // 2. List all available months if requesting the root endpoint
-        else if (strcmp(req->path, "/api/expenses/") == 0 || strcmp(req->path, "/api/expenses") == 0)
-        {
-            // Collect all months with expense files
-            char *months[MAX_MONTHS];
-            int count = collect_expense_months(months, MAX_MONTHS);
+            res = STATUS_SUCCESS;
 
-            // Build a compact JSON array string
-            char *out = build_months_json(months, count);
-
-            // Fill the response
-            resp->status_code = 200;
-            resp->content_type = "application/json";
-            resp->body = out;
-            resp->body_length = strlen(out);
-        }
-        // 3. Serve a specific month file: /api/expenses/YYYY/MM.json
-        else
-        {
-            // Try to match the pattern /api/expenses/YYYY/MM.json
-            int year, month;
-            char extra[32];
-            // sscanf returns 2 if it matches exactly "/api/expenses/YYYY/MM.json"
-            if (sscanf(req->path, "/api/expenses/%4d/%2d.json%31s", &year, &month, extra) == 2)
+            /* Serve the settings file if requested */
+            if(strcmp(req->path, "/api/expenses/settings.json") == 0)
             {
-                // Build the file path to the requested month
-                char filepath[PATH_MAX];
-                snprintf(filepath, sizeof(filepath), "%s/%04d/%02d.json", EXP_ROOT, year, month);
+                // Serve the static settings.json file
+                return serve_static_json(SETTINGS_FILE, resp);
+            }
+            /* List all available months if requesting the root endpoint */
+            else if(strcmp(req->path, "/api/expenses/") == 0 ||
+                    strcmp(req->path, "/api/expenses") == 0)
+            {
+                /* Collect all months with expense files */
+                char *months[MAX_MONTHS];
+                int count = collect_expense_months(months, MAX_MONTHS);
 
-                // Serve the static JSON file for the requested month
-                return serve_static_json(filepath, resp);
+                // /* Build a compact JSON array string */
+                char *out = build_months_json(months, count);
+
+                /* Fill the response */
+                resp->status_code = 200;
+                resp->content_type = "application/json";
+                resp->body = out;
+                resp->body_length = strlen(out);
+            }
+            /* Serve a specific month file: /api/expenses/YYYY/MM.json */
+            else
+            {
+                /* Try to match the pattern /api/expenses/YYYY/MM.json */
+                int year, month;
+                char extra[32];
+                /* sscanf returns 2 if it matches exactly "/api/expenses/YYYY/MM.json" */
+                if(sscanf(req->path, "/api/expenses/%4d/%2d.json%31s", &year, &month, extra) == 2)
+                {
+                    /* Build the file path to the requested month */
+                    char filepath[PATH_MAX];
+                    snprintf(filepath, sizeof(filepath), "%s/%04d/%02d.json", EXP_ROOT, year,
+                             month);
+
+                    /* Serve the static JSON file for the requested month */
+                    return serve_static_json(filepath, resp);
+                }
+
+                // 4. If none of the above, return 404 Not Found
+                resp->status_code = 404;
+                resp->content_type = "text/plain";
+                resp->body = strdup("Not found");
+                resp->body_length = strlen(resp->body);
+                res = STATUS_FAILURE;
+            }
+            break;
+        }
+        case HTTP_METHOD_PUT:
+        {
+            /* Parse JSON body */
+            cJSON *root = cJSON_ParseWithLength(req->body, req->body_len);
+            if(!root)
+            {
+                resp->status_code = 400;
+                resp->content_type = "text/plain";
+                resp->body = strdup("Invalid JSON");
+                resp->body_length = strlen(resp->body);
+                return 0;
             }
 
-            // 4. If none of the above, return 404 Not Found
-            resp->status_code = 404;
-            resp->content_type = "text/plain";
-            resp->body = strdup("Not found");
-            resp->body_length = strlen(resp->body);
-            res = STATUS_FAILURE;
-        }
-        break;
-    }
-    case HTTP_METHOD_PUT:
-    {
-        // --- Parse JSON body ---
-        cJSON *root = cJSON_ParseWithLength(req->body, req->body_len);
-        if(!root)
-        {
-            resp->status_code = 400;
-            resp->content_type = "text/plain";
-            resp->body = strdup("Invalid JSON");
-            resp->body_length = strlen(resp->body);
-            return 0;
-        }
-        // --- Extract fields ---
-        const cJSON *date = cJSON_GetObjectItem(root, "date");
-        const cJSON *category = cJSON_GetObjectItem(root, "category");
-        const cJSON *amount = cJSON_GetObjectItem(root, "amount");
-        const cJSON *comment = cJSON_GetObjectItem(root, "comment");
-        if(!cJSON_IsString(date) || !cJSON_IsString(category) || !cJSON_IsNumber(amount))
-        {
-            cJSON_Delete(root);
-            resp->status_code = 400;
-            resp->content_type = "text/plain";
-            resp->body = strdup("Missing or invalid fields");
-            resp->body_length = strlen(resp->body);
-            return 0;
-        }
-        // --- Parse date to get year/month ---
-        int d, m, y;
-        if(sscanf(date->valuestring, "%d/%d/%d", &d, &m, &y) != 3)
-        {
-            cJSON_Delete(root);
-            resp->status_code = 400;
-            resp->content_type = "text/plain";
-            resp->body = strdup("Invalid date format");
-            resp->body_length = strlen(resp->body);
-            return 0;
-        }
-        char yearstr[8], monthstr[4];
-        snprintf(yearstr, sizeof yearstr, "%04d", y);
-        snprintf(monthstr, sizeof monthstr, "%02d", m);
-        // --- Build file path ---
-        char dirpath[PATH_MAX];
-        char monthfile[16];
-        char filepath[PATH_MAX];
-        snprintf(dirpath, sizeof dirpath, "%s/%s", EXP_ROOT, yearstr);
-        snprintf(monthfile, sizeof monthfile, "%s.json", monthstr);
-        // Use strncat for extra safety
-        if(snprintf(filepath, sizeof filepath, "%s/", dirpath) < (int)sizeof(filepath))
-        {
-            strncat(filepath, monthfile, sizeof(filepath) - strlen(filepath) - 1);
-        }
-        else
-        {
-            // fallback: ensure null-termination
-            filepath[sizeof(filepath) - 1] = '\0';
-        }
-        // --- Ensure directory exists ---
-        mkdir(EXP_ROOT, 0775);
-        mkdir(dirpath, 0775);
-        // --- Read or create file ---
-        FILE *f = fopen(filepath, "r+");
-        cJSON *arr = NULL;
-        if(f)
-        {
-            fseek(f, 0, SEEK_END);
-            long len = ftell(f);
-            fseek(f, 0, SEEK_SET);
-            char *buf = malloc(len + 1);
-            fread(buf, 1, len, f);
-            buf[len] = 0;
-            arr = cJSON_Parse(buf);
-            free(buf);
-            if(!cJSON_IsArray(arr))
+            /* Extract fields */
+            const cJSON *date = cJSON_GetObjectItem(root, "date");
+            const cJSON *category = cJSON_GetObjectItem(root, "category");
+            const cJSON *amount = cJSON_GetObjectItem(root, "amount");
+            const cJSON *comment = cJSON_GetObjectItem(root, "comment");
+            if(!cJSON_IsString(date) || !cJSON_IsString(category) || !cJSON_IsNumber(amount))
             {
-                cJSON_Delete(arr);
+                cJSON_Delete(root);
+                resp->status_code = 400;
+                resp->content_type = "text/plain";
+                resp->body = strdup("Missing or invalid fields");
+                resp->body_length = strlen(resp->body);
+                return 0;
+            }
+
+            /* Parse date to get year/month */
+            int d, m, y;
+            if(sscanf(date->valuestring, "%d/%d/%d", &d, &m, &y) != 3)
+            {
+                cJSON_Delete(root);
+                resp->status_code = 400;
+                resp->content_type = "text/plain";
+                resp->body = strdup("Invalid date format");
+                resp->body_length = strlen(resp->body);
+                return 0;
+            }
+            char yearstr[8], monthstr[4];
+            snprintf(yearstr, sizeof yearstr, "%04d", y);
+            snprintf(monthstr, sizeof monthstr, "%02d", m);
+
+            /* Build file path */
+            char dirpath[PATH_MAX];
+            char monthfile[16];
+            char filepath[PATH_MAX];
+            snprintf(dirpath, sizeof dirpath, "%s/%s", EXP_ROOT, yearstr);
+            snprintf(monthfile, sizeof monthfile, "%s.json", monthstr);
+
+            /* Use strncat for extra safety */
+            if(snprintf(filepath, sizeof filepath, "%s/", dirpath) < (int)sizeof(filepath))
+            {
+                strncat(filepath, monthfile, sizeof(filepath) - strlen(filepath) - 1);
+            }
+            else
+            {
+                /* fallback: ensure null-termination */
+                filepath[sizeof(filepath) - 1] = '\0';
+            }
+
+            /* Ensure directory exists */
+            mkdir(EXP_ROOT, 0775);
+            mkdir(dirpath, 0775);
+
+            /* Read or create file */
+            FILE *f = fopen(filepath, "r+");
+            cJSON *arr = NULL;
+            if(f)
+            {
+                fseek(f, 0, SEEK_END);
+                long len = ftell(f);
+                fseek(f, 0, SEEK_SET);
+                char *buf = malloc(len + 1);
+                fread(buf, 1, len, f);
+                buf[len] = 0;
+                arr = cJSON_Parse(buf);
+                free(buf);
+                if(!cJSON_IsArray(arr))
+                {
+                    cJSON_Delete(arr);
+                    arr = cJSON_CreateArray();
+                }
+            }
+            else
+            {
                 arr = cJSON_CreateArray();
+                f = fopen(filepath, "w+");
             }
-        }
-        else
-        {
-            arr = cJSON_CreateArray();
-            f = fopen(filepath, "w+");
-        }
-        // --- Append new expense ---
-        cJSON *obj = cJSON_CreateObject();
-        cJSON_AddStringToObject(obj, "date", date->valuestring);
-        cJSON_AddStringToObject(obj, "category", category->valuestring);
-        cJSON_AddNumberToObject(obj, "amount", amount->valuedouble);
-        if(cJSON_IsString(comment))
-        {
-            cJSON_AddStringToObject(obj, "comment", comment->valuestring);
-        }
-        else
-        {
-            cJSON_AddStringToObject(obj, "comment", "");
-        }
-        cJSON_AddItemToArray(arr, obj);
+            /* Append new expense */
+            cJSON *obj = cJSON_CreateObject();
+            cJSON_AddStringToObject(obj, "date", date->valuestring);
+            cJSON_AddStringToObject(obj, "category", category->valuestring);
+            cJSON_AddNumberToObject(obj, "amount", amount->valuedouble);
+            if(cJSON_IsString(comment))
+            {
+                cJSON_AddStringToObject(obj, "comment", comment->valuestring);
+            }
+            else
+            {
+                cJSON_AddStringToObject(obj, "comment", "");
+            }
+            cJSON_AddItemToArray(arr, obj);
 
-        // --- Write back to file ---
-        char *out2 = cJSON_Print(arr);  // Use pretty-print instead of unformatted
-        fseek(f, 0, SEEK_SET);
-        fwrite(out2, 1, strlen(out2), f);
-        fflush(f);
-        ftruncate(fileno(f), strlen(out2));
-        fclose(f);
-        cJSON_Delete(arr);
-        cJSON_Delete(root);
-        free(out2);
-        /* Respond OK */
-        resp->status_code = 200;
-        resp->content_type = "text/plain";
-        resp->body = strdup("OK");
-        resp->body_length = 2;
+            /* Write back to file */
+            char *out2 = cJSON_Print(arr);  // Use pretty-print instead of unformatted
+            fseek(f, 0, SEEK_SET);
+            fwrite(out2, 1, strlen(out2), f);
+            fflush(f);
+            ftruncate(fileno(f), strlen(out2));
+            fclose(f);
+            cJSON_Delete(arr);
+            cJSON_Delete(root);
+            free(out2);
 
-        res = STATUS_SUCCESS;
-        break;
-    }
-    case HTTP_METHOD_POST:
-    case HTTP_METHOD_DELETE:
-    case HTTP_METHOD_UNKNOWN:
-    default:
-        /* Method not allowed */
-        resp->status_code = 405;
-        resp->content_type = "text/plain";
-        resp->body = strdup("Method Not Allowed");
-        resp->body_length = strlen(resp->body);
-        break;
+            /* Respond OK */
+            resp->status_code = 200;
+            resp->content_type = "text/plain";
+            resp->body = strdup("OK");
+            resp->body_length = 2;
+
+            res = STATUS_SUCCESS;
+            break;
+        }
+        case HTTP_METHOD_POST:
+        {
+            /* Not implemented: future support for adding expenses */
+            resp->status_code = 501;
+            resp->content_type = "text/plain";
+            resp->body = strdup("Not implemented");
+            resp->body_length = strlen(resp->body);
+            break;
+        }
+        case HTTP_METHOD_DELETE:
+        case HTTP_METHOD_UNKNOWN:
+        default:
+            /* Method not allowed */
+            resp->status_code = 405;
+            resp->content_type = "text/plain";
+            resp->body = strdup("Method Not Allowed");
+            resp->body_length = strlen(resp->body);
+            break;
     }
 
     return res;
@@ -260,7 +305,6 @@ static int is_valid_year_dir(const struct dirent *de)
     return 1;
 }
 
-// Checks if a file entry is a valid month file (MM.json)
 static int is_valid_month_file(const struct dirent *de)
 {
     if(de->d_type != DT_REG) return 0;
@@ -271,7 +315,6 @@ static int is_valid_month_file(const struct dirent *de)
     return 1;
 }
 
-// Scans EXP_ROOT for year/month files, fills months[] with "YYYY-MM" strings, returns count
 static int collect_expense_months(char **months, int max_months)
 {
     DIR *d_year = opendir(EXP_ROOT);
@@ -299,7 +342,6 @@ static int collect_expense_months(char **months, int max_months)
     return count;
 }
 
-// Builds a compact JSON array string from months[]
 static char *build_months_json(char **months, int count)
 {
     qsort(months, count, sizeof months[0], (int (*)(const void *, const void *))strcmp);
@@ -314,18 +356,21 @@ static char *build_months_json(char **months, int count)
     return out;
 }
 
-// Helper: serve a static JSON file from EXP_ROOT or absolute path
 static int serve_static_json(const char *filename, HttpResponse *resp)
 {
     char path[PATH_MAX];
     // If filename is absolute, use as is; else prepend EXP_ROOT
-    if (filename[0] == '/') {
+    if(filename[0] == '/')
+    {
         snprintf(path, sizeof path, "%s", filename);
-    } else {
+    }
+    else
+    {
         snprintf(path, sizeof path, "%s/%s", EXP_ROOT, filename);
     }
     FILE *f = fopen(path, "rb");
-    if (!f) {
+    if(!f)
+    {
         resp->status_code = 404;
         resp->content_type = "text/plain";
         resp->body = strdup("Not found");
@@ -346,10 +391,3 @@ static int serve_static_json(const char *filename, HttpResponse *resp)
     resp->body_length = len;
     return STATUS_SUCCESS;
 }
-
-/*
- * Note:
- * This handler only serves /api/expenses and /api/expenses/settings.json.
- * Requests for /expenses/<year>/<month>.json should be handled by the static file handler,
- * mapped to the directory: /home/roman/HomeServer/var/lib/expenses/<year>/<month>.json
- */
