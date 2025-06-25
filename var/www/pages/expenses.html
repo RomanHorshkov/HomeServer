@@ -49,11 +49,7 @@
       <div>
         <label for="expense-category">Category<br>
           <select id="expense-category" name="category" required>
-            <option value="rent">Rent</option>
-            <option value="transport">Transport</option>
-            <option value="food">Food</option>
-            <option value="groceries">Groceries</option>
-            <option value="other">Other</option>
+            <option value="">Loading…</option>
           </select>
         </label>
       </div>
@@ -89,7 +85,7 @@
         // ───────────────────────────────────────────────────────
         // 1) LOAD: fetch the list of months, then each month’s JSON
         // ───────────────────────────────────────────────────────
-        const months = await fetch('/api/expenses')
+        const months = await fetch('/api/expenses/')
           .then(r => { if (!r.ok) throw new Error('months list fetch failed'); return r.json(); });
 
         /* Fetch each month’s expenses in parallel, then flatten */
@@ -97,7 +93,7 @@
           months.map(ms => {
             // ms is "YYYY-MM"
             const [year, month] = ms.split('-');
-            return fetch(`/expenses/${year}/${month}.json`)
+            return fetch(`/api/expenses/${year}/${month}.json`)
               .then(r => { if (!r.ok) throw new Error(`failed ${ms}`); return r.json(); });
           })
         );
@@ -321,7 +317,7 @@
           comment
         };
         // Send newExpense to backend API to save
-        fetch('/api/expenses', {
+        fetch('/api/expenses/', {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(newExpense)
@@ -342,6 +338,25 @@
         });
       });
     }
+
+    // Dynamically load categories from settings.json
+    document.addEventListener('DOMContentLoaded', async () => {
+      // Fetch categories and populate the select
+      try {
+        const settings = await fetch('/api/expenses/settings.json').then(r => r.json());
+        const catSelect = document.getElementById('expense-category');
+        if (settings.categories && Array.isArray(settings.categories)) {
+          catSelect.innerHTML = settings.categories.map(cat =>
+            `<option value="${cat}">${cat.charAt(0).toUpperCase() + cat.slice(1)}</option>`
+          ).join('');
+        } else {
+          catSelect.innerHTML = '<option value="">No categories</option>';
+        }
+      } catch (e) {
+        const catSelect = document.getElementById('expense-category');
+        catSelect.innerHTML = '<option value="">Error loading categories</option>';
+      }
+    });
   </script>
 </body>
 </html>
