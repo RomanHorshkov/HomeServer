@@ -3,8 +3,6 @@
 
 #include "http_manager.h"  // for HttpRequest and HttpResponse structs
 
-
-
 /**
  * @brief Route an HTTP request to the appropriate handler.
  *

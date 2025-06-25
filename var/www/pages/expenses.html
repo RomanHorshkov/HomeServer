@@ -4,16 +4,17 @@
   <meta charset="utf-8">
   <title>Expenses Overview</title>
   <link rel="stylesheet" href="/assets/style.css">
+  <link rel="stylesheet" href="/expenses/expenses_style.css">
   <script src="/assets/header.js" defer></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js" defer></script>
 </head>
 <body>
-  <main>
-    <h1>Expenses Overview</h1>
+  <main class="centered">
+    <h1 id="expenses-title" style="text-align:center;margin:2.5rem 0 2.5rem 0;">Expenses Overview</h1>
     <!-- =========================
         1) Date filters + charts
       ========================= -->
-    <fieldset id="date-filter" style="margin-bottom:1rem; border:0; padding:0;">
+    <fieldset id="date-filter" style="margin-bottom:2.5rem;">
       <legend style="font-size:1rem; font-weight:600;">Filter by date</legend>
       <label for="from-date">From:
         <input id="from-date" name="from-date" type="date" autocomplete="off">
@@ -24,7 +25,7 @@
       <button id="reset-filters" type="button" style="margin-left:1rem;">Reset Filters</button>
     </fieldset>
 
-    <div class="charts-row">
+    <div class="charts-row" style="margin-bottom:2.5rem;">
       <div class="chart-wrapper">
         <canvas id="monthly-chart" height="400" aria-label="Monthly expenses chart" role="img"></canvas>
       </div>
@@ -33,48 +34,61 @@
       </div>
     </div>
 
-    <div id="loading-indicator" style="text-align:center; margin:2rem 0; display:none;">
+    <!-- =========================
+        Add Expense FAB & Form
+      ========================= -->
+    <div id="fab-form-container" style="display:flex;align-items:center;gap:1.5rem;margin-bottom:2.5rem;">
+      <button id="fab-add-expense" title="Add Expense" aria-label="Add Expense">+</button>
+      <form id="add-expense-form" style="display:none;flex-direction:row;align-items:flex-end;gap:1.5rem;margin:0;">
+        <div>
+          <label for="expense-date">Date<br>
+            <input type="date" id="expense-date" name="date" required>
+          </label>
+        </div>
+        <div>
+          <label for="expense-category">Category<br>
+            <select id="expense-category" name="category" required>
+              <option value="">Loading…</option>
+            </select>
+          </label>
+        </div>
+        <div>
+          <label for="expense-amount">Amount (€)<br>
+            <input type="number" id="expense-amount" name="amount" min="0.01" step="0.01" required>
+          </label>
+        </div>
+        <div>
+          <label for="expense-comment">Comment<br>
+            <input type="text" id="expense-comment" name="comment" maxlength="100">
+          </label>
+        </div>
+        <button type="submit" style="margin-top:1.2em;">Add Expense</button>
+        <span id="expense-form-error" style="color:red; margin-left:1rem;"></span>
+      </form>
+    </div>
+
+    <div id="loading-indicator" style="text-align:center; margin:2.5rem 0; display:none;">
       <span>Loading expenses data…</span>
     </div>
 
     <!-- =========================
-        Add Expense Form
+        Expenses Table
       ========================= -->
-    <form id="add-expense-form" style="margin-bottom:2rem; display:flex; flex-wrap:wrap; gap:1rem; align-items:flex-end;">
-      <div>
-        <label for="expense-date">Date<br>
-          <input type="date" id="expense-date" name="date" required>
-        </label>
-      </div>
-      <div>
-        <label for="expense-category">Category<br>
-          <select id="expense-category" name="category" required>
-            <option value="">Loading…</option>
-          </select>
-        </label>
-      </div>
-      <div>
-        <label for="expense-amount">Amount (€)<br>
-          <input type="number" id="expense-amount" name="amount" min="0.01" step="0.01" required>
-        </label>
-      </div>
-      <div>
-        <label for="expense-comment">Comment<br>
-          <input type="text" id="expense-comment" name="comment" maxlength="100">
-        </label>
-      </div>
-      <button type="submit">Add Expense</button>
-      <span id="expense-form-error" style="color:red; margin-left:1rem;"></span>
-    </form>
+    <div id="expenses-table-wrapper">
+      <h2 class="expenses-table-title">All Expenses</h2>
+      <table id="expenses-table" class="expenses-table" aria-label="Expenses table">
+        <thead>
+          <tr>
+            <th>Date</th>
+            <th>Category</th>
+            <th>Amount</th>
+            <th>Comment</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </div>
 
-    <table id="expenses-table" aria-label="Expenses table">
-      <thead>
-        <tr>
-          <th scope="col">Date</th><th scope="col">Category</th><th scope="col">Amount</th><th scope="col">Comment</th>
-        </tr>
-      </thead>
-      <tbody></tbody>
-    </table>
   </main>
   <script>
 
@@ -119,10 +133,11 @@
         //    passed-in list of expense objects
         // ───────────────────────────────────────────────────────
         function renderExpenses(expenses) {
+          const sorted = expenses.slice().sort((a, b) => b.dateObj - a.dateObj);
           // --- A) MONTHLY STACKED-BAR DATASET ---
           // 1. Recompute unique month labels from filtered data
           const monthMap = {};
-          expenses.forEach(e => {
+          sorted.forEach(e => {
             const key = e.dateObj.getFullYear() + '-' +
                         String(e.dateObj.getMonth()+1).padStart(2,'0');
             (monthMap[key] ||= []).push(e);
@@ -163,7 +178,7 @@
 
           // --- B) PIE CHART: total per category over all filtered expenses ---
           const totalsByCat = {};
-          expenses.forEach(e => {
+          sorted.forEach(e => {
             totalsByCat[e.category] = (totalsByCat[e.category] || 0) + e.amount;
           });
           const pieLabels = Object.keys(totalsByCat);
@@ -179,11 +194,31 @@
           pieChart.update();
 
           // --- C) TABLE: rebuild tbody from filtered expenses ---
-          const tbody = document.querySelector('#expenses-table tbody');
-          tbody.innerHTML = '';  // clear old rows
-          expenses.forEach(e => {
+          let table = document.getElementById('expenses-table');
+          if (!table) {
+            // If table doesn't exist, create it below the charts
+            const wrapper = document.createElement('div');
+            wrapper.id = 'expenses-table-wrapper';
+            wrapper.innerHTML = `
+              <h2 class="expenses-table-title">All Expenses</h2>
+              <table id="expenses-table" class="expenses-table" aria-label="Expenses table">
+                <thead>
+                  <tr>
+                    <th>Date</th>
+                    <th>Category</th>
+                    <th>Amount</th>
+                    <th>Comment</th>
+                  </tr>
+                </thead>
+                <tbody></tbody>
+              </table>`;
+            document.querySelector('main').appendChild(wrapper);
+            table = document.getElementById('expenses-table');
+          }
+          const tbody = table.querySelector('tbody');
+          tbody.innerHTML = '';
+          sorted.forEach(e => {
             const tr = document.createElement('tr');
-            // format back to dd/mm/yyyy string
             tr.innerHTML = `
               <td>${e.date}</td>
               <td>${e.category}</td>
@@ -357,6 +392,36 @@
         catSelect.innerHTML = '<option value="">Error loading categories</option>';
       }
     });
+
+    // Floating Action Button (FAB) toggle and form slide-down
+    const fab = document.getElementById('fab-add-expense');
+    const form = document.getElementById('add-expense-form');
+    fab.addEventListener('click', () => {
+      const isOpen = form.style.display !== 'flex';
+      form.style.display = isOpen ? 'flex' : 'none';
+      if (isOpen) {
+        setTimeout(() => { expenseDateInput.focus(); }, 200);
+      }
+    });
+
+    // =========================
+    //  EDIT EXPENSE: open form with populated data
+    // =========================
+    function editExpense(id) {
+      const expense = all.find(e => e.id === id);
+      if (!expense) return;
+
+      // Populate form fields
+      document.getElementById('expense-date').value = expense.date;
+      document.getElementById('expense-category').value = expense.category;
+      document.getElementById('expense-amount').value = expense.amount;
+      document.getElementById('expense-comment').value = expense.comment;
+
+      // Show form
+      const form = document.getElementById('add-expense-form');
+      form.style.display = 'flex';
+      setTimeout(() => { document.getElementById('expense-date').focus(); }, 200);
+    }
   </script>
 </body>
 </html>

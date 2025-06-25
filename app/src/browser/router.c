@@ -83,6 +83,7 @@ static const route_t routes[] = {
     {HTTP_METHOD_GET, "/api/whoami", 12, ROUTE_EXACT, handler_whoami},
     {HTTP_METHOD_GET, "/api/expenses/settings.json", 28, ROUTE_EXACT, handler_expenses},
     {HTTP_METHOD_GET, "/api/expenses", 13, ROUTE_PREFIX, handler_expenses},
+    {HTTP_METHOD_PUT, "/api/expenses", 13, ROUTE_PREFIX, handler_expenses},
     {HTTP_METHOD_GET, "/api/drive", 11, ROUTE_EXACT, handler_drive},
 
     /* Prefix matches for static directories */
@@ -131,7 +132,7 @@ int router_handle_request(const HttpRequest *request, HttpResponse *response)
             res = STATUS_SUCCESS;
 #ifdef DEBUG_MODE
             log_error("[router]: No match for: %s %s", http_method_to_string(request->method),
-                     request->path);
+                      request->path);
 #endif /* DEBUG_MODE */
 
             break;
