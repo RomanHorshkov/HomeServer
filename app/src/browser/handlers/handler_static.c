@@ -47,14 +47,14 @@ int handler_static(const HttpRequest *req, HttpResponse *response)
     char file_path[HTTP_MAX_PATH_LEN];
 
     /*
-     * Map the root URI ("/") to "pages/index.html" under the current working directory (var/www).
+     * Map the root URI ("/") to "views/index.html" under the current working directory (var/www).
      * For all other URIs, map them directly under the current working directory, preserving the
      * relative path.
      */
     if(strcmp(req->path, URI_HOME) == 0)
     {
-        // If the request is for the home page, serve pages/index.html
-        snprintf(file_path, sizeof(file_path), "pages/index.html");
+        // If the request is for the home page, serve views/index.html
+        snprintf(file_path, sizeof(file_path), "views/index.html");
     }
     else
     {
@@ -75,9 +75,11 @@ int handler_static(const HttpRequest *req, HttpResponse *response)
             send_404(response);
             return res;
         }
-        // Copy the relative path to the buffer
+
+        /* Copy the relative path to the buffer */
         memcpy(file_path, rel_path, rel_len);
-        // Null-terminate the resulting string
+
+        /* Null-terminate the resulting string */
         file_path[rel_len] = '\0';
 
 #ifdef DEBUG_MODE
@@ -86,7 +88,15 @@ int handler_static(const HttpRequest *req, HttpResponse *response)
 #endif /* DEBUG_MODE */
     }
 
-    // Attempt to open the resolved file in binary read mode
+    /* check if file exists and can be read */
+    if(access(file_path, R_OK) != 0)
+    {
+        log_error("[handler static]: file %s does not exist or is not readable: %s", file_path, strerror(errno));
+        send_404(response);
+        return res;
+    }
+
+    /* Attempt to open the resolved file in binary read mode */
     FILE *file = fopen(file_path, "rb");
     if(!file)
     {
