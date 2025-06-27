@@ -12,12 +12,15 @@
 
 #include "router.h"
 
+#include <ctype.h>
 #include <dirent.h>  // opendir, readdir, closedir
 #include <errno.h>   // errno
 #include <stdio.h>   // snprintf
+#include <stdlib.h>  // malloc, free
 #include <string.h>  // strcmp, strncmp, strrchr, strlen
 #include <unistd.h>  // access
 
+#include "cJSON.h"
 #include "handlers.h"
 #include "logger.h"
 
@@ -40,9 +43,6 @@
  * @retval -1   Failure.
  */
 static int generate_routes(void);
-
-/* Helper function to recursively scan a directory and write entries to the JSON file */
-static void write_dir_json(FILE *routes_file, const char *base_path, int *first);
 
 /****************************************************************************
  * ROUTING TABLE STRUCTURES
@@ -142,7 +142,7 @@ int router_handle_request(const HttpRequest *request, HttpResponse *response)
 
 #ifdef DEBUG_MODE
             log_error("[router]: No match for: %s %s", http_method_to_string(request->method),
-                  request->path);
+                      request->path);
 #endif /* DEBUG_MODE */
 
             break;
@@ -158,82 +158,164 @@ int router_handle_request(const HttpRequest *request, HttpResponse *response)
     return res;
 }
 
-
 /****************************************************************************
  * PRIVATE FUNCTIONS DEFINITIONS
  ****************************************************************************
  */
 
-static int generate_routes(void)
+/* Helper function for recursion: scan files and directories */
+static void scan_files(const char *base, cJSON *files_obj)
 {
-    int res = STATUS_FAILURE;
-
-    DIR *dir = opendir(".");
+    DIR *dir = opendir(base);
     if(!dir)
     {
-        log_error("[router]: generate routes opendir", strerror(errno));
-        return res;
+        log_error("[router]: DEBUG - Failed to open directory: '%s' - %s", base, strerror(errno));
+        return;
     }
-    closedir(dir);
-
-    FILE *routes_file = fopen("routes.json", "w");
-    if(!routes_file)
-    {
-        log_error("[router]: generate routes fopen", strerror(errno));
-        return res;
-    }
-
-    res = STATUS_SUCCESS;
-
-    fprintf(routes_file, "{\n  \"pages\": {\n");
-
-    int first = 1;
-    write_dir_json(routes_file, ".", &first);
-
-    fprintf(routes_file, "\n  },\n");
-
-    // Hardcoded API endpoints (expand as needed)
-    fprintf(routes_file, "  \"apis\": [\n");
-    fprintf(routes_file, "    { \"method\": \"GET\", \"path\": \"/api/whoami\" },\n");
-    fprintf(routes_file, "    { \"method\": \"GET\", \"path\": \"/api/expenses\" },\n");
-    fprintf(routes_file, "    { \"method\": \"PUT\", \"path\": \"/api/expenses\" },\n");
-    fprintf(routes_file, "    { \"method\": \"GET\", \"path\": \"/api/drive\" }\n");
-    fprintf(routes_file, "  ]\n");
-
-    fprintf(routes_file, "}\n");
-
-    fclose(routes_file);
-    return res;
-}
-
-static void write_dir_json(FILE *routes_file, const char *base_path, int *first)
-{
-    DIR *dir = opendir(base_path);
-    if (!dir) return;
+    // log_info("[router]: DEBUG - Successfully opened directory: '%s'", base);
 
     struct dirent *entry;
     char path[512];
-    while ((entry = readdir(dir)) != NULL)
+    int entry_count = 0;
+
+    while((entry = readdir(dir)) != NULL)
     {
-        if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0)
+        entry_count++;
+        // log_info("[router]: DEBUG - Found entry #%d: '%s' (type: %d)", entry_count,
+        // entry->d_name,
+        //          entry->d_type);
+
+        if(strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0)
+        {
+            // log_info("[router]: DEBUG - Skipping special directory: '%s'", entry->d_name);
             continue;
-
-        snprintf(path, sizeof(path), "%s/%s", base_path, entry->d_name);
-
-        if (entry->d_type == DT_DIR)
-        {
-            if (!*first) fprintf(routes_file, ",\n");
-            *first = 0;
-            fprintf(routes_file, "    \"%s\": { \"type\": \"dir\", \"path\": \"%s\" }", entry->d_name, path);
-            // Recursively scan subdirectory
-            write_dir_json(routes_file, path, first);
         }
-        else if (entry->d_type == DT_REG)
+
+        snprintf(path, sizeof(path), "%s/%s", base, entry->d_name);
+        // log_info("[router]: DEBUG - Full path constructed: '%s'", path);
+
+        if(entry->d_type == DT_DIR)
         {
-            if (!*first) fprintf(routes_file, ",\n");
-            *first = 0;
-            fprintf(routes_file, "    \"%s\": { \"type\": \"file\", \"path\": \"%s\" }", entry->d_name, path);
+            // log_info("[router]: DEBUG - Processing directory: '%s'", entry->d_name);
+            cJSON *subdir = cJSON_CreateObject();
+            if(!subdir)
+            {
+                log_error("[router]: DEBUG - Failed to create JSON object for directory: '%s'",
+                          entry->d_name);
+                continue;
+            }
+            scan_files(path, subdir);
+            cJSON_AddItemToObject(files_obj, entry->d_name, subdir);
+            // log_info("[router]: DEBUG - Added directory object for: '%s'", entry->d_name);
+        }
+        else if(entry->d_type == DT_REG)
+        {
+            // log_info("[router]: DEBUG - Processing regular file: '%s'", entry->d_name);
+            cJSON_AddStringToObject(files_obj, entry->d_name, path);
+            // log_info("[router]: DEBUG - Added file string for: '%s' -> '%s'", entry->d_name,
+            // path);
+        }
+        else
+        {
+            // log_info("[router]: DEBUG - Skipping unknown entry type %d: '%s'", entry->d_type,
+            //          entry->d_name);
         }
     }
+
     closedir(dir);
+}
+
+static int generate_routes(void)
+{
+    /* Initialize return status to failure - will be set to success only if everything works */
+    int res = STATUS_FAILURE;
+
+    /* Create the main JSON object that will contain our complete filesystem map */
+    cJSON *root = cJSON_CreateObject();
+    if(!root)
+    {
+        log_error("[router]: DEBUG - Failed to create root JSON object", "");
+        return res;
+    }
+
+    /* Recursively scan the entire current directory structure starting from "." (current directory)
+     */
+    /* This will create a nested JSON structure that mirrors the filesystem hierarchy */
+    // log_info("[router]: DEBUG - About to call scan_files on current directory", "");
+    scan_files(".", root);
+    // log_info("[router]: DEBUG - Completed scan_files call", "");
+
+    /* Debug: Print what we found in the root object */
+    char *debug_json = cJSON_Print(root);
+    if(debug_json)
+    {
+        // log_info("[router]: DEBUG - Root JSON structure: %s", debug_json);
+        free(debug_json);
+    }
+    else
+    {
+        log_error("[router]: DEBUG - Failed to print root JSON for debugging", "");
+    }
+
+    /* Directly map all files without special handling */
+    cJSON *views_obj = cJSON_GetObjectItem(root, "views");
+    if(views_obj)
+    {
+        cJSON *file_item = NULL;
+        cJSON_ArrayForEach(file_item, views_obj)
+        {
+            const char *filename = file_item->string;
+            const char *original_path = cJSON_GetStringValue(file_item);
+            if(filename && original_path)
+            {
+                cJSON_AddStringToObject(views_obj, filename, original_path); // Direct mapping
+            }
+        }
+    }
+    else
+    {
+        log_error("[router]: DEBUG - No views object found in root", "");
+    }
+
+    /* Convert the JSON object to a formatted string for writing to file */
+    char *json_str = cJSON_Print(root);
+    if(!json_str)
+    {
+        log_error("[router]: DEBUG - Failed to convert JSON to string", "");
+        cJSON_Delete(root);
+        return res;
+    }
+    /* Open the map.json file for writing (this will create or overwrite the file) */
+    FILE *map_file = fopen("map.json", "w");
+    if(!map_file)
+    {
+        /* If file couldn't be opened, log the error and clean up allocated memory */
+        log_error("[router]: DEBUG - Failed to open map.json: %s", strerror(errno));
+        cJSON_Delete(root);
+        free(json_str);
+        return res;
+    }
+
+    /* Write the JSON string to the file with a newline at the end */
+    int write_result = fprintf(map_file, "%s\n", json_str);
+    if(write_result < 0)
+    {
+        log_error("[router]: DEBUG - Failed to write to map.json", "");
+        fclose(map_file);
+        cJSON_Delete(root);
+        free(json_str);
+        return res;
+    }
+    log_info("[router]: DEBUG - Successfully wrote %d characters to file", write_result);
+
+    /* Close the file to ensure all data is written and resources are freed */
+    fclose(map_file);
+
+    /* Clean up allocated memory */
+    cJSON_Delete(root); /* This recursively frees all nested JSON objects */
+    free(json_str);     /* Free the JSON string buffer */
+
+    /* If reached this point, everything worked successfully */
+    res = STATUS_SUCCESS;
+    return res;
 }

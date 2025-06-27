@@ -91,7 +91,8 @@ int handler_static(const HttpRequest *req, HttpResponse *response)
     /* check if file exists and can be read */
     if(access(file_path, R_OK) != 0)
     {
-        log_error("[handler static]: file %s does not exist or is not readable: %s", file_path, strerror(errno));
+        log_error("[handler static]: file %s does not exist or is not readable: %s", file_path,
+                  strerror(errno));
         send_404(response);
         return res;
     }
