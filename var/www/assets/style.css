@@ -38,6 +38,13 @@ body {
 body > footer {
   margin-top: auto;      /* ← pushes it to the bottom */
 }
+
+/* Added styles for <main> element */
+main {
+  flex: 1;
+  padding-bottom: 2rem;
+}
+
 /* ---------------------------------------------------------------------
    Site‑wide sticky header
    ------------------------------------------------------------------ */
@@ -84,6 +91,78 @@ header nav a.active {
     font-weight: bold;
 }
 header nav a:hover { text-decoration: underline; }
+
+/* Enhanced styles for dynamic navigation */
+header nav .nav-link {
+  position: relative;
+  transition: all 0.3s ease;
+  padding: 8px 12px;
+  border-radius: var(--radius);
+}
+
+header nav .nav-link:hover {
+  background: rgba(0, 204, 255, 0.1);
+  transform: translateY(-1px);
+}
+
+/* Current page indicator */
+header nav .nav-link.current-page {
+  color: var(--magenta);
+  font-weight: bold;
+  background: rgba(255, 0, 255, 0.1);
+}
+
+header nav .nav-link.current-page::after {
+  content: '';
+  position: absolute;
+  bottom: -2px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 80%;
+  height: 2px;
+  background: var(--magenta);
+  border-radius: 1px;
+}
+
+/* Fallback links styling */
+header nav .nav-link.fallback {
+  opacity: 0.8;
+  font-style: italic;
+}
+
+/* Loading state for navigation */
+header nav.loading::after {
+  content: 'Loading navigation...';
+  color: var(--muted);
+  font-size: 0.8em;
+  margin-left: 16px;
+  animation: pulse 1.5s infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 0.5; }
+  50% { opacity: 1; }
+}
+
+/* Navigation animation when items are added */
+header nav .nav-link {
+  animation: slideInFromTop 0.3s ease-out forwards;
+  opacity: 0;
+  transform: translateY(-10px);
+}
+
+header nav .nav-link:nth-child(1) { animation-delay: 0.1s; }
+header nav .nav-link:nth-child(2) { animation-delay: 0.2s; }
+header nav .nav-link:nth-child(3) { animation-delay: 0.3s; }
+header nav .nav-link:nth-child(4) { animation-delay: 0.4s; }
+header nav .nav-link:nth-child(5) { animation-delay: 0.5s; }
+
+@keyframes slideInFromTop {
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
 
 /* ---------------------------------------------------------------------
    Footer

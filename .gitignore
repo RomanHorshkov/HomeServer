@@ -16,6 +16,7 @@ server.log
 # Ignore compile commands
 compile_commands.json
 
+routes.json
 
 # # Ignore all yaml files in config directory
 # /config/*.yaml
