@@ -110,7 +110,7 @@ notes:
 	@echo "$(MANIFEST) updated."
 
 clean:
-	rm -rf $(BUILDDIR) server.log
+	rm -rf $(BUILDDIR) server.log routes.json
 
 # Auto‑generated dependency files -----------------------------------------
 -include $(DEPS)
