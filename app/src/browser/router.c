@@ -59,6 +59,8 @@ static void dir_to_json(const char *dirpath, cJSON *json_obj);
  */
 static int generate_routes(void);
 
+static int has_dot_extension(const char *path);
+
 /**
  * @brief Handler function signature for all HTTP endpoints.
  *
@@ -104,12 +106,13 @@ static int initialized = 0;
  */
 int router_handle_request(const HttpRequest *request, HttpResponse *response)
 {
+    /* Return variable */
     int res = STATUS_FAILURE;
 
-    if(!initialized)
+    /* Generate the routing table if it does not exist */
+    if (!initialized)
     {
-        /* Generate the routing table if it does not exist */
-        if(generate_routes() != STATUS_SUCCESS)
+        if (generate_routes() != STATUS_SUCCESS)
         {
             log_error("[router]: Failed to generate routes", "");
         }
@@ -119,40 +122,40 @@ int router_handle_request(const HttpRequest *request, HttpResponse *response)
         }
     }
 
-    if(!request || !response)
+    /* Check input validity */
+    if (!request || !response)
     {
         log_error("[router]: handle_request: invalid arguments", "");
     }
 
-    /* Try API routes first */
-    else
-    {
-        for(size_t i = 0; i < sizeof(routes) / sizeof(routes[0]); ++i)
+    // ---------- 1. Try API routes first ----------
+    if (strncmp(request->path, "/api/", 5) == 0)
+    {   
+        for (size_t i = 0; i < sizeof(routes) / sizeof(routes[0]); ++i)
         {
-            if(strncmp(request->path, routes[i].path, routes[i].path_len) == 0)
+            if (strncmp(request->path, routes[i].path, routes[i].path_len) == 0)
             {
-                return routes[i].handler(request, response);
+                res = routes[i].handler(request, response);
             }
         }
     }
 
-    /* Otherwise static handler */
-    switch(request->method)
+    else
     {
-        case HTTP_METHOD_GET:
-
-            /* Delegate all static file requests to handler_static */
-            return handler_static(request, response);
-
-            break;
-
-        case HTTP_METHOD_PUT:
-        case HTTP_METHOD_POST:
-        case HTTP_METHOD_DELETE:
-        case HTTP_METHOD_UNKNOWN:
-        default:
-            log_error("[router]: invalid method", "");
-            break;
+    // ---------- 2. Static files (dot-extension) ----------
+        if (has_dot_extension(request->path))
+        {
+            res = handler_static(request, response);
+        }
+        else
+        {
+    // ---------- 3. SPA fallback (serve homepage/entrypoint) ----------
+            HttpRequest *copy_req = calloc(1, sizeof(HttpRequest));
+            *copy_req = *request;  // shallow copy all fields
+            strncpy(copy_req->path, "/", sizeof(copy_req->path));
+            res = handler_static(copy_req, response);
+            free(copy_req);
+        }
     }
 
     return res;
@@ -198,12 +201,11 @@ static void dir_to_json(const char *dirpath, cJSON *json_obj)
         }
         else if(S_ISREG(st.st_mode))
         {
-            
             /* Trim leading "./" if present */
-            // const char *relpath = path;
-            // if (relpath[0] == '.' && relpath[1] == '/')
-            //     relpath += 2;
-            cJSON_AddStringToObject(json_obj, entry->d_name, path);
+            const char *relpath = path;
+            if (relpath[0] == '.' && relpath[1] == '/')
+                relpath += 2;
+            cJSON_AddStringToObject(json_obj, entry->d_name, relpath);
         }
     }
 
@@ -237,4 +239,17 @@ static int generate_routes(void)
     cJSON_Delete(root);
 
     return 0;
+}
+
+static int has_dot_extension(const char *path)
+{
+    /* Find last '/' */
+    const char *last_slash = strrchr(path, '/');
+    const char *last_part = last_slash ? last_slash + 1 : path;
+
+    /* Find last dot after the last slash */
+    const char *dot = strrchr(last_part, '.');
+
+    /* true if there's a dot and at least one char after */
+    return (dot && dot[1]);
 }

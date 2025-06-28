@@ -8,7 +8,19 @@ const dynamicViews = {
     const { loadTrial } = await import('/views/trial.js');
     return loadTrial(container);
   },
-  // Add more dynamic views here as needed
+  '/party': async (container) => {
+    const { loadParty } = await import('/views/party.js');
+    return loadParty(container);
+  },
+  '/expenses': async (container) => {
+    const { loadExpenses } = await import('/views/expenses.js');
+    return loadExpenses(container); 
+},
+  '/drive': async (container) => {
+    const { loadDrive } = await import('/views/drive.js');
+    return loadDrive(container);
+  },
+    // Add more dynamic views here as needed  
 };
 
 document.addEventListener('DOMContentLoaded', async () => {
