@@ -286,35 +286,58 @@ static int http_parse_request(const char* buffer, const size_t buffer_len, HttpR
 
 static int validate_http_path(const char* path)
 {
+    /* return variable */
+    int res = STATUS_FAILURE;
+
+    /* Check input */
     if(!path || path[0] == '\0')
     {
         log_error("[http]: Request path is empty", "");
-        return STATUS_FAILURE;
     }
-    // Check for path traversal attempts (any ".." in the path)
-    if(strstr(path, ".."))
+
+    /* Check for path traversal attempts (any ".." in the path) */
+    else if(strstr(path, "..") || strstr(path, "./"))
     {
         log_error("[http]: Path traversal attempt detected", path);
-        return STATUS_FAILURE;
     }
-    // Check for dangerous or suspicious characters
-    size_t path_len = strlen(path);
-    for(size_t i = 0; i < path_len; ++i)
+
+    /* Check if path starts with . or ./ */
+    else if (path[0] == '.' && (path[1] == '\0' || path[1] == '/'))
     {
-        unsigned char c = (unsigned char)path[i];
-        if(c == '\0' || c < 0x20 || c == 0x7F)
+        log_error("[http]: Path starts with '.': %s", path);
+    }
+
+    /* Check for dangerous or suspicious characters */
+    else
+    {
+        /* assume valid unless find an issue */
+        res = STATUS_SUCCESS;
+
+        for(size_t i = 0; i < strlen(path); ++i)
         {
-            log_error("[http]: Path contains control or null character %s", path);
-            return STATUS_FAILURE;
-        }
-        if(!(isalnum(c) || c == '/' || c == '-' || c == '_' || c == '.' || c == '~' || c == '?' ||
-             c == '=' || c == '&' || c == '+' || c == '%'))
-        {
-            log_error("[http]: Path contains suspicious character %s", path);
-            return STATUS_FAILURE;
+            unsigned char c = (unsigned char)path[i];
+
+            /* Check for control characters, null byte, or suspicious characters */
+            if(c == '\0' || c < 0x20 || c == 0x7F)
+            {
+                log_error("[http]: Path contains control or null character %s", path);
+                res = STATUS_FAILURE;
+                break;
+            }
+
+            /* Allow alphanumeric, '/', '-', ... */
+            else if(!(isalnum(c) || c == '/' || c == '-' || c == '_' || c == '.' || c == '~' || c == '?' ||
+                c == '=' || c == '&' || c == '+' || c == '%'))
+            {
+                log_error("[http]: Path contains suspicious character %s", path);
+                res = STATUS_FAILURE;
+                break;
+            }
+
+            /* If here - the character is valid */
         }
     }
-    return STATUS_SUCCESS;
+    return res;
 }
 
 static int validate_http_header_name(const char* hname)

@@ -36,21 +36,28 @@
  ****************************************************************************
  */
 
-/*
- * @brief Generates the routing table dynamically by scanning the /views directory.
- * This function creates a JSON file with all available static pages and API endpoints.
+/**
+ * @brief Converts a directory structure into a JSON object.
+ *
+ * This function recursively scans the given directory and adds its contents
+ * (files and subdirectories) to the provided JSON object.
+ *
+ * @param dirpath   Path to the directory to scan.
+ * @param json_obj  Pointer to the JSON object to populate.
+ */
+static void dir_to_json(const char *dirpath, cJSON *json_obj);
+
+/**
+ * @brief Generates the routing table dynamically by scanning the filesystem.
+ *
+ * This function creates a JSON file (`map.json`) that maps the directory
+ * structure starting from the current directory. It uses `dir_to_json` to
+ * recursively scan directories and files.
  *
  * @retval 0    Success.
  * @retval -1   Failure.
  */
 static int generate_routes(void);
-
-static void dir_to_json(const char *dirpath, cJSON *json_obj);
-
-/****************************************************************************
- * ROUTING TABLE STRUCTURES
- ****************************************************************************
- */
 
 /**
  * @brief Handler function signature for all HTTP endpoints.
@@ -61,6 +68,11 @@ static void dir_to_json(const char *dirpath, cJSON *json_obj);
  * @retval -1   Failure.
  */
 typedef int (*route_handler_t)(const HttpRequest *req, HttpResponse *resp);
+
+/****************************************************************************
+ * PRIVATE STRUCTURED VARIABLES
+ ****************************************************************************
+ */
 
 /**
  * @brief Routing table entry.
@@ -73,9 +85,8 @@ typedef struct
 } route_t;
 
 /****************************************************************************
- * ROUTING TABLE
+ * PRIVATE VARIABLES
  ****************************************************************************
- * Only API endpoints are explicitly routed here.
  */
 static const route_t routes[] = {
     /* API endpoints */
@@ -83,6 +94,9 @@ static const route_t routes[] = {
     {"/api/expenses", 13, handler_expenses},
     {"/api/drive", 10, handler_drive},
 };
+
+/* Initialized flag for the router */
+static int initialized = 0;
 
 /****************************************************************************
  * PUBLIC FUNCTIONS DEFINITIONS
@@ -92,8 +106,6 @@ int router_handle_request(const HttpRequest *request, HttpResponse *response)
 {
     int res = STATUS_FAILURE;
 
-    static int initialized = 0;
-
     if(!initialized)
     {
         /* Generate the routing table if it does not exist */
@@ -101,7 +113,10 @@ int router_handle_request(const HttpRequest *request, HttpResponse *response)
         {
             log_error("[router]: Failed to generate routes", "");
         }
-        initialized = 1;
+        else
+        {
+            initialized = 1;
+        }
     }
 
     if(!request || !response)
@@ -150,45 +165,65 @@ int router_handle_request(const HttpRequest *request, HttpResponse *response)
 
 static void dir_to_json(const char *dirpath, cJSON *json_obj)
 {
+    /* Open the directory specified by dirpath */
     DIR *dir = opendir(dirpath);
     if(!dir)
     {
         fprintf(stderr, "Failed to open dir: %s (%s)\n", dirpath, strerror(errno));
         return;
     }
+
     struct dirent *entry;
     char path[1024];
 
+    /* Iterate through all entries in the directory */
     while((entry = readdir(dir)) != NULL)
     {
+        /* Skip special entries '.' and '..' */
         if(strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0) continue;
 
+        /* Construct the full path for the current entry */
         snprintf(path, sizeof(path), "%s/%s", dirpath, entry->d_name);
         struct stat st;
+
+        /* Get file status information */
         if(stat(path, &st) == -1) continue;
 
         if(S_ISDIR(st.st_mode))
         {
+            /* If the entry is a directory, create a JSON object for it */
             cJSON *subdir = cJSON_CreateObject();
-            dir_to_json(path, subdir);
+            dir_to_json(path, subdir); /* Recursively process the subdirectory */
             cJSON_AddItemToObject(json_obj, entry->d_name, subdir);
         }
         else if(S_ISREG(st.st_mode))
         {
+            
+            /* Trim leading "./" if present */
+            // const char *relpath = path;
+            // if (relpath[0] == '.' && relpath[1] == '/')
+            //     relpath += 2;
             cJSON_AddStringToObject(json_obj, entry->d_name, path);
         }
     }
+
+    /* Close the directory */
     closedir(dir);
 }
 
 static int generate_routes(void)
 {
+    /* Create the root JSON object */
     cJSON *root = cJSON_CreateObject();
+
+    /* Populate the JSON object with the directory structure */
     dir_to_json(".", root);
 
+    /* Convert the JSON object to a string */
     char *json_str = cJSON_Print(root);
     if(json_str)
     {
+        /* Write the JSON string to the map.json file */
         FILE *f = fopen("map.json", "w");
         if(f)
         {
@@ -197,6 +232,9 @@ static int generate_routes(void)
         }
         free(json_str);
     }
+
+    /* Free the JSON object */
     cJSON_Delete(root);
+
     return 0;
 }
