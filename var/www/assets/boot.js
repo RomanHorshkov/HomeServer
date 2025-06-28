@@ -1,8 +1,12 @@
 // Page bootstrapping logic for SPA
 const dynamicViews = {
   '/whoami': async (container) => {
-    const { loadWhoami } = await import('/assets/whoami.js');
+    const { loadWhoami } = await import('/views/whoami.js');
     return loadWhoami(container);
+  },
+  '/trial': async (container) => {
+    const { loadTrial } = await import('/views/trial.js');
+    return loadTrial(container);
   },
   // Add more dynamic views here as needed
 };

@@ -1,5 +1,4 @@
 {
-	"map.json":	"./map.json",
 	"server.log":	"./server.log",
 	"images":	{
 		"img3.jpg":	"./images/img3.jpg",
@@ -15,6 +14,7 @@
 		"style.css":	"./assets/style.css"
 	},
 	"views":	{
+		"trial.js":	"./views/trial.js",
 		"index.html":	"./views/index.html",
 		"whoami.js":	"./views/whoami.js",
 		"expenses.html":	"./views/expenses.html",
