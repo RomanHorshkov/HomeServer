@@ -130,7 +130,7 @@ You should see the styled **index.html** page with **header.html** included, plu
         ├── assets/
         │   ├── footer.html     # reusable footer component
         │   ├── header.html     # reusable navbar / hero component
-        │   ├── header.js       # helper script to inject header
+        │   ├── boot.js         # helper script to inject structure
         │   └── style.css
         ├── build_notes/        # static “Build Notes” viewer
         │   ├── index.html
