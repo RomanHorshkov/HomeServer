@@ -24,7 +24,6 @@
 #include <errno.h> /* errno                                                */
 
 #include "handler_utils.h"
-#include "server_settings.h"
 
 /****************************************************************************
  * PRIVATE DEFINES
