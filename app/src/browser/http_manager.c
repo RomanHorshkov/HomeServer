@@ -3,10 +3,10 @@
 #include "http_manager.h"
 
 #include <ctype.h>
-#include <errno.h>  // errno, EADDRINUSE, etc.
+// #include <errno.h>  // errno, EADDRINUSE, etc.
 #include <stdio.h>
 #include <stdlib.h>  // malloc(), free()
-#include <string.h>  // memset(), strcpy(), strlen(), etc.
+// #include <string.h>  // memset(), strcpy(), strlen(), etc.
 
 #include "llhttp.h"
 #include "logger.h"

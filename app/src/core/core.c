@@ -2,12 +2,12 @@
 
 #include "core.h"
 
-#include <errno.h>      /* errno, EADDRINUSE, stdout, stdin. */
-#include <netdb.h>      /* socklen_t */
-#include <pthread.h>    /* pthread_create(), pthread_join() */
-#include <stdio.h>      /* printf(), fprintf(), etc. */
-#include <stdlib.h>     /* malloc(), calloc(), NULL etc */
-#include <string.h>     /* memset(), strcpy(), strlen(), etc. */
+// #include <errno.h>      /* errno, EADDRINUSE, stdout, stdin. */
+#include <netdb.h>   /* socklen_t */
+#include <pthread.h> /* pthread_create(), pthread_join() */
+#include <stdio.h>   /* printf(), fprintf(), etc. */
+#include <stdlib.h>  /* malloc(), calloc(), NULL etc */
+// #include <string.h>     /* memset(), strcpy(), strlen(), etc. */
 #include <sys/socket.h> /* socklen_t, socket(), bind(), setsockopt(), etc. */
 #include <unistd.h>     /* fork(), close(), pipe(), read(), write(), etc. */
 

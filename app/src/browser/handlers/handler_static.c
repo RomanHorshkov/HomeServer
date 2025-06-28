@@ -14,7 +14,6 @@
 #include <stdlib.h> /* malloc, free */
 
 #include "handler_utils.h"
-#include "server_settings.h"
 
 /****************************************************************************
  * PRIVATE DEFINES

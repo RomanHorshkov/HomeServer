@@ -2,12 +2,12 @@
 #define _GNU_SOURCE
 #include "worker.h" /* worker */
 
-#include <errno.h>     /* errno, EADDRINUSE, etc. */
+// #include <errno.h>     /* errno, EADDRINUSE, etc. */
 #include <fcntl.h>     /* fcntl(), F_GETFL, F_SETFL, O_NONBLOCK */
 #include <netdb.h>     /* getaddrinfo(), addrinfo, gai_strerror() */
 #include <stdatomic.h> /* atomic_int */
 #include <stdlib.h>    /* malloc(), calloc() etc */
-#include <string.h>    /* memset(), strcpy(), strlen(), etc. */
+// #include <string.h>    /* memset(), strcpy(), strlen(), etc. */
 #include <sys/epoll.h> /* epoll_create1(), epoll_ctl(), epoll_wait(), struct epoll_event */
 #include <unistd.h>    /* fork(), close(), read(), write(), etc. */
 
