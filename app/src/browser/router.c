@@ -110,9 +110,9 @@ int router_handle_request(const HttpRequest *request, HttpResponse *response)
     int res = STATUS_FAILURE;
 
     /* Generate the routing table if it does not exist */
-    if (!initialized)
+    if(!initialized)
     {
-        if (generate_routes() != STATUS_SUCCESS)
+        if(generate_routes() != STATUS_SUCCESS)
         {
             log_error("[router]: Failed to generate routes", "");
         }
@@ -123,17 +123,17 @@ int router_handle_request(const HttpRequest *request, HttpResponse *response)
     }
 
     /* Check input validity */
-    if (!request || !response)
+    if(!request || !response)
     {
         log_error("[router]: handle_request: invalid arguments", "");
     }
 
     // ---------- 1. Try API routes first ----------
-    if (strncmp(request->path, "/api/", 5) == 0)
-    {   
-        for (size_t i = 0; i < sizeof(routes) / sizeof(routes[0]); ++i)
+    if(strncmp(request->path, "/api/", 5) == 0)
+    {
+        for(size_t i = 0; i < sizeof(routes) / sizeof(routes[0]); ++i)
         {
-            if (strncmp(request->path, routes[i].path, routes[i].path_len) == 0)
+            if(strncmp(request->path, routes[i].path, routes[i].path_len) == 0)
             {
                 res = routes[i].handler(request, response);
             }
@@ -142,14 +142,14 @@ int router_handle_request(const HttpRequest *request, HttpResponse *response)
 
     else
     {
-    // ---------- 2. Static files (dot-extension) ----------
-        if (has_dot_extension(request->path))
+        // ---------- 2. Static files (dot-extension) ----------
+        if(has_dot_extension(request->path))
         {
             res = handler_static(request, response);
         }
         else
         {
-    // ---------- 3. SPA fallback (serve homepage/entrypoint) ----------
+            // ---------- 3. SPA fallback (serve homepage/entrypoint) ----------
             HttpRequest *copy_req = calloc(1, sizeof(HttpRequest));
             *copy_req = *request;  // shallow copy all fields
             strncpy(copy_req->path, "/", sizeof(copy_req->path));
@@ -203,8 +203,7 @@ static void dir_to_json(const char *dirpath, cJSON *json_obj)
         {
             /* Trim leading "./" if present */
             const char *relpath = path;
-            if (relpath[0] == '.' && relpath[1] == '/')
-                relpath += 2;
+            if(relpath[0] == '.' && relpath[1] == '/') relpath += 2;
             cJSON_AddStringToObject(json_obj, entry->d_name, relpath);
         }
     }
