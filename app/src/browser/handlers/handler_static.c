@@ -32,6 +32,13 @@
  * PRIVATE STRUCTURED VARIABLES
  ****************************************************************************
  */
+/* None */
+
+/****************************************************************************
+ * PRIVATE VARIABLES
+ ****************************************************************************
+ */
+/* None */
 
 /****************************************************************************
  * PUBLIC FUNCTIONS DEFINITIONS
@@ -40,72 +47,84 @@
 
 int handler_static(const HttpRequest *req, HttpResponse *resp)
 {
-    int res = STATUS_FAILURE;
-    char file_path[HTTP_MAX_PATH_LEN];
-    FILE *file = NULL;
-    char *buffer = NULL;
+    int status = STATUS_FAILURE;                       /* overall handler status */
+    char requested_file_path[HTTP_MAX_PATH_LEN] = {0}; /* filesystem path buffer */
+    const char *rel_path = NULL;                       /* relative path to serve */
+    FILE *f = NULL;                                    /* file handle */
+    char *body = NULL;                                 /* buffer for file contents */
+    long size = 0;                                     /* size of the file */
 
-    // Home page mapping (configurable)
-    const char *rel_path =
-        (strcmp(req->path, "/") == 0) ? "views/index.html" : req->path + (req->path[0] == '/');
-    if(strlen(rel_path) >= sizeof(file_path))
+    /* Validate input pointers */
+    if(req && resp)
     {
-        log_error("static_page: requested path too long: %s", req->path);
-        send_404(resp);
-        return res;
-    }
-    snprintf(file_path, sizeof(file_path), "%s", rel_path);
+        /* Map "/" (home) to the SPA shell at views/index.html */
+        if(strcmp(req->path, URI_HOME) == 0)
+        {
+            rel_path = "views/index.html";
+        }
+        /* Strip leading '/' from other absolute paths */
+        else if(req->path[0] == '/' && req->path[1] != '\0')
+        {
+            rel_path = req->path + 1;
+        }
+        /* Strip leading "./" if present */
+        else if(req->path[0] == '.' && req->path[1] == '/')
+        {
+            rel_path = req->path + 2;
+        }
+        /* Use the path as-is otherwise */
+        else
+        {
+            rel_path = req->path;
+        }
 
-    file = fopen(file_path, "rb");
-    if(!file)
+        /* Ensure the relative path fits into our buffer */
+        if(strlen(rel_path) + 1 <= sizeof(requested_file_path))
+        {
+            /* Copy the relative path into requested_file_path */
+            snprintf(requested_file_path, sizeof(requested_file_path), "%s", rel_path);
+
+            /* Open the file in binary mode */
+            f = fopen(requested_file_path, "rb");
+            if(f)
+            {
+                /* Seek to end to determine file size */
+                if(fseek(f, 0, SEEK_END) == 0 && (size = ftell(f)) > 0)
+                {
+                    /* Rewind to beginning before reading */
+                    rewind(f);
+
+                    /* Allocate buffer to hold file contents */
+                    body = malloc((size_t)size);
+                    if(body &&
+                       /* Read the entire file into the buffer */
+                       fread(body, 1, (size_t)size, f) == (size_t)size)
+                    {
+                        /* Populate the HttpResponse structure */
+                        resp->status_code = 200;
+                        resp->status_text = "OK";
+                        resp->content_type = guess_mime_type(requested_file_path);
+                        resp->body = body;
+                        resp->body_length = (size_t)size;
+                        status = STATUS_SUCCESS;
+                    }
+                }
+                /* Close file handle */
+                fclose(f);
+            }
+        }
+    }
+
+    /* On failure, free any allocated buffer and send 404 */
+    if(status != STATUS_SUCCESS)
     {
-        log_error("[handler static]: open failed %s: %s", file_path, strerror(errno));
+        if(body)
+        {
+            free(body);
+        }
         send_404(resp);
-        return res;
     }
 
-    if(fseek(file, 0, SEEK_END) != 0)
-    {
-        log_error("[handler static]: fseek to end failed %s: %s", file_path, strerror(errno));
-        fclose(file);
-        send_404(resp);
-        return res;
-    }
-    long file_size = ftell(file);
-    if(file_size <= 0)
-    {
-        log_error("[handler static]: invalid or empty file %s", file_path);
-        fclose(file);
-        send_404(resp);
-        return res;
-    }
-    rewind(file);
-
-    buffer = malloc((size_t)file_size);
-    if(!buffer)
-    {
-        log_error("[handler static]: malloc failed: %s", strerror(errno));
-        fclose(file);
-        send_404(resp);
-        return res;
-    }
-
-    size_t total_read = fread(buffer, 1, (size_t)file_size, file);
-    fclose(file);
-
-    if(total_read != (size_t)file_size)
-    {
-        log_error("[handler static]: fread failed for %s", file_path);
-        free(buffer);
-        send_404(resp);
-        return res;
-    }
-
-    resp->status_code = 200;
-    resp->status_text = "OK";
-    resp->content_type = guess_mime_type(file_path);
-    resp->body = buffer;
-    resp->body_length = (size_t)file_size;
-
-    return STATUS_SUCCESS;
+    /* Single exit point */
+    return status;
 }

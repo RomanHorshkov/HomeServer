@@ -105,6 +105,8 @@ int server_init(const char *port)
         /* Initialize the logger */
         logger_init("server.log");
 
+        /* Initialize the router */
+
         /* Initialize the listener */
         if(listener_init(&srv.listener, port, &srv.pipe_fds[1]) != STATUS_SUCCESS)
         {
