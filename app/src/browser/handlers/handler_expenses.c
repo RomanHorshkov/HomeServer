@@ -23,7 +23,6 @@
 #include <sys/stat.h>
 
 #include "handler_utils.h"
-#include "server_settings.h"
 
 /****************************************************************************
  * PRIVATE DEFINES
