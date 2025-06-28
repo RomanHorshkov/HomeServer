@@ -302,7 +302,7 @@ static int validate_http_path(const char* path)
     }
 
     /* Check if path starts with . or ./ */
-    else if (path[0] == '.' && (path[1] == '\0' || path[1] == '/'))
+    else if(path[0] == '.' && (path[1] == '\0' || path[1] == '/'))
     {
         log_error("[http]: Path starts with '.': %s", path);
     }
@@ -326,8 +326,8 @@ static int validate_http_path(const char* path)
             }
 
             /* Allow alphanumeric, '/', '-', ... */
-            else if(!(isalnum(c) || c == '/' || c == '-' || c == '_' || c == '.' || c == '~' || c == '?' ||
-                c == '=' || c == '&' || c == '+' || c == '%'))
+            else if(!(isalnum(c) || c == '/' || c == '-' || c == '_' || c == '.' || c == '~' ||
+                      c == '?' || c == '=' || c == '&' || c == '+' || c == '%'))
             {
                 log_error("[http]: Path contains suspicious character %s", path);
                 res = STATUS_FAILURE;
