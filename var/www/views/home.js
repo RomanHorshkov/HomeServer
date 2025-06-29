@@ -44,12 +44,12 @@ export async function loadHome(container) {
     <section id="architecture">
       <h3>🧱 Project Structure Explained</h3>
       <pre><code>
-app          → Core C source code (server, routing, handlers)
-├── core     → Low-level server logic (epoll, workers, sockets)
-├── browser  → HTTP parsing, request handling, routing
-var/www      → Public assets (HTML, CSS, JS, images)
-var/lib      → Persistent application data (JSON, configurations)
-utils        → Supporting scripts and utilities
+      app          → Core C source code (server, routing, handlers)
+      ├── core     → Low-level server logic (epoll, workers, sockets)
+      ├── browser  → HTTP parsing, request handling, routing
+      var/www      → Public assets (HTML, CSS, JS, images)
+      var/lib      → Persistent application data (JSON, configurations)
+      utils        → Supporting scripts and utilities
       </code></pre>
       <p>
         This modular structure clearly separates core logic, frontend assets, persistent data, and utilities. Each part is focused and maintainable.

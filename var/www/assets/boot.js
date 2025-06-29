@@ -1,59 +1,42 @@
 // assets/boot.js: Main SPA bootstrap
 import { loadHeader } from '/assets/header.js';
 import { loadFooter } from '/assets/footer.js';
-import { buildNavigation, updateCurrentLink } from '/assets/navigation.js';
+import { buildNavigation } from '/assets/navigation.js';
 
-// Map client paths to dynamic view loaders
+// 1. Dynamic view handlers map
 const dynamicViews = {
-  '/whoami': async container => {
-    const { loadWhoami } = await import('/views/whoami.js');
-    return loadWhoami(container);
-  },
-  '/trial': async container => {
-    const { loadTrial } = await import('/views/trial.js');
-    return loadTrial(container);
-  },
-  '/party': async container => {
-    const { loadParty } = await import('/views/party.js');
-    return loadParty(container);
-  },
-  '/expenses': async container => {
-    const { loadExpenses } = await import('/views/expenses.js');
-    return loadExpenses(container);
-  },
-  '/drive': async container => {
-    const { loadDrive } = await import('/views/drive.js');
-    return loadDrive(container);
-  },
-  '/': async container => {
-    const { loadHome } = await import('/views/home.js');
-    return loadHome(container);
-  },
+  '/whoami': async c => (await import('/views/whoami.js')).loadWhoami(c),
+  '/trial':  async c => (await import('/views/trial.js')).loadTrial(c),
+  '/party':  async c => (await import('/views/party.js')).loadParty(c),
+  '/expenses': async c => (await import('/views/expenses.js')).loadExpenses(c),
+  '/drive':  async c => (await import('/views/drive.js')).loadDrive(c),
+  '/home':   async c => (await import('/views/home.js')).loadHome(c),
+  '/':       async c => (await import('/views/home.js')).loadHome(c),
 };
 
 document.addEventListener('DOMContentLoaded', async () => {
   try {
-    // 1 Attach global stylesheet
-    const style = document.createElement('link');
-    style.rel = 'stylesheet';
-    style.href = '/assets/style.css';
-    document.head.appendChild(style);
+    // 1. Attach global stylesheet if not present
+    if (!document.querySelector('link[href="/assets/style.css"]')) {
+      const style = document.createElement('link');
+      style.rel = 'stylesheet';
+      style.href = '/assets/style.css';
+      document.head.appendChild(style);
+    }
 
-    // 2 Insert header and footer
+    // 2. Insert header and footer
     document.body.insertAdjacentHTML('afterbegin', loadHeader());
     document.body.insertAdjacentHTML('beforeend', loadFooter());
 
-    // 3 Build navigation (passes loadView and updateCurrentLink)
-    await buildNavigation(dynamicViews, loadView);
+    // 3. Build navigation, passing SPA navigation handler
+    await buildNavigation(dynamicViews, navigateTo);
 
-    // 4 Load initial view
-    await loadView(location.pathname);
-    updateCurrentLink();
+    // 4. Load initial view (and update nav highlight)
+    navigateTo(location.pathname, { replace: true });
 
-    // 5 Handle back/forward
+    // 5. History navigation (back/forward)
     window.addEventListener('popstate', () => {
-      loadView(location.pathname);
-      updateCurrentLink();
+      navigateTo(location.pathname, { push: false, replace: false });
     });
   } catch (err) {
     console.error('Boot error:', err);
@@ -61,26 +44,68 @@ document.addEventListener('DOMContentLoaded', async () => {
 });
 
 /**
- * Dynamically load a view (static HTML or JS-based) into <main id="main">
+ * SPA navigation: Load a view, update nav, update history if needed.
+ */
+async function navigateTo(path, opts = {}) {
+  // path normalization
+  let cleanPath = path.replace(/\/+$/, '') || '/home';
+  if (cleanPath === '/') cleanPath = '/home';
+
+  // Load the view
+  await loadView(cleanPath);
+
+  // Update nav link highlight
+  updateCurrentLink(cleanPath);
+
+  // Optionally update history
+  if (opts.push)
+    window.history.pushState({}, '', cleanPath);
+  else if (opts.replace)
+    window.history.replaceState({}, '', cleanPath);
+}
+
+/**
+ * Dynamically load a view (JS or HTML) into <main id="main">
  */
 async function loadView(path) {
   const mainEl = document.querySelector('main#main');
   try {
-    let clean = path.replace(/\/+$|^\s+|\s+$/g, '');
-    if (!clean) clean = '/';
-
-    if (dynamicViews[clean]) {
+    if (dynamicViews[path]) {
       mainEl.innerHTML = '';
-      await dynamicViews[clean](mainEl);
+      await dynamicViews[path](mainEl);
       return;
     }
-
-    // Fallback: fetch static HTML
-    const res = await fetch(clean.endsWith('.html') ? clean : `${clean}.html`);
+    // Try static HTML
+    const res = await fetch(path);
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     mainEl.innerHTML = await res.text();
   } catch (err) {
-    mainEl.innerHTML = `<p>Error loading view: ${err.message}</p>`;
+    mainEl.innerHTML = `<p>Error loading page: ${err.message}</p>`;
     console.error(err);
+  }
+}
+
+/**
+ * Highlight the current nav link (assumes nav links have hrefs matching the clean path)
+ */
+function updateCurrentLink(path) {
+  // fallback: strip trailing slash, etc.
+  let cleanPath = path.replace(/\/+$/, '') || '/home';
+  if (cleanPath === '/') cleanPath = '/home';
+  // Remove .active/current-page from all, add to current
+  document.querySelectorAll('nav a').forEach(link => {
+    link.classList.toggle('current-page', link.pathname === cleanPath);
+    link.classList.toggle('active', link.pathname === cleanPath); // For old code compatibility
+  });
+}
+
+/**
+ * Navigation handler for SPA nav links (called by buildNavigation)
+ */
+export function spaNavHandler(event) {
+  if (event.target.tagName === 'A' && event.target.href.startsWith(location.origin)) {
+    event.preventDefault();
+    const url = new URL(event.target.href);
+    navigateTo(url.pathname, { push: true });
   }
 }
