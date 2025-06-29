@@ -1,13 +1,21 @@
 // views/drive.js
-
 export async function loadDrive(container) {
-  // Use global stylesheet (assumes style.css is already loaded by SPA boot)
+  // Load the file map via fetch (ensure map.json is served at root)
+  let mapData;
+  try {
+    const resp = await fetch('/map.json');
+    mapData = await resp.json();
+  } catch (err) {
+    container.innerHTML = '<p style="color:#f55">Failed to load file map.</p>';
+    console.error('Error fetching map.json:', err);
+    return;
+  }
+
+  // Inject UI
   container.innerHTML = `
     <h1>Drive</h1>
     <div class="toolbar" style="display:flex;align-items:center;gap:1rem;">
-      <button id="upBtn" title="Up one level">
-        <span style="font-size:1.2em;vertical-align:middle;">&#8593;</span> Up
-      </button>
+      <button id="upBtn" title="Up one level">🔼 Up</button>
       <span id="breadcrumbs" class="breadcrumbs">/</span>
     </div>
     <div id="tree"></div>
@@ -16,59 +24,63 @@ export async function loadDrive(container) {
   const tree   = container.querySelector('#tree');
   const crumbs = container.querySelector('#breadcrumbs');
   const upBtn  = container.querySelector('#upBtn');
-  let currentPath = '/';
+  let currentPath = [];
 
-  // Font Awesome replacement: fallback to text icons, unless already loaded by your CSS elsewhere.
-  const folderIcon = `<span class="entry-icon" style="margin-right:0.4em;">&#128193;</span>`;
-  const fileIcon   = `<span class="entry-icon" style="margin-right:0.4em;">&#128196;</span>`;
+  // Icons
+  const folderIcon = `<span class="entry-icon">📁</span>`;
+  const fileIcon   = `<span class="entry-icon">📄</span>`;
 
-  const enc = p => p.split('/').map(encodeURIComponent).join('/');
-  const parent = p => (p === '/') ? '/' : '/' + p.replace(/^\/+/, '').replace(/\/+$/, '').split('/').slice(0, -1).join('/');
+  // Helper: get node at path array
+  function getNode(pathArr) {
+    return pathArr.reduce((node, seg) => node[seg], mapData);
+  }
 
-  function load(path, container) {
-    fetch('/api/drive?path=' + enc(path))
-      .then(r => r.json())
-      .then(data => {
-        container.innerHTML = '';
-        data.items.sort((a, b) => a.type.localeCompare(b.type) || a.name.localeCompare(b.name));
-        data.items.forEach(item => {
-          const full = path + (path.endsWith('/') ? '' : '/') + item.name;
-          if (item.type === 'directory') {
-            const det = document.createElement('details');
-            det.innerHTML = `<summary><span class="arrow">&#9656;</span>${folderIcon}<span class="directory">${item.name}</span></summary>`;
-            det.addEventListener('toggle', () => {
-              if (det.open && !det.dataset.loaded) {
-                const ul = document.createElement('ul');
-                det.appendChild(ul);
-                load(full, ul);
-                det.dataset.loaded = 1;
-              }
-            });
-            container.appendChild(det);
-          } else {
-            const li = document.createElement('li');
-            li.innerHTML = `${fileIcon}<a href="${full}" class="file" target="_blank" rel="noopener">${item.name}</a>`;
-            container.appendChild(li);
+  // Render directory tree
+  function render(pathArr, containerEl) {
+    const node = getNode(pathArr);
+    const entries = Object.entries(node)
+      .sort(([aName, aVal], [bName, bVal]) => {
+        const aDir = typeof aVal === 'object';
+        const bDir = typeof bVal === 'object';
+        if (aDir !== bDir) return aDir ? -1 : 1;
+        return aName.localeCompare(bName);
+      });
+
+    entries.forEach(([name, value]) => {
+      const det = document.createElement('details');
+      if (typeof value === 'object') {
+        det.innerHTML = `<summary>${folderIcon}<span class="directory">${name}</span></summary>`;
+        det.addEventListener('toggle', () => {
+          if (det.open && !det.dataset.loaded) {
+            const ul = document.createElement('ul');
+            det.appendChild(ul);
+            render([...pathArr, name], ul);
+            det.dataset.loaded = '1';
           }
         });
-      })
-      .catch(err => {
-        console.error(err);
-        container.innerHTML = '<p style="color:#f55">Failed to load directory.</p>';
-      });
+      } else {
+        det.innerHTML = `<summary>${fileIcon}<a href="/${value}" class="file" target="_blank" rel="noopener">${name}</a></summary>`;
+      }
+      containerEl.appendChild(det);
+    });
   }
 
+  // Refresh UI
   function refresh() {
-    crumbs.textContent = currentPath;
-    upBtn.disabled = currentPath === '/';
+    crumbs.textContent = '/' + currentPath.join('/');
+    upBtn.disabled = currentPath.length === 0;
     tree.innerHTML = '';
-    load(currentPath, tree);
+    render(currentPath, tree);
   }
 
+  // Up navigation
   upBtn.addEventListener('click', () => {
-    currentPath = parent(currentPath);
-    refresh();
+    if (currentPath.length > 0) {
+      currentPath.pop();
+      refresh();
+    }
   });
 
+  // Initial load
   refresh();
 }

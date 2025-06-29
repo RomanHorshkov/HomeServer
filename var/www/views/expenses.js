@@ -12,25 +12,14 @@ export async function loadExpenses(container) {
     });
   }
 
-  // 2. Inject custom CSS (normally from /expenses/expenses_style.css)
-  // For simplicity, basic table styling is included inline here. 
-  // You can expand or adapt this as needed.
-  if (!document.getElementById('expenses-style')) {
-    const style = document.createElement('style');
-    style.id = 'expenses-style';
-    style.textContent = `
-      .centered { max-width:900px; margin:0 auto; }
-      .charts-row { display:flex; flex-wrap:wrap; gap:2rem; justify-content:center; }
-      .chart-wrapper { flex:1 1 350px; min-width:280px; }
-      .expenses-table { width:100%; border-collapse:collapse; margin-top:2rem; }
-      .expenses-table th, .expenses-table td { border:1px solid #ccc; padding:0.5rem 1rem; text-align:left; }
-      .expenses-table-title { margin-top:2rem; }
-      #fab-add-expense { font-size:2rem; width:2.7em; height:2.7em; border-radius:50%; background:#0cf; color:#fff; border:none; cursor:pointer; }
-      #fab-add-expense:active { background:#0ae; }
-      #add-expense-form input, #add-expense-form select { min-width:100px; }
-    `;
-    document.head.appendChild(style);
-  }
+  // 2. Inject custom CSS (normally from /expenses/expenses_style.css)// Dynamically load robust, themed expenses CSS
+if (!document.getElementById('expenses-style-link')) {
+  const link = document.createElement('link');
+  link.rel = 'stylesheet';
+  link.href = '/assets/expenses_style.css'; // <<-- Move your good CSS here!
+  link.id = 'expenses-style-link';
+  document.head.appendChild(link);
+}
 
   // 3. Inject main content (HTML)
   container.className = 'centered';
