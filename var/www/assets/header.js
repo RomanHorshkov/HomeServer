@@ -1,3 +1,5 @@
+export function loadHeader() {
+    return `
 <header>
     <!-- The logo link redirects users to the home page -->
     <a href="/" class="logo">C‑Server</a>
@@ -5,3 +7,5 @@
       <!-- Navigation will be dynamically populated by JavaScript -->
     </nav>
 </header>
+    `;
+}
