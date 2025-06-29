@@ -16,9 +16,9 @@ server.log
 # Ignore compile commands
 compile_commands.json
 #Ignore icon file
-favicon.ico
+var/www/favicon.ico
 
-routes.json
+var/www/map.json
 
 # # Ignore all yaml files in config directory
 # /config/*.yaml
