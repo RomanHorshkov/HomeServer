@@ -26,23 +26,20 @@ html, body {
   min-height: 100vh;     /* ← stretch to viewport height */
 }
 body {
+  margin: 0;                      /* no more padding here! */
   background: var(--bg);
   color: var(--text);
   font-family: var(--font-base);
   line-height: 1.6;
-  padding: 40px;                 /* space all around */
   display: flex;
-  flex-direction: column;
-}
-/* …or, if you don’t have <main>, apply to footer directly: */
-body > footer {
-  margin-top: auto;      /* ← pushes it to the bottom */
+  flex-direction: column;         /* column layout */
+  min-height: 100vh;              /* stretch to viewport height */
 }
 
 /* Added styles for <main> element */
 main {
   flex: 1;
-  padding-bottom: 2rem;
+  padding: 40px;        /* content breathing room */
 }
 
 /* ---------------------------------------------------------------------
@@ -60,7 +57,7 @@ header {
   background: var(--surface);
   border-bottom: 1px solid var(--border);
   padding: 12px 32px;
-  margin: -40px;                 /* negate body padding so header flushes */
+  /* margin: -40px;                 negate body padding so header flushes */
   margin-bottom: 32px;           /* re‑establish gap below header */
   box-shadow: var(--shadow);
 }
@@ -172,11 +169,10 @@ footer {
     color: var(--text);
     text-align: center;
     padding: 0px 0;        /* ↓ much less vertical space */
-    font-size: .8rem;      /* ↓ smaller text */
-    margin-top: 0;         /* override any leftover margins */
-    margin-bottom: 32px;           /* re‑establish gap below header */
+    margin-top: auto !important;    /* pushes it down to the bottom */
     border-top: 1px solid var(--border);
     box-shadow: var(--shadow);
+    font-size: .8rem;      /* ↓ smaller text */
 }
 
 footer a {
