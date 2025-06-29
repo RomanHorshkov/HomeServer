@@ -3,58 +3,9 @@
 <head>
   <meta charset="utf-8">
   <title>C-Server SPA</title>
-  <!-- boot.js will inject stylesheet, header, footer -->
-  <script defer src="/assets/boot.js"></script>
+  <script type="module" src="/assets/boot.js"></script>
 </head>
 <body>
-  <main id="main">
-    <section id="home">
-      <h2>Welcome to the C-Server Project</h2>
-      <p>
-        This site is powered by a fully custom POSIX-compliant <strong>C11 web server</strong>
-        using <code>epoll</code> for high-performance I/O, written from scratch for educational and practical purposes.
-      </p>
-      <hr>
-      <section id="features">
-        <h3>🔧 Features</h3>
-        <ul>
-          <li>Fully written in <strong>pure C11</strong> — no frameworks, no bloat</li>
-          <li>Supports <code>epoll</code>, non-blocking sockets, and persistent HTTP/1.1 connections</li>
-          <li>Modular routing: serve static files, HTML views, and dynamic JSON APIs</li>
-          <li>Client-side navigation via <code>boot.js</code> and dynamic content loading</li>
-          <li>Live data rendered with <code>Chart.js</code> (for /expenses, etc.)</li>
-          <li>Minimal, custom dark theme styled via CSS variables</li>
-        </ul>
-      </section>
-      <section id="pages">
-        <h3>📂 Available Pages</h3>
-        <ul>
-          <li><a class="nav-link" href="views/whoami.html">Who Am I</a></li>
-          <li><a class="nav-link" href="views/drive.html">Drive</a></li>
-          <li><a class="nav-link" href="views/expenses.html">Expenses</a></li>
-          <li><a class="nav-link" href="views/dynamic.html">Dynamic</a></li>
-          <li><a class="nav-link" href="views/build_notes.html">Build Notes</a></li>
-        </ul>
-      </section>
-      <hr>
-      <section id="project-info">
-        <h3>📜 Project Structure</h3>
-        <pre><code>/app        → C source code (core, router, handlers)
-/var/www    → Static assets (HTML, JS, CSS)
-/var/lib    → private data (expenses, drive files)
-</code></pre>
-      </section>
-      <section id="status">
-        <h3>🛰️ Server Status</h3>
-        <p>Server is running on <code>epoll</code>-based listener, supporting both IPv4 and IPv6.</p>
-        <p>All responses include proper <code>Content-Length</code>, MIME type detection, and persistent connections when allowed.</p>
-      </section>
-      <section id="about-me">
-        <h3>👨‍🚀 About the Author</h3>
-        <p>Hi! I'm Roman Horshkov — systems engineer and low-level software enthusiast. This server is part of my long-term goal to build a complete self-hosted platform, from the TCP socket up to dynamic JS dashboards.</p>
-        <p>View my work on <a href="https://github.com/RomanHorshkov" target="_blank">GitHub</a>.</p>
-      </section>
-    </section>
-  </main>
+  <main id="main"></main> <!-- Empty main; JS fills it -->
 </body>
 </html>
