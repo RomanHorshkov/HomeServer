@@ -12,84 +12,22 @@ export async function loadExpenses(container) {
     });
   }
 
-  // 2. Inject custom CSS (normally from /expenses/expenses_style.css)// Dynamically load robust, themed expenses CSS
-if (!document.getElementById('expenses-style-link')) {
-  const link = document.createElement('link');
-  link.rel = 'stylesheet';
-  link.href = '/assets/expenses_style.css'; // <<-- Move your good CSS here!
-  link.id = 'expenses-style-link';
-  document.head.appendChild(link);
-}
+  // 2. Dynamically load robust, themed expenses CSS
+  if (!document.getElementById('expenses-style-link')) {
+    const link = document.createElement('link');
+    link.rel = 'stylesheet';
+    link.href = '/assets/expenses_style.css';
+    link.id = 'expenses-style-link';
+    document.head.appendChild(link);
+  }
 
-  // 3. Inject main content (HTML)
-  container.className = 'centered';
-  container.innerHTML = `
-    <h1 id="expenses-title" style="text-align:center;margin:2.5rem 0 2.5rem 0;">Expenses Overview</h1>
-    <fieldset id="date-filter" style="margin-bottom:2.5rem;">
-      <legend style="font-size:1rem; font-weight:600;">Filter by date</legend>
-      <label for="from-date">From:
-        <input id="from-date" name="from-date" type="date" autocomplete="off">
-      </label>
-      <label for="to-date" style="margin-left:1rem;">To:
-        <input id="to-date" name="to-date" type="date" autocomplete="off">
-      </label>
-      <button id="reset-filters" type="button" style="margin-left:1rem;">Reset Filters</button>
-    </fieldset>
-    <div class="charts-row" style="margin-bottom:2.5rem;">
-      <div class="chart-wrapper">
-        <canvas id="monthly-chart" height="400" aria-label="Monthly expenses chart" role="img"></canvas>
-      </div>
-      <div class="chart-wrapper">
-        <canvas id="category-chart" height="400" aria-label="Expenses by category chart" role="img"></canvas>
-      </div>
-    </div>
-    <div id="fab-form-container" style="display:flex;align-items:center;gap:1.5rem;margin-bottom:2.5rem;">
-      <button id="fab-add-expense" title="Add Expense" aria-label="Add Expense">+</button>
-      <form id="add-expense-form" style="display:none;flex-direction:row;align-items:flex-end;gap:1.5rem;margin:0;">
-        <div>
-          <label for="expense-date">Date<br>
-            <input type="date" id="expense-date" name="date" required>
-          </label>
-        </div>
-        <div>
-          <label for="expense-category">Category<br>
-            <select id="expense-category" name="category" required>
-              <option value="">Loading…</option>
-            </select>
-          </label>
-        </div>
-        <div>
-          <label for="expense-amount">Amount (€)<br>
-            <input type="number" id="expense-amount" name="amount" min="0.01" step="0.01" required>
-          </label>
-        </div>
-        <div>
-          <label for="expense-comment">Comment<br>
-            <input type="text" id="expense-comment" name="comment" maxlength="100">
-          </label>
-        </div>
-        <button type="submit" style="margin-top:1.2em;">Add Expense</button>
-        <span id="expense-form-error" style="color:red; margin-left:1rem;"></span>
-      </form>
-    </div>
-    <div id="loading-indicator" style="text-align:center; margin:2.5rem 0; display:none;">
-      <span>Loading expenses data…</span>
-    </div>
-    <div id="expenses-table-wrapper">
-      <h2 class="expenses-table-title">All Expenses</h2>
-      <table id="expenses-table" class="expenses-table" aria-label="Expenses table">
-        <thead>
-          <tr>
-            <th>Date</th>
-            <th>Category</th>
-            <th>Amount</th>
-            <th>Comment</th>
-          </tr>
-        </thead>
-        <tbody></tbody>
-      </table>
-    </div>
-  `;
+  // 3. Fetch and inject main content (HTML)
+  container.className = 'centered expenses-page';
+  const html = await fetch('/views/expenses.html').then(res => {
+    if (!res.ok) throw new Error(`Failed to fetch expenses.html: ${res.status}`);
+    return res.text();
+  });
+  container.innerHTML = html;
 
   // 4. Script logic (charts, fetch, filter, form, etc.)
   const loading = container.querySelector('#loading-indicator');
@@ -345,5 +283,4 @@ if (!document.getElementById('expenses-style-link')) {
       setTimeout(() => { expenseDateInput.focus(); }, 200);
     }
   });
-
 }

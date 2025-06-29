@@ -1,0 +1,70 @@
+<h1 id="expenses-title">Expenses Overview</h1>
+
+<fieldset id="date-filter">
+  <legend>Filter by date</legend>
+  <label for="from-date">From:
+    <input id="from-date" name="from-date" type="date" autocomplete="off">
+  </label>
+  <label for="to-date">To:
+    <input id="to-date" name="to-date" type="date" autocomplete="off">
+  </label>
+  <button id="reset-filters" type="button">Reset Filters</button>
+</fieldset>
+
+<div class="charts-row">
+  <div class="chart-wrapper">
+    <canvas id="monthly-chart" height="400" aria-label="Monthly expenses chart" role="img"></canvas>
+  </div>
+  <div class="chart-wrapper">
+    <canvas id="category-chart" height="400" aria-label="Expenses by category chart" role="img"></canvas>
+  </div>
+</div>
+
+<div id="fab-form-container">
+  <button id="fab-add-expense" title="Add Expense" aria-label="Add Expense">+</button>
+  <form id="add-expense-form">
+    <div>
+      <label for="expense-date">Date<br>
+        <input type="date" id="expense-date" name="date" required>
+      </label>
+    </div>
+    <div>
+      <label for="expense-category">Category<br>
+        <select id="expense-category" name="category" required>
+          <option value="">Loading…</option>
+        </select>
+      </label>
+    </div>
+    <div>
+      <label for="expense-amount">Amount (€)<br>
+        <input type="number" id="expense-amount" name="amount" min="0.01" step="0.01" required>
+      </label>
+    </div>
+    <div>
+      <label for="expense-comment">Comment<br>
+        <input type="text" id="expense-comment" name="comment" maxlength="100">
+      </label>
+    </div>
+    <button type="submit">Add Expense</button>
+    <span id="expense-form-error"></span>
+  </form>
+</div>
+
+<div id="loading-indicator">
+  <span>Loading expenses data…</span>
+</div>
+
+<div id="expenses-table-wrapper">
+  <h2 class="expenses-table-title">All Expenses</h2>
+  <table id="expenses-table" class="expenses-table" aria-label="Expenses table">
+    <thead>
+      <tr>
+        <th>Date</th>
+        <th>Category</th>
+        <th>Amount</th>
+        <th>Comment</th>
+      </tr>
+    </thead>
+    <tbody></tbody>
+  </table>
+</div>
