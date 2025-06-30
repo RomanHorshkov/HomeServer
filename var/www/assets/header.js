@@ -6,6 +6,7 @@ export function loadHeader() {
     <nav>
       <!-- Navigation will be dynamically populated by JavaScript -->
     </nav>
+  <button id="theme-toggle">😈/😇</button>
 </header>
     `;
 }

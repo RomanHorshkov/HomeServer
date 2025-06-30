@@ -1,4 +1,5 @@
 // assets/boot.js: Main SPA bootstrap
+import { initializeTheme, setupThemeToggle } from '/assets/theme.js';
 import { loadHeader } from '/assets/header.js';
 import { loadFooter } from '/assets/footer.js';
 import { buildNavigation } from '/assets/navigation.js';
@@ -16,6 +17,10 @@ const dynamicViews = {
 
 document.addEventListener('DOMContentLoaded', async () => {
   try {
+
+    // 0. Initialize theme (sets data-theme on <html>)
+    initializeTheme();
+
     // 1. Attach global stylesheet if not present
     if (!document.querySelector('link[href="/assets/style.css"]')) {
       const style = document.createElement('link');
@@ -31,6 +36,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     // 3. Build navigation, passing SPA navigation handler
     await buildNavigation(dynamicViews, navigateTo);
 
+    // wire up the theme toggle
+    setupThemeToggle();
+    
     // 4. Load initial view (and update nav highlight)
     navigateTo(location.pathname, { replace: true });
 
