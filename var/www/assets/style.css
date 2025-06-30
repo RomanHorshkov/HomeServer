@@ -1,8 +1,21 @@
-/* =====================================================================
-   style.css  –  global neon‑dark theme (header support added)
-   ===================================================================== */
+/* import from Google Fonts (or host locally) */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap');
 
 :root {
+  
+  --font-base: 'Inter', sans-serif;
+
+
+  /* fluid padding: from 0 at 0px, to 40px at 1000px, and larger beyond */
+  --page-padding: clamp(0px, 4vw, 40px);
+  /* horizontal: up to 40px at 1000px, fluid below */
+  --page-padding-h: clamp(0px, 4vw, 40px);
+  /* vertical: up to 12px at 1000px, fluid below */
+  --page-padding-v: clamp(0px, 1.2vw, 12px);
+  --page-margin: 0px;
+  
+  /* theme variables */
+  /* fallback values if no theme attribute */
   --bg:            #111;
   --surface:       #1c1c1c;
   --border:        #333;
@@ -18,28 +31,55 @@
   --fab-blue-hover:#0ae;
 }
 
+:root[data-theme="evil"] {
+  /* “evil” (dark) palette */
+  --bg:            #111;
+  --surface:       #1c1c1c;
+  --border:        #333;
+  --accent:        #0cf;
+  --accent-hover:  #0ae;
+  --magenta:       #f0f;
+  --text:          #eee;
+  --muted:         #999;
+
+}
+
+:root[data-theme="angel"] {
+  /* “angel” (light) palette */
+  --bg:            #fff;
+  --surface:       #f9f9f9;
+  --border:        #ccc;
+  --accent:        #06c;
+  --accent-hover:  #048;
+  --magenta:       #c0f;
+  --text:          #111;
+  --muted:         #666;
+}
+
 /* ---------------------------------------------------------------------
    Base layout / typography
    ------------------------------------------------------------------ */
 html, body {
-  margin: 0;
-  min-height: 100vh;     /* ← stretch to viewport height */
+  margin: 0;          /* no amrgin */  
+  padding: 0;         /* no padding */  
+  min-height: 100vh;  /* stretch to 100% viewport height */
 }
 body {
-  margin: 0;                      /* no more padding here! */
+  font-family: var(--font-base);
+  margin: 0;                      /* no padding */
   background: var(--bg);
   color: var(--text);
   font-family: var(--font-base);
   line-height: 1.6;
   display: flex;
   flex-direction: column;         /* column layout */
-  min-height: 100vh;              /* stretch to viewport height */
+  min-height: 100vh;              /* stretch to 100% viewport height */
 }
 
 /* Added styles for <main> element */
 main {
   flex: 1;
-  padding: 40px;        /* content breathing room */
+  padding: var(--page-padding);
 }
 
 /* ---------------------------------------------------------------------
@@ -51,14 +91,20 @@ header {
   z-index: 1000;
 
   display: flex;
-  align-items: center;
+  /* align-items: center; */
+  /* Effect: Places the first item (e.g., the logo) at the start of the container
+    and the last item (e.g., navigation links) at the end, with equal spacing between them.
+    The logo stays on the left.
+    The navigation links shift to the right, leaving space in between. */
   justify-content: space-between;
 
   background: var(--surface);
   border-bottom: 1px solid var(--border);
-  padding: 12px 32px;
-  /* margin: -40px;                 negate body padding so header flushes */
-  margin-bottom: 32px;           /* re‑establish gap below header */
+  
+  /* vertical padding fixed, horizontal fluid */
+  padding: var(--page-padding-v) var(--page-padding-h);
+  margin: var(--page-margin);
+  
   box-shadow: var(--shadow);
 }
 header .logo {
