@@ -70,7 +70,7 @@ int main(int argc, char *argv[])
     {
         log_info("Server started on port %s...", argv[1]);
         server_run();
-        
+
         /* Set return variable to success */
         res = 0;
     }

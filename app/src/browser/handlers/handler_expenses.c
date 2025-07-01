@@ -213,17 +213,52 @@ int handler_expenses(const HttpRequest *req, HttpResponse *resp)
             cJSON *arr = NULL;
             if(f)
             {
+                /* Move the file pointer to the end to determine the file size */
                 fseek(f, 0, SEEK_END);
-                long len = ftell(f);
+
+                /* Get the file size */
+                size_t len = ftell(f);
+
+                /* Reset the file pointer to the beginning */
                 fseek(f, 0, SEEK_SET);
+
+                /* Allocate a buffer to hold the file contents */
                 char *buf = malloc(len + 1);
-                fread(buf, 1, len, f);
+
+                /* Check if malloc succeeded */
+                if(!buf)
+                {
+                    fclose(f);
+                    return res;
+                }
+
+                /* Read the file contents into the buffer */
+                size_t read_len = fread(buf, 1, len, f);
+
+                /* Check if fread read the expected number of bytes */
+                if(read_len != len)
+                {
+                    free(buf);
+                    fclose(f);
+                    return res;
+                }
+
+                /* Null-terminate the buffer */
                 buf[len] = 0;
+
+                /* Parse the buffer as a JSON array */
                 arr = cJSON_Parse(buf);
+
+                /* Free the buffer after parsing */
                 free(buf);
+
+                /* Validate the parsed JSON object */
                 if(!cJSON_IsArray(arr))
                 {
+                    /* Delete invalid JSON object */
                     cJSON_Delete(arr);
+
+                    /* Create an empty JSON array */
                     arr = cJSON_CreateArray();
                 }
             }
@@ -248,24 +283,52 @@ int handler_expenses(const HttpRequest *req, HttpResponse *resp)
             cJSON_AddItemToArray(arr, obj);
 
             /* Write back to file */
-            char *out2 = cJSON_Print(arr);  // Use pretty-print instead of unformatted
+            char *out2 = cJSON_Print(arr); /* Use pretty-print instead of unformatted */
+            if(!out2)                      /* Check if cJSON_Print succeeded */
+            {
+                fclose(f);
+                cJSON_Delete(arr);
+                cJSON_Delete(root);
+                return res; /* Exit if JSON serialization failed */
+            }
+
+            /* Reset the file pointer to the beginning */
             fseek(f, 0, SEEK_SET);
-            fwrite(out2, 1, strlen(out2), f);
+
+            /* Write the JSON string to the file */
+            size_t write_len = fwrite(out2, 1, strlen(out2), f);
+            if(write_len != strlen(out2)) /* Check if fwrite wrote the expected number of bytes */
+            {
+                free(out2);
+                fclose(f);
+                cJSON_Delete(arr);
+                cJSON_Delete(root);
+                return res; /* Exit if writing failed */
+            }
+
+            /* Flush the file stream */
             fflush(f);
-            ftruncate(fileno(f), strlen(out2));
+
+            /* Truncate the file to the new size */
+            if(ftruncate(fileno(f), strlen(out2)) == -1) /* Check if ftruncate succeeded */
+            {
+                free(out2);
+                fclose(f);
+                cJSON_Delete(arr);
+                cJSON_Delete(root);
+                return res; /* Exit if truncation failed */
+            }
+
+            /* Close the file */
             fclose(f);
+
+            /* Clean up resources */
             cJSON_Delete(arr);
             cJSON_Delete(root);
             free(out2);
 
-            /* Respond OK */
-            resp->status_code = 200;
-            resp->content_type = "text/plain";
-            resp->body = strdup("OK");
-            resp->body_length = 2;
-
-            res = STATUS_SUCCESS;
-            break;
+            /* Return the result */
+            return res;
         }
         case HTTP_METHOD_POST:
         {
@@ -357,8 +420,13 @@ static char *build_months_json(char **months, int count)
 
 static int serve_static_json(const char *filename, HttpResponse *resp)
 {
+    /* Return variable */
+    int res = STATUS_FAILURE;
+
+    /* Buffer to hold the full path */
     char path[PATH_MAX];
-    // If filename is absolute, use as is; else prepend EXP_ROOT
+
+    /* If filename is absolute, use as is; else prepend EXP_ROOT */
     if(filename[0] == '/')
     {
         snprintf(path, sizeof path, "%s", filename);
@@ -367,26 +435,54 @@ static int serve_static_json(const char *filename, HttpResponse *resp)
     {
         snprintf(path, sizeof path, "%s/%s", EXP_ROOT, filename);
     }
+
+    /* Open the file for reading */
     FILE *f = fopen(path, "rb");
-    if(!f)
+    if(!f) /* Check if fopen succeeded */
     {
         resp->status_code = 404;
         resp->content_type = "text/plain";
         resp->body = strdup("Not found");
         resp->body_length = strlen(resp->body);
-        return STATUS_FAILURE;
+        return res; /* Exit if file not found */
     }
+
+    /* Move the file pointer to the end to determine the file size */
     fseek(f, 0, SEEK_END);
-    long len = ftell(f);
-    fseek(f, 0, SEEK_SET);
+    size_t len = ftell(f); /* Get the file size */
+    fseek(f, 0, SEEK_SET); /* Reset the file pointer to the beginning */
+
+    /* Allocate a buffer to hold the file contents */
     char *buf = malloc(len + 1);
-    fread(buf, 1, len, f);
+    if(!buf) /* Check if malloc succeeded */
+    {
+        fclose(f);
+        return res; /* Exit if memory allocation failed */
+    }
+
+    /* Read the file contents into the buffer */
+    size_t read_len = fread(buf, 1, len, f);
+    if(read_len != len) /* Check if fread read the expected number of bytes */
+    {
+        free(buf);
+        fclose(f);
+        return res; /* Exit if reading failed */
+    }
+
+    /* Null-terminate the buffer */
     buf[len] = 0;
+
+    /* Close the file */
     fclose(f);
 
+    /* Populate the HttpResponse object */
     resp->status_code = 200;
     resp->content_type = "application/json";
     resp->body = buf;
     resp->body_length = len;
-    return STATUS_SUCCESS;
+
+    /* Set the result to success */
+    res = STATUS_SUCCESS;
+
+    return res; /* Return success */
 }
