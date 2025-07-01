@@ -31,6 +31,7 @@
  * (c) 2025
  */
 
+#include <stdio.h>  /* printf / fprintf / perror                          */
 #include <unistd.h> /* chdir                                              */
 
 #include "core.h"   /* server_init / run / shutdown                       */
@@ -41,27 +42,38 @@
  ****************************************************************************
  */
 
-int main()
+int main(int argc, char *argv[])
 {
-    /* server's listening port */
-    const char *port = "3490";
+    /* Return variable */
+    int res = -1;
 
-    // Change working directory to var/www for static file serving
-    if(chdir("var/www") != 0)
+    /* Check input */
+    if(argc != 2)
     {
-        log_error("chdir to var/www failed", strerror(errno));
+        printf("Usage: %s <port>\n", argv[0]);
     }
 
-    else if(server_init(port) == -1)
+    /* Set working directory to var/www */
+    else if(chdir("var/www") != 0)
+    {
+        printf("chdir to var/www failed %s", strerror(errno));
+    }
+
+    /* Initialize the server */
+    else if(server_init(argv[1]) == -1)
     {
         /* do nothing, server not initialized */
     }
 
+    /* Run the server */
     else
     {
-        log_info("Server started on port %s...", port);
+        log_info("Server started on port %s...", argv[1]);
         server_run();
+        
+        /* Set return variable to success */
+        res = 0;
     }
 
-    return 0;
+    return res;
 }
