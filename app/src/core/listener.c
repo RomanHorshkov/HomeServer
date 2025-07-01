@@ -280,7 +280,15 @@ void *listener_run(void *arg)
                         log_info("[listener] Accepted client from %s, fd %d", ipstr, client_fd);
 #endif /* DEBUG_MODE */
                         /* Write the client_fd to the pipe for the worker */
-                        write(listener_ptr->pipe_write_fd, &client_fd, sizeof(client_fd));
+                        if(write(listener_ptr->pipe_write_fd, &client_fd, sizeof(client_fd)) !=
+                           sizeof(client_fd)) /* Check if write succeeded */
+                        {
+#ifdef DEBUG_MODE
+                            log_error("[listener] Failed to write client_fd to pipe: %s",
+                                      strerror(errno));
+#endif                                        /* DEBUG_MODE */
+                            close(client_fd); /* Close the client file descriptor on failure */
+                        }
                     }
                 }
             }
