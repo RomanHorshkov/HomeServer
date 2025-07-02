@@ -28,9 +28,9 @@
  * PRIVATE DEFINES
  ****************************************************************************/
 
-#define EXP_ROOT "/home/roman/HomeServer/var/lib/expenses"
+#define EXP_ROOT "/var/lib/HomeServer/expenses"
 
-#define SETTINGS_FILE "/home/roman/HomeServer/var/lib/expenses/settings.json"
+#define SETTINGS_FILE "/var/lib/HomeServer/expenses/settings.json"
 #define MAX_MONTHS 256 /* max months to collect */
 
 /****************************************************************************
