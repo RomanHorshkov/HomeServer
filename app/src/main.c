@@ -37,6 +37,15 @@
 #include "core.h"   /* server_init / run / shutdown                       */
 #include "logger.h" /* loginfo / log_error / logger_init                  */
 
+
+
+/****************************************************************************
+ * PRIVATE DEFINES
+ ****************************************************************************
+ */
+
+#define CHDIR_PATH "/srv/HomeServer/www"
+
 /****************************************************************************
  * PUBLIC FUNCTIONS DEFINITIONS
  ****************************************************************************
@@ -54,9 +63,9 @@ int main(int argc, char *argv[])
     }
 
     /* Set working directory to var/www */
-    else if(chdir("var/www") != 0)
+    else if(chdir(CHDIR_PATH) != 0)
     {
-        printf("chdir to var/www failed %s", strerror(errno));
+        printf("chdir to %s failed %s", CHDIR_PATH, strerror(errno));
     }
 
     /* Initialize the server */
