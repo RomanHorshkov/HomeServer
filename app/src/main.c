@@ -54,9 +54,9 @@ int main(int argc, char *argv[])
     }
 
     /* Set working directory to var/www */
-    else if(chdir("var/www") != 0)
+    else if(chdir("/srv/HomeServer/www") != 0)
     {
-        printf("chdir to var/www failed %s", strerror(errno));
+        printf("chdir to /srv/HomeServer/www failed %s", strerror(errno));
     }
 
     /* Initialize the server */
