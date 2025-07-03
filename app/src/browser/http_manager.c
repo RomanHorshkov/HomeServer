@@ -335,7 +335,7 @@ static int validate_http_path(const char* path)
             unsigned char c = (unsigned char)path[i];
 
             /* Check for control characters, null byte, or suspicious characters */
-            if(c == '\0' || c < 0x20 || c == 0x7F)
+            if(c < 0x20 || c == 0x7F)
             {
                 log_error("[http]: Path contains control or null character %s", path);
                 res = STATUS_FAILURE;
@@ -372,7 +372,7 @@ static int validate_http_header_name(const char* hname)
     for(size_t j = 0; j < strlen(hname); ++j)
     {
         unsigned char c = (unsigned char)hname[j];
-        if(c == '\0' || c < 0x20 || c == 0x7F)
+        if(c < 0x20 || c == 0x7F)
         {
             log_error("[http]: Header name contains control or null character", hname);
             return STATUS_FAILURE;
@@ -396,7 +396,7 @@ static int validate_http_header_value(const char* hval, const char* hname)
     for(size_t j = 0; j < strlen(hval); ++j)
     {
         unsigned char c = (unsigned char)hval[j];
-        if(c == '\0' || c < 0x20 || c == 0x7F)
+        if(c < 0x20 || c == 0x7F)
         {
             log_error("[http]: Header value contains control or null character",
                       hname ? hname : "");

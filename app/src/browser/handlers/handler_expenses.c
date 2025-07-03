@@ -398,7 +398,7 @@ static int collect_expense_months(char **months, int max_months)
     DIR *d_year = opendir(EXP_ROOT);
     if(!d_year) return 0;
     int count = 0;
-    struct dirent *ye;
+    const struct dirent *ye;
     while((ye = readdir(d_year)))
     {
         if(!is_valid_year_dir(ye)) continue;
@@ -406,7 +406,7 @@ static int collect_expense_months(char **months, int max_months)
         snprintf(yearpath, sizeof yearpath, "%s/%s", EXP_ROOT, ye->d_name);
         DIR *d_mon = opendir(yearpath);
         if(!d_mon) continue;
-        struct dirent *me;
+        const struct dirent *me;
         while((me = readdir(d_mon)))
         {
             if(!is_valid_month_file(me)) continue;

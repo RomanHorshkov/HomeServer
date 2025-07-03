@@ -137,7 +137,7 @@ int router_handle_request(const HttpRequest *request, HttpResponse *response)
     }
 
     // ---------- 1. Try API routes first ----------
-    if(strncmp(request->path, "/api/", 5) == 0)
+    else if(strncmp(request->path, "/api/", 5) == 0)
     {
         for(size_t i = 0; i < sizeof(routes) / sizeof(routes[0]); ++i)
         {
@@ -184,7 +184,7 @@ static void dir_to_json(const char *dirpath, cJSON *json_obj)
         return;
     }
 
-    struct dirent *entry;
+    const struct dirent *entry;
     char path[1024];
 
     /* Iterate through all entries in the directory */
@@ -222,6 +222,9 @@ static void dir_to_json(const char *dirpath, cJSON *json_obj)
 
 static int generate_routes(void)
 {
+    /* Result variable */
+    int res = STATUS_FAILURE;
+
     /* Create the root JSON object */
     cJSON *root = cJSON_CreateObject();
 
@@ -238,6 +241,8 @@ static int generate_routes(void)
         {
             fputs(json_str, f);
             fclose(f);
+            /* Set success if file was written */
+            res = STATUS_SUCCESS;
         }
         free(json_str);
     }
@@ -245,7 +250,7 @@ static int generate_routes(void)
     /* Free the JSON object */
     cJSON_Delete(root);
 
-    return 0;
+    return res;
 }
 
 static int has_dot_extension(const char *path)
