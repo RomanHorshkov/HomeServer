@@ -2,12 +2,31 @@
 
 #include "core.h"
 
-// #include <errno.h>      /* errno, EADDRINUSE, stdout, stdin. */
-#include <netdb.h>   /* socklen_t */
-#include <pthread.h> /* pthread_create(), pthread_join() */
-#include <stdio.h>   /* printf(), fprintf(), etc. */
-#include <stdlib.h>  /* malloc(), calloc(), NULL etc */
-// #include <string.h>     /* memset(), strcpy(), strlen(), etc. */
+/**
+ * @file core.c
+ * @brief Core server logic and concurrency management.
+ *
+ * This module manages the primary components of the micro-HTTP server,
+ * including the listener, worker, and control threads. It provides a
+ * unified interface for initialization and runtime operations.
+ *
+ * Usage:
+ *   server_init(port);
+ *   server_run();
+ *
+ * Exit Codes:
+ *   STATUS_SUCCESS  (0)
+ *   STATUS_FAILURE  (1)
+ *
+ * @author  Roman Horshkov <roman.horshkov@gmail.com>
+ * @date    2025‑05‑11
+ * (c) 2025
+ */
+
+#include <netdb.h>      /* socklen_t */
+#include <pthread.h>    /* pthread_create(), pthread_join() */
+#include <stdio.h>      /* printf(), fprintf(), etc. */
+#include <stdlib.h>     /* malloc(), calloc(), NULL etc */
 #include <sys/socket.h> /* socklen_t, socket(), bind(), setsockopt(), etc. */
 #include <unistd.h>     /* fork(), close(), pipe(), read(), write(), etc. */
 

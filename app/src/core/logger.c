@@ -1,3 +1,20 @@
+/**
+ * @file logger.c
+ * @brief Logging subsystem for the micro-HTTP server.
+ *
+ * Provides functionality for recording log messages with timestamps,
+ * levels, and optional fallback to stdout if file creation fails.
+ *
+ * Usage:
+ *   logger_init("server.log");
+ *   log_info("Some message");
+ *   logger_close();
+ *
+ * @author  Roman Horshkov <roman.horshkov@gmail.com>
+ * @date    2025‑05‑11
+ * (c) 2025
+ */
+
 #define _GNU_SOURCE
 #include "logger.h"
 
@@ -9,7 +26,19 @@
 #include <time.h>       // For timestamps
 
 /****************************************************************************
- * PRIVATE VARIABLES DEFINITIONS
+ * PRIVATE DEFINES
+ ****************************************************************************
+ */
+/* None */
+
+/****************************************************************************
+ * PRIVATE STUCTURED VARIABLES
+ ****************************************************************************
+ */
+/* None */
+
+/****************************************************************************
+ * PRIVATE VARIABLES
  ****************************************************************************
  */
 static FILE *log_file = NULL;

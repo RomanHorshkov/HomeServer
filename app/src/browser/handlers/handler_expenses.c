@@ -1,14 +1,18 @@
-/*
+/**
  * handler_expenses.c
  * ------------------
  * Implements the /api/expenses endpoint handler for the web server.
  *
- * - GET: Responds with a JSON array of "YYYY-MM" strings, representing months
- *        for which expense records exist under www/expenses/<year>/<month>.json.
- * - (Future) PUT/POST: Add new expense records (not implemented here).
+ * Provides request handling logic for expense-related functionality,
+ * returning JSON responses with expense details, status codes, etc.
  *
- * (c) 2025 Roman Horshkov
+ * No direct socket I/O is performed here; the caller is responsible for
+ * sending and receiving data over the network.
  *
+ * Author and copyright:
+ *   @author  Roman Horshkov <roman.horshkov@gmail.com>
+ *   @date    2025‑05‑11
+ *   (c) 2025
  */
 
 #define _GNU_SOURCE
@@ -32,6 +36,18 @@
 
 #define SETTINGS_FILE "/var/lib/HomeServer/expenses/settings.json"
 #define MAX_MONTHS 256 /* max months to collect */
+
+/****************************************************************************
+ * PRIVATE STUCTURED VARIABLES
+ ****************************************************************************
+ */
+/* None */
+
+/****************************************************************************
+ * PRIVATE VARIABLES
+ ****************************************************************************
+ */
+/* None */
 
 /****************************************************************************
  * PRIVATE FUNCTION PROTOTYPES
