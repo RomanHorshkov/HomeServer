@@ -173,7 +173,7 @@ static void listener_shutdown(listener_t **listener_ptr);
  ****************************************************************************
  */
 
-int listener_init(listener_t **listener_ptr, const char *port, int *pipe_write_fd)
+int listener_init(listener_t **listener_ptr, const char *port, const int *pipe_write_fd)
 {
     /* return value */
     int res = STATUS_FAILURE;

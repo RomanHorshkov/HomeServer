@@ -49,7 +49,7 @@ typedef struct worker worker_t;
  * @retval  0  Success.
  * @retval -1  Failure (see log for details).
  */
-int worker_init(worker_t **worker_ptr, int *pipe_read_fd);
+int worker_init(worker_t **worker_ptr, const int *pipe_read_fd);
 
 /**
  * @brief Main worker thread function: manages all active client sockets.

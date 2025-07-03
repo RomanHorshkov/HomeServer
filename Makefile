@@ -75,16 +75,13 @@ lint:
 
 # Better Static analysis
 tidy:
-	@echo "🐻 Generating compile_commands.json using bear..."
+	@echo "🐻 Generating compile_commands.json using bear…"
 	bear -- make -B > /dev/null
 
-	@echo "🧠 Running clang-tidy (suppressing C11 unsafe API warnings)..."
-	clang-tidy \
-		-checks=-clang-analyzer-security.insecureAPI.DeprecatedOrUnsafeBufferHandling \
-		$(shell find $(SRCDIRS) -name '*.c') -p . -- \
-		$(CLANGTIDY_INCLUDES)
+	@echo "🧠 Running clang-tidy (suppressing C11 unsafe API warnings)…"
+	clang-tidy $(SOURCES) -p . -- $(CLANGTIDY_INCLUDES)
 
-	@echo "🧼 Cleaning temporary build files..."
+	@echo "🧼 Cleaning temporary build files…"
 	rm -f *.o */*.o */*/*.o
 
 # ─── Build a manifest of all .puml diagrams and .md/.txt notes ───

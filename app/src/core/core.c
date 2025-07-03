@@ -124,8 +124,6 @@ int server_init(const char *port)
         /* Initialize the logger */
         logger_init("server.log");
 
-        /* Initialize the router */
-
         /* Initialize the listener */
         if(listener_init(&srv.listener, port, &srv.pipe_fds[1]) != STATUS_SUCCESS)
         {
@@ -198,6 +196,7 @@ void *control_run(void *arg)
             /* Set listener and worker status to shutdown */
             worker_set_status(srv.worker, SERVER_STATUS_SHUTDOWN);
             listener_set_status(srv.listener, SERVER_STATUS_SHUTDOWN);
+            logger_close();
             break;
         }
         else

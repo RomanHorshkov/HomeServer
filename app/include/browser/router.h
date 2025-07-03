@@ -14,6 +14,6 @@
  * @retval 0        Success.
  * @retval -1       No matching route (404).
  */
-int router_handle_request(const HttpRequest* req, HttpResponse* res);
+int router_handle_request(const HttpRequest* request, HttpResponse* response);
 
 #endif /* SERVER_ROUTER_H */

@@ -48,37 +48,36 @@
  ****************************************************************************
  */
 
-int handler_static(const HttpRequest *req, HttpResponse *resp)
+int handler_static(const HttpRequest *request, HttpResponse *response)
 {
     int status = STATUS_FAILURE;                       /* overall handler status */
     char requested_file_path[HTTP_MAX_PATH_LEN] = {0}; /* filesystem path buffer */
     const char *rel_path = NULL;                       /* relative path to serve */
     FILE *f = NULL;                                    /* file handle */
     char *body = NULL;                                 /* buffer for file contents */
-    long size = 0;                                     /* size of the file */
 
     /* Validate input pointers */
-    if(req && resp)
+    if(request != NULL && response != NULL)
     {
         /* Map "/" (home) to the SPA shell at views/index.html */
-        if(strcmp(req->path, URI_HOME) == 0)
+        if(strcmp(request->path, URI_HOME) == 0)
         {
             rel_path = "views/index.html";
         }
         /* Strip leading '/' from other absolute paths */
-        else if(req->path[0] == '/' && req->path[1] != '\0')
+        else if(request->path[0] == '/' && request->path[1] != '\0')
         {
-            rel_path = req->path + 1;
+            rel_path = request->path + 1;
         }
         /* Strip leading "./" if present */
-        else if(req->path[0] == '.' && req->path[1] == '/')
+        else if(request->path[0] == '.' && request->path[1] == '/')
         {
-            rel_path = req->path + 2;
+            rel_path = request->path + 2;
         }
         /* Use the path as-is otherwise */
         else
         {
-            rel_path = req->path;
+            rel_path = request->path;
         }
 
         /* Ensure the relative path fits into our buffer */
@@ -91,6 +90,9 @@ int handler_static(const HttpRequest *req, HttpResponse *resp)
             f = fopen(requested_file_path, "rb");
             if(f)
             {
+                /* size of the file */
+                long size = 0;
+
                 /* Seek to end to determine file size */
                 if(fseek(f, 0, SEEK_END) == 0 && (size = ftell(f)) > 0)
                 {
@@ -104,11 +106,11 @@ int handler_static(const HttpRequest *req, HttpResponse *resp)
                        fread(body, 1, (size_t)size, f) == (size_t)size)
                     {
                         /* Populate the HttpResponse structure */
-                        resp->status_code = 200;
-                        resp->status_text = "OK";
-                        resp->content_type = guess_mime_type(requested_file_path);
-                        resp->body = body;
-                        resp->body_length = (size_t)size;
+                        response->status_code = 200;
+                        response->status_text = "OK";
+                        response->content_type = guess_mime_type(requested_file_path);
+                        response->body = body;
+                        response->body_length = (size_t)size;
                         status = STATUS_SUCCESS;
                     }
                 }
@@ -125,7 +127,7 @@ int handler_static(const HttpRequest *req, HttpResponse *resp)
         {
             free(body);
         }
-        send_404(resp);
+        send_404(response);
     }
 
     /* Single exit point */
