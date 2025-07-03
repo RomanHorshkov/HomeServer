@@ -1,3 +1,24 @@
+/**
+ * @file listener.c
+ * @brief Accepts and manages incoming connections, passing them to the worker.
+ *
+ * This module binds, listens, and accepts connections on IPv4/IPv6 sockets. It
+ * sets options for reuse, linger, and non-blocking mode. When a new connection
+ * arrives, the file descriptor is sent to the worker via a pipe.
+ *
+ * Usage:
+ *   listener_init(...)
+ *   listener_run(...)
+ *
+ * Exit Codes:
+ *   STATUS_SUCCESS  (0)
+ *   STATUS_FAILURE  (1)
+ *
+ * @author  Roman Horshkov <roman.horshkov@gmail.com>
+ * @date    2025‑05‑11
+ * (c) 2025
+ */
+
 #define _POSIX_C_SOURCE 200112L
 #define _GNU_SOURCE
 #include "listener.h" /* listener */
@@ -14,6 +35,12 @@
 
 #include "logger.h"          /* logger */
 #include "server_settings.h" /* settings */
+
+/****************************************************************************
+ * PRIVATE DEFINES
+ ****************************************************************************
+ */
+/* None */
 
 /****************************************************************************
  * PRIVATE STUCTURED VARIABLES
@@ -36,7 +63,7 @@ struct listener
 };
 
 /****************************************************************************
- * PRIVATE VARIABLE DECLARATIONS
+ * PRIVATE VARIABLES
  ****************************************************************************
  */
 /* None */

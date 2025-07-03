@@ -1,13 +1,21 @@
 #define _GNU_SOURCE
 /**
  * @file router.c
- * @brief HTTP request router implementation
+ * @brief HTTP request router implementation.
  *
- * This module dispatches incoming HTTP requests to appropriate handlers:
- *  - serving static files (HTML, CSS, images)
- *  - API endpoints (e.g., whoami, expenses)
- *  - dynamic content pages
- * It also provides unified 404 and 405 responses via dedicated helper functions.
+ * Dispatches incoming requests to handlers for static files, APIs, or dynamic
+ * content. Provides unified 404/405 responses when needed.
+ *
+ * Usage:
+ *   router_handle_request(req, resp);
+ *
+ * Exit Codes:
+ *   STATUS_SUCCESS  (0)
+ *   STATUS_FAILURE  (1)
+ *
+ * @author  Roman Horshkov <roman.horshkov@gmail.com>
+ * @date    2025‑05‑11
+ * (c) 2025
  */
 
 #include "router.h"

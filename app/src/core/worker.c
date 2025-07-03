@@ -1,13 +1,33 @@
+/**
+ * @file worker.c
+ * @brief Manages client connections passed from the listener, handles requests, and handles
+ * concurrency.
+ *
+ * This module waits for client file descriptors passed through a pipe, monitors them using epoll,
+ * and delegates request processing to the browser subsystem. It gracefully closes client
+ * connections on error or shutdown.
+ *
+ * Usage:
+ *   worker_init(...)
+ *   worker_run(...)
+ *
+ * Exit Codes:
+ *   STATUS_SUCCESS  (0)
+ *   STATUS_FAILURE  (1)
+ *
+ * @author  Roman Horshkov <roman.horshkov@gmail.com>
+ * @date    2025‑05‑11
+ * (c) 2025
+ */
+
 #define _POSIX_C_SOURCE 200112L
 #define _GNU_SOURCE
 #include "worker.h" /* worker */
 
-// #include <errno.h>     /* errno, EADDRINUSE, etc. */
 #include <fcntl.h>     /* fcntl(), F_GETFL, F_SETFL, O_NONBLOCK */
 #include <netdb.h>     /* getaddrinfo(), addrinfo, gai_strerror() */
 #include <stdatomic.h> /* atomic_int */
 #include <stdlib.h>    /* malloc(), calloc() etc */
-// #include <string.h>    /* memset(), strcpy(), strlen(), etc. */
 #include <sys/epoll.h> /* epoll_create1(), epoll_ctl(), epoll_wait(), struct epoll_event */
 #include <unistd.h>    /* fork(), close(), read(), write(), etc. */
 
@@ -17,12 +37,6 @@
 
 /****************************************************************************
  * PRIVATE DEFINES
- ****************************************************************************
- */
-/* None */
-
-/****************************************************************************
- * PRIVATE FUNCTIONS PROTOTYPES
  ****************************************************************************
  */
 /* None */
@@ -46,6 +60,18 @@ struct worker
     /* status variable */
     atomic_int status; /* 0 = inactive, 1 = active */
 };
+
+/****************************************************************************
+ * PRIVATE VARIABLES
+ ****************************************************************************
+ */
+/* None */
+
+/****************************************************************************
+ * PRIVATE FUNCTIONS PROTOTYPES
+ ****************************************************************************
+ */
+/* None */
 
 /****************************************************************************
  * PUBLIC FUNCTIONS DEFINITIONS

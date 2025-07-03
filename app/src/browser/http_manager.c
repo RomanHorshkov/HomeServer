@@ -1,12 +1,29 @@
-#define _GNU_SOURCE
+/**
+ * @file http_manager.c
+ * @brief Parses and manages raw HTTP requests.
+ *
+ * Uses llhttp to extract method, path, headers, and body from incoming data.
+ * Enforces basic security checks (no path traversal, safe headers) and determines
+ * connection policy (keep-alive or close) before returning a structured HttpRequest.
+ *
+ * Usage:
+ *   http_manage_request(buffer, length, request);
+ *
+ * Exit Codes:
+ *   STATUS_SUCCESS  (0)
+ *   STATUS_FAILURE  (1)
+ *
+ * @author  Roman Horshkov <roman.horshkov@gmail.com>
+ * @date    2025‑05‑11
+ * (c) 2025
+ */
 
+#define _GNU_SOURCE
 #include "http_manager.h"
 
 #include <ctype.h>
-// #include <errno.h>  // errno, EADDRINUSE, etc.
 #include <stdio.h>
 #include <stdlib.h>  // malloc(), free()
-// #include <string.h>  // memset(), strcpy(), strlen(), etc.
 
 #include "llhttp.h"
 #include "logger.h"

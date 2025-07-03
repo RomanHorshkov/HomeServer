@@ -1,4 +1,4 @@
-/*
+/**
  * handler_whoami.c
  * ----------------
  * Implements the /api/whoami endpoint handler for the web server.
@@ -12,14 +12,16 @@
  * No socket I/O is performed here; the caller is responsible for network
  * transmission and memory cleanup.
  *
- * (c) 2025 Roman Horshkov
+ * @author  Roman Horshkov <roman.horshkov@gmail.com>
+ * @date    2025‑05‑11
+ * (c) 2025
  */
 #define _GNU_SOURCE
 
 #include "handler_whoami.h"
 
-#include <sys/time.h> /* gettimeofday()                                       */
-#include <time.h>     /* gmtime_r(), strftime()                               */
+#include <sys/time.h> /* gettimeofday() */
+#include <time.h>     /* gmtime_r(), strftime() */
 
 #include "handler_utils.h"
 
@@ -30,13 +32,19 @@
 /* None */
 
 /****************************************************************************
- * PRIVATE FUNCTIONS PROTOTYPES
+ * PRIVATE STRUCTURED VARIABLES
  ****************************************************************************
  */
 /* None */
 
 /****************************************************************************
- * PRIVATE STRUCTURED VARIABLES
+ * PRIVATE VARIABLES
+ ****************************************************************************
+ */
+/* None */
+
+/****************************************************************************
+ * PRIVATE FUNCTIONS PROTOTYPES
  ****************************************************************************
  */
 /* None */
