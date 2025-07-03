@@ -1,17 +1,17 @@
-/*
- * handler_utils.c
- * ---------------
- * Utility helpers for HTTP API endpoint handlers in the web server.
+/**
+ * @file handler_utils.c
+ * @brief Utility functions used by various handlers.
  *
- * Provides:
- *   - url_decode():   Percent-decodes URL-encoded strings (for query/path parsing)
- *   - respond_400():  Fills an HttpResponse with a 400 Bad Request JSON error
+ * Contains helper routines (e.g. guess_mime_type, send_404) that
+ * assist other handler modules in building and sending HTTP responses.
  *
- * These helpers are shared by multiple handlers to avoid code duplication.
- * No socket I/O is performed here; the caller is responsible for network
- * transmission and memory cleanup.
+ * Usage:
+ *   guess_mime_type("file.txt");
+ *   send_404(&response);
  *
- * (c) 2025 Roman Horshkov
+ *   @author  Roman Horshkov <roman.horshkov@gmail.com>
+ *   @date    2025‑05‑11
+ *   (c) 2025
  */
 
 #define _GNU_SOURCE
@@ -20,9 +20,22 @@
 #include "handler_utils.h"
 
 /****************************************************************************
+ * PRIVATE DEFINES
+ ****************************************************************************
+ */
+#define URI_HOME "/"
+
+/****************************************************************************
  * PRIVATE STRUCTURED VARIABLES
  ****************************************************************************
  */
+/* None */
+
+/****************************************************************************
+ * PRIVATE VARIABLES
+ ****************************************************************************
+ */
+/* None */
 
 /****************************************************************************
  * MIME type mapping
@@ -39,6 +52,12 @@ const struct
     {".jpg", "image/jpeg"},   {".jpeg", "image/jpeg"},   {".png", "image/png"},
     {".gif", "image/gif"},    {".svg", "image/svg+xml"}, {".json", "application/json"},
     {".md", "text/markdown"}, {".puml", "text/plain"}};
+
+/****************************************************************************
+ * PRIVATE FUNCTIONS PROTOTYPES
+ ****************************************************************************
+ */
+/* None */
 
 /****************************************************************************
  * PUBLIC FUNCTIONS DEFINITIONS

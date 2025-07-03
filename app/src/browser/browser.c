@@ -1,3 +1,23 @@
+/**
+ * @file browser.c
+ * @brief Interprets and responds to client HTTP requests.
+ *
+ * Orchestrates request parsing, routing, and response sending. Handles raw socket I/O,
+ * inherited from the worker module. Prepares HttpRequest and HttpResponse structures
+ * for other modules to operate on.
+ *
+ * Usage:
+ *   browser_manage_client_req(fd, recv_buf, bytes_read);
+ *
+ * Exit Codes:
+ *   STATUS_SUCCESS  (0)
+ *   STATUS_FAILURE  (1)
+ *
+ * @author  Roman Horshkov <roman.horshkov@gmail.com>
+ * @date    2025‑05‑11
+ * (c) 2025
+ */
+
 #include "browser.h"
 
 #include <errno.h>      /* errno */

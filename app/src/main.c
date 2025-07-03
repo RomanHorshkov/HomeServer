@@ -1,30 +1,16 @@
 /**
  * @file main.c
- * @brief Stand-alone entry point for the micro-HTTP server.
+ * @brief The containerized micro-HTTP server entry point.
  *
- * This translation unit contains **only** the `main()` function; all other
- * concerns (logging, socket management, request handling, etc.) are encapsulated
- * behind @ref core.h, ensuring the program’s high-level flow remains
- * crystal clear and maintainable.
+ * This function sets the working directory, initializes the server,
+ * and processes incoming requests until shutdown.
  *
- * ```
- *  ┌─────────────┐   init   ┌───────────┐
- *  │   main()    │ ───────▶ │  server   │
- *  │  (this TU)  │          │   core    │
- *  └─────────────┘ ◀─────── └───────────┘
- *        ▲                    ▲   ▲
- *        │  run / shutdown    │   └─ listener / worker / …
- *        └────────────────────┘
- * ```
+ * Usage:
+ *   ./server <port>
  *
- * ### Exit Status
- * | Code | Meaning                                    |
- * |------|--------------------------------------------|
- * | 0    | Clean shutdown (user typed `'q'`, SIGINT…) |
- * | 1    | Core initialization failed                 |
- *
- * ### Command-Line Arguments
- * For simplicity, the listening port is currently hard-wired to **3490**.
+ * Exit Codes:
+ *   0  Clean shutdown
+ *   1  Initialization failed
  *
  * @author  Roman Horshkov <roman.horshkov@gmail.com>
  * @date    2025‑05‑11

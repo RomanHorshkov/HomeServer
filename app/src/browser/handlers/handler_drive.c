@@ -1,17 +1,18 @@
-/*
+/**
  * handler_drive.c
  * ---------------
  * Implements the /api/drive endpoint handler for the web server.
  *
- * Responds with a JSON array listing the contents of a directory under www/.
- * The ?path= query parameter specifies the subdirectory to list (default: root).
- * Handles path decoding, sanitization, and error reporting.
+ * Handles drive-related HTTP requests such as directory listing, file
+ * upload, or file download. Utilizes OS filesystem primitives for
+ * reading/writing.
  *
- * Each handler receives a parsed HttpRequest and fills a fresh HttpResponse.
- * No socket I/O is performed here; the caller is responsible for network
- * transmission and memory cleanup.
+ * No direct network I/O is performed here; the caller is responsible for
+ * sending responses.
  *
- * (c) 2025 Roman Horshkov
+ *   @author  Roman Horshkov <roman.horshkov@gmail.com>
+ *   @date    2025‑05‑11
+ *   (c) 2025
  */
 
 #ifndef SERVER_HANDLER_DRIVE_H
@@ -32,13 +33,19 @@
 /* None */
 
 /****************************************************************************
- * PRIVATE FUNCTIONS PROTOTYPES
+ * PRIVATE STUCTURED VARIABLES
  ****************************************************************************
  */
 /* None */
 
 /****************************************************************************
- * PRIVATE STRUCTURED VARIABLES
+ * PRIVATE VARIABLES
+ ****************************************************************************
+ */
+/* None */
+
+/****************************************************************************
+ * PRIVATE FUNCTIONS PROTOTYPES
  ****************************************************************************
  */
 /* None */
