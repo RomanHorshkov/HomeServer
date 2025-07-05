@@ -1,10 +1,11 @@
 # ------ Build configuration ------
 CC              := gcc
-CFLAGS          := -std=c11 -Wall -Werror -Wextra -pedantic -g
+# Default to debug flags for all/all: debug build
+CFLAGS          := -std=c11 -Wall -Werror -Wextra -pedantic -g -O0 -DDEBUG_MODE
 
 # External libraries (relative to app/external)
 LDLIBS          += -Lapp/external/llhttp -lllhttp \
-                   -Lapp/external/cjson -lcjson
+				   -Lapp/external/cjson -lcjson
 
 # Include directories (relative to app/)
 INCDIRS         := app/include app/include/core app/include/browser app/include/browser/handlers app/external/llhttp app/external/cjson
@@ -29,9 +30,6 @@ DEPS            := $(OBJECTS:.o=.d)
 # ------ Phony targets ------
 .PHONY: all clean run debug release tidy lint format notes
 
-# ------ Default build ------
-all: $(BINDIR)/$(TARGET)
-
 # Link step ---------------------------------------------------------------
 $(BINDIR)/$(TARGET): $(OBJECTS)
 	@mkdir -p $(BINDIR)
@@ -50,11 +48,19 @@ $(OBJDIR):
 run: all
 	@./$(BINDIR)/$(TARGET)
 
-debug: export CFLAGS += -O0
+
+# ------ Default build ------
+all: $(BINDIR)/$(TARGET)
+
+
+# Debug build (same as default)
 debug: all
 
-release: export CFLAGS += -O2 -DNDEBUG
+# Release build: optimized, no debug flags, no DEBUG_MODE
+release: export CFLAGS = -std=c11 -Wall -Werror -Wextra -pedantic -O2 -DNDEBUG
 release: all
+
+all: $(BINDIR)/$(TARGET)
 
 # Auto formatting ---------------------------------------------------------
 format:
