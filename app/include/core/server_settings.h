@@ -29,10 +29,7 @@ enum server_status
  ****************************************************************************
  */
 
-/* Debug mode */
-#define DEBUG_MODE
-
-/****************************************************************************
+/*
  * SERVER PROPERTIES
  */
 
@@ -57,7 +54,7 @@ enum server_status
 #define SERVER_SLEEP_TIME_US ((SERVER_SLEEP_TIME_MS) * 1000)
 #define SERVER_SLEEP_TIME_NS ((SERVER_SLEEP_TIME_US) * 1000)
 
-/****************************************************************************
+/*
  * SOCKET PROPERTIES
  */
 
@@ -70,7 +67,7 @@ enum server_status
 /* Client short timeout [ms] */
 #define CLIENT_MAX_TIMEOUT_MS 0
 
-/****************************************************************************
+/*
  * HTTP PROPERTIES
  */
 
