@@ -46,18 +46,17 @@ $(OBJDIR):
 
 # Convenience helpers ------------------------------------------------------
 run: all
-	@./$(BINDIR)/$(TARGET)
+	@./$(BINDIR)/$(TARGET) 3490
 
 
 # ------ Default build ------
 all: $(BINDIR)/$(TARGET)
 
-
 # Debug build (same as default)
 debug: all
 
 # Release build: optimized, no debug flags, no DEBUG_MODE
-release: export CFLAGS = -std=c11 -Wall -Werror -Wextra -pedantic -O2 -DNDEBUG
+release: export CFLAGS = -std=c11 -Wall -Werror -Wextra -pedantic -O2 -DNDEBUG_MODE -DFHS_RELEASE
 release: all
 
 all: $(BINDIR)/$(TARGET)
