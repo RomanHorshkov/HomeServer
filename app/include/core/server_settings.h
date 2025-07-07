@@ -85,7 +85,7 @@ enum server_status
  */
 /* Home page URI */
 // #ifdef DEBUG_MODE
-#    define WEBSITE_HOME_PAGE "views/index.html"
+#define WEBSITE_HOME_PAGE "views/index.html"
 // #else
 // #define WEBSITE_HOME_PAGE "views/index.html"
 // #endif /* DEBUG_MODE */
