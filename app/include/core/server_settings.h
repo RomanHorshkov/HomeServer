@@ -84,10 +84,10 @@ enum server_status
  * WEBSITE SETTINGS
  */
 /* Home page URI */
-#ifdef DEBUG_MODE
+// #ifdef DEBUG_MODE
 #    define WEBSITE_HOME_PAGE "views/index.html"
 // #else
 // #define WEBSITE_HOME_PAGE "views/index.html"
-#endif /* DEBUG_MODE */
+// #endif /* DEBUG_MODE */
 
 #endif /* SERVER_SETTINGS_H */
