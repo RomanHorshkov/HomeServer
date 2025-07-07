@@ -31,10 +31,14 @@
 /****************************************************************************
  * PRIVATE DEFINES
  ****************************************************************************/
+#ifdef DEBUG_MODE
+#    define EXP_ROOT "/home/roman/HomeServer/var/lib/expenses"
+#    define EXPENSES_SETTINGS_FILE "/home/roman/HomeServer/var/lib/expenses/settings.json"
+#else
+#    define EXP_ROOT "/var/lib/HomeServer/expenses"
+#    define EXPENSES_SETTINGS_FILE "/var/lib/HomeServer/expenses/settings.json"
+#endif /* DEBUG_MODE */
 
-#define EXP_ROOT "/var/lib/HomeServer/expenses"
-
-#define SETTINGS_FILE "/var/lib/HomeServer/expenses/settings.json"
 #define MAX_MONTHS 256 /* max months to collect */
 
 /****************************************************************************
@@ -113,7 +117,7 @@ int handler_expenses(const HttpRequest *req, HttpResponse *resp)
             if(strcmp(req->path, "/api/expenses/settings.json") == 0)
             {
                 // Serve the static settings.json file
-                return serve_static_json(SETTINGS_FILE, resp);
+                return serve_static_json(EXPENSES_SETTINGS_FILE, resp);
             }
             /* List all available months if requesting the root endpoint */
             else if(strcmp(req->path, "/api/expenses/") == 0 ||
@@ -123,7 +127,7 @@ int handler_expenses(const HttpRequest *req, HttpResponse *resp)
                 char *months[MAX_MONTHS];
                 int count = collect_expense_months(months, MAX_MONTHS);
 
-                // /* Build a compact JSON array string */
+                /* Build a compact JSON array string */
                 char *out = build_months_json(months, count);
 
                 /* Fill the response */

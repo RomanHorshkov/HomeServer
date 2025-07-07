@@ -23,7 +23,7 @@
  * PRIVATE DEFINES
  ****************************************************************************
  */
-#define URI_HOME "/"
+/* None */
 
 /****************************************************************************
  * PRIVATE STRUCTURED VARIABLES
@@ -50,30 +50,43 @@
 
 int handler_static(const HttpRequest *request, HttpResponse *response)
 {
-    int status = STATUS_FAILURE;                       /* overall handler status */
-    char requested_file_path[HTTP_MAX_PATH_LEN] = {0}; /* filesystem path buffer */
-    const char *rel_path = NULL;                       /* relative path to serve */
-    FILE *f = NULL;                                    /* file handle */
-    char *body = NULL;                                 /* buffer for file contents */
+    /* return value */
+    int res = STATUS_FAILURE;
+
+    /* filesystem path buffer */
+    char requested_file_path[HTTP_MAX_PATH_LEN] = {0};
+
+    /* relative path to serve */
+    const char *rel_path = NULL;
+
+    /* file handle */
+    FILE *f = NULL;
+
+    /* buffer for file contents */
+    char *body = NULL;
 
     /* Validate input pointers */
     if(request != NULL && response != NULL)
     {
         /* Map "/" (home) to the SPA shell at views/index.html */
-        if(strcmp(request->path, URI_HOME) == 0)
+        if(request->path[0] == '/' && request->path[1] == '\0')
         {
-            rel_path = "views/index.html";
+            /* Default home page in server settings */
+            rel_path = WEBSITE_HOME_PAGE;
         }
+
         /* Strip leading '/' from other absolute paths */
         else if(request->path[0] == '/' && request->path[1] != '\0')
         {
             rel_path = request->path + 1;
         }
+
         /* Strip leading "./" if present */
         else if(request->path[0] == '.' && request->path[1] == '/')
         {
             rel_path = request->path + 2;
         }
+
         /* Use the path as-is otherwise */
         else
         {
@@ -111,17 +124,24 @@ int handler_static(const HttpRequest *request, HttpResponse *response)
                         response->content_type = guess_mime_type(requested_file_path);
                         response->body = body;
                         response->body_length = (size_t)size;
-                        status = STATUS_SUCCESS;
+                        res = STATUS_SUCCESS;
                     }
                 }
                 /* Close file handle */
                 fclose(f);
             }
+            else
+            {
+#ifdef DEBUG_MODE
+                /* Log error if file could not be opened */
+                log_error("[handler static]: Failed to open file", requested_file_path);
+#endif /* DEBUG_MODE */
+            }
         }
     }
 
     /* On failure, free any allocated buffer and send 404 */
-    if(status != STATUS_SUCCESS)
+    if(res != STATUS_SUCCESS)
     {
         if(body)
         {
@@ -131,7 +151,7 @@ int handler_static(const HttpRequest *request, HttpResponse *response)
     }
 
     /* Single exit point */
-    return status;
+    return res;
 }
 
 /****************************************************************************

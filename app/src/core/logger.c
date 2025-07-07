@@ -21,7 +21,7 @@
 #include <arpa/inet.h>  // inet_ntop(), inet_pton()
 #include <netdb.h>      // getaddrinfo(), addrinfo, gai_strerror()
 #include <stdarg.h>     // varg
-#include <stdio.h>      // FILE
+#include <stdio.h>      // FILE , fopen(), fprintf(), fflush(), fclose()
 #include <stdlib.h>     // exit(), malloc(), free()
 #include <time.h>       // For timestamps
 
@@ -79,7 +79,8 @@ void logger_init(const char *filename)
         if(!log_file)
         {
             perror("Failed to open log file");
-            log_file = stdout;  // fallback
+            /* fallback to stdout if problems with file */
+            log_file = stdout;
         }
     }
 }

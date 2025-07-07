@@ -289,7 +289,8 @@ static int http_parse_request(const char* buffer, const size_t buffer_len, HttpR
         }
 
 #ifdef DEBUG_MODE
-        log_info("[http]: METHOD: %s, PATH: %s", http_method_to_string(req->method), req->path);
+        log_info("[http]: parse request: METHOD: %s, PATH: %s", http_method_to_string(req->method),
+                 req->path);
         // log_info("[http]: Parsed %d headers:", req->header_count);
         // for(int i = 0; i < req->header_count; ++i)
         // {
@@ -408,40 +409,64 @@ static int validate_http_header_value(const char* hval, const char* hname)
 
 static int sanitize_http_request(HttpRequest* req)
 {
+    /* Return variable */
+    int res = STATUS_FAILURE;
+
     /* Check for null pointers */
     if(!req)
     {
         log_error("[http]: Null pointer argument to sanitize_http_request", "");
-        return STATUS_FAILURE;
     }
 
     /* Validate the request path */
-    if(validate_http_path(req->path) != STATUS_SUCCESS) return STATUS_FAILURE;
+    else if(validate_http_path(req->path) != STATUS_SUCCESS)
+    {
+        log_error("[http]: Validate path failed", req->path);
+    }
 
     /* Ensure the method is valid */
-    if(req->method == HTTP_METHOD_UNKNOWN)
+    else if(req->method == HTTP_METHOD_UNKNOWN)
     {
-        log_error("[http]: Invalid HTTP method", "");
-        return STATUS_FAILURE;
+        log_error("[http]: Invalid HTTP method HTTP_METHOD_UNKNOWN", "");
     }
 
     /* Ensure headers are within limits */
-    if(req->header_count > HTTP_MAX_HEADER_COUNT)
+    else if(req->header_count > HTTP_MAX_HEADER_COUNT)
     {
         log_error("[http]: Too many headers", "");
         return STATUS_FAILURE;
     }
 
-    /* Ensure header names and values are within limits and safe */
-    for(int i = 0; i < req->header_count; ++i)
+    else
     {
-        const char* hname = req->header_names[i];
-        const char* hval = req->header_values[i];
-        if(validate_http_header_name(hname) != STATUS_SUCCESS) return STATUS_FAILURE;
-        if(validate_http_header_value(hval, hname) != STATUS_SUCCESS) return STATUS_FAILURE;
+        res = STATUS_SUCCESS;
+
+        /* Ensure header names and values are within limits and safe */
+        for(int i = 0; i < req->header_count; ++i)
+        {
+            const char* hname = req->header_names[i];
+            const char* hval = req->header_values[i];
+            if(validate_http_header_name(hname) != STATUS_SUCCESS)
+            {
+                log_error("[http]: Invalid header name", hname);
+                res = STATUS_FAILURE;
+                break;
+            };
+            if(validate_http_header_value(hval, hname) != STATUS_SUCCESS)
+            {
+                log_error("[http]: Invalid header value", hval);
+                res = STATUS_FAILURE;
+                break;
+            }
+        }
+
+#ifdef DEBUG_MODE
+        log_info("[http]: sanitizeD request: METHOD: %s, PATH: %s",
+                 http_method_to_string(req->method), req->path);
+#endif /* DEBUG_MODE */
     }
 
-    return STATUS_SUCCESS;
+    return res;
 }
 
 static int on_url(llhttp_t* parser, const char* at, size_t length)

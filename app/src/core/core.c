@@ -25,10 +25,12 @@
 
 #include <netdb.h>      /* socklen_t */
 #include <pthread.h>    /* pthread_create(), pthread_join() */
+#include <pwd.h>        /* pwd */
 #include <stdio.h>      /* printf(), fprintf(), etc. */
 #include <stdlib.h>     /* malloc(), calloc(), NULL etc */
 #include <sys/socket.h> /* socklen_t, socket(), bind(), setsockopt(), etc. */
-#include <unistd.h>     /* fork(), close(), pipe(), read(), write(), etc. */
+#include <sys/types.h>
+#include <unistd.h> /* fork(), close(), pipe(), read(), write(), getlogin(), getcwd(), system() etc. */
 
 #include "listener.h"
 #include "logger.h"
@@ -104,6 +106,28 @@ int server_init(const char *port)
 {
     /* return value */
     int ret = STATUS_FAILURE;
+
+#ifdef DEBUG_MODE
+    /* Print current user */
+    uid_t uid = geteuid();
+    const struct passwd *pw = getpwuid(uid);
+    if(pw)
+    {
+        printf("CORE: running as user: %s\n", pw->pw_name);
+    }
+    else
+    {
+        printf("CORE: running as user: UNKNOWN (uid=%d)\n", (int)uid);
+    }
+
+    /* Print current working directory */
+    char cwd[HTTP_MAX_PATH_LEN];
+    if(getcwd(cwd, sizeof(cwd)) != NULL) printf("CORE: cwd: %s\n", cwd);
+
+    /* List directory contents */
+    printf("CORE: ls -la:\n");
+    system("ls -la");
+#endif /* DEBUG_MODE */
 
     /* Initialize the pipe between listener and worker */
     if(pipe(srv.pipe_fds) == -1)
