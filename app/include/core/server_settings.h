@@ -80,4 +80,14 @@ enum server_status
 #define HTTP_MAX_HEADER_NAME_LEN 64
 #define HTTP_MAX_HEADER_VALUE_LEN 256
 
+/*
+ * WEBSITE SETTINGS
+ */
+/* Home page URI */
+#ifdef DEBUG_MODE
+#    define WEBSITE_HOME_PAGE "views/index.html"
+// #else
+// #define WEBSITE_HOME_PAGE "views/index.html"
+#endif /* DEBUG_MODE */
+
 #endif /* SERVER_SETTINGS_H */

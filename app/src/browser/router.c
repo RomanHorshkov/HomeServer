@@ -244,6 +244,11 @@ static int generate_routes(void)
             /* Set success if file was written */
             res = STATUS_SUCCESS;
         }
+        else
+        {
+            log_error("[router]: generate_routes: Failed to open map.json for writing",
+                      strerror(errno));
+        }
         free(json_str);
     }
 

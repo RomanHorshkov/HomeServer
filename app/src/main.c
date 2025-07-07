@@ -20,15 +20,18 @@
 #include <stdio.h>  /* printf / fprintf / perror                          */
 #include <unistd.h> /* chdir                                              */
 
-#include "core.h"   /* server_init / run / shutdown                       */
-#include "logger.h" /* loginfo / log_error / logger_init                  */
+#include "core.h" /* server_init / run / shutdown                       */
+// #include "logger.h" /* loginfo / log_error / logger_init                  */
 
 /****************************************************************************
  * PRIVATE DEFINES
  ****************************************************************************
  */
-
-#define CHDIR_PATH "/srv/HomeServer/www"
+#ifndef FHS_RELEASE
+#    define CHDIR_PATH "var/www"  // DO NOT WRITE /var/www as global path
+#else
+#    define CHDIR_PATH "/srv/HomeServer/www"
+#endif /* FHS_RELEASE */
 
 /****************************************************************************
  * PUBLIC FUNCTIONS DEFINITIONS
@@ -46,10 +49,10 @@ int main(int argc, char *argv[])
         printf("Usage: %s <port>\n", argv[0]);
     }
 
-    /* Set working directory to var/www */
+    /* Set working directory */
     else if(chdir(CHDIR_PATH) != 0)
     {
-        printf("chdir to %s failed %s", CHDIR_PATH, strerror(errno));
+        printf("chdir to %s failed", CHDIR_PATH);
     }
 
     /* Initialize the server */
@@ -61,7 +64,7 @@ int main(int argc, char *argv[])
     /* Run the server */
     else
     {
-        log_info("Server started on port %s...", argv[1]);
+        printf("Server started on port %s...", argv[1]);
         server_run();
 
         /* Set return variable to success */
