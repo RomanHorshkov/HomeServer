@@ -144,21 +144,26 @@ void log_addrinfo_list(const struct addrinfo *ai)
         /* Resolve protocol name */
         char protocol_name[NI_MAXSERV];
 
-        if(ai->ai_protocol == IPPROTO_TCP)
+        switch(ai->ai_protocol)
         {
-            strcpy(protocol_name, "TCP");
-        }
-        else if(ai->ai_protocol == IPPROTO_UDP)
-        {
-            strcpy(protocol_name, "UDP");
-        }
-        else
-        {
-            strcpy(protocol_name, "UNKNOWN");
+            case IPPROTO_TCP:
+                strcpy(protocol_name, "TCP");
+                break;
+
+            case IPPROTO_UDP:
+                strcpy(protocol_name, "UDP");
+                break;
+
+            default:
+                strcpy(protocol_name, "UNKNOWN");
+                break;
         }
 
-        log_info("[%d] %s address: %s | socktype: %d | protocol: %s | flags: 0x%x\n", index, ipver,
-                 ip_str, ai->ai_socktype, protocol_name, ai->ai_flags);
+        /* Log the address information */
+        log_info(
+            "[logger]: addr_info list: [%d] %s address: %s | socktype: %d | protocol: %s | flags: "
+            "0x%x\n",
+            index, ipver, ip_str, ai->ai_socktype, protocol_name, ai->ai_flags);
     }
 }
 

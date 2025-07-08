@@ -440,7 +440,7 @@ static int create_listener(struct addrinfo *server_info_out, listener_t **listen
         }
 
         /* If everything worked fine */
-        {
+        else {
             /* Put the socket in the listener */
             (*listener_ptr)->sockets_fds[(*listener_ptr)->active_sockets_no] = listener_socket_fd;
 
@@ -560,11 +560,16 @@ int set_socket_non_blocking(const int *socket_fd)
     /* return value */
     int res = STATUS_FAILURE;
 
+    /* read flags of the socket */
     int flags = fcntl(*socket_fd, F_GETFL, 0);
+
+    /* check if successfully red */
     if(flags != -1)
     {
+        /* add O_NONBLOCK flag to the socket */
         if(fcntl(*socket_fd, F_SETFL, flags | O_NONBLOCK) != -1)
         {
+            /* Set the return to Success */
             res = STATUS_SUCCESS;
         }
         else
@@ -585,18 +590,24 @@ static int set_listener_socket_options(const int *listener_socket_fd, const int3
     /* return value */
     int res = STATUS_FAILURE;
 
+    /* set sockets reusability */
     if(set_listener_socket_reusability(listener_socket_fd) != STATUS_SUCCESS)
     {
         log_error("set_listener_socket_reusability failed.");
     }
+
+    /* set sockets restartability */
     else if(set_listener_socket_restartability(listener_socket_fd) != STATUS_SUCCESS)
     {
         log_error("set_listener_socket_restartability failed.");
     }
+
+    /* set socket non-blocking */
     else if(set_socket_non_blocking(listener_socket_fd) != STATUS_SUCCESS)
     {
         log_error("set_socket_non_blocking failed.");
     }
+
     else
     {
         /* Set the return to Success */
@@ -608,9 +619,11 @@ static int set_listener_socket_options(const int *listener_socket_fd, const int3
             /* yes value */
             int yes = 1;
 
+            /* Check if restriction successfully occurred */
             if(setsockopt(*listener_socket_fd, IPPROTO_IPV6, IPV6_V6ONLY, &yes, sizeof(yes)) !=
                STATUS_SUCCESS)
             {
+                /* if restriction fails set return status to failure */
                 res = STATUS_FAILURE;
                 log_error("Socket ipv6 opts failed: %s\n", strerror(errno));
             }
