@@ -126,10 +126,14 @@ void *worker_run(void *arg)
     }
     else
     {
+        /* make a local copy of the worker ptr */
         worker_t *worker_ptr = (worker_t *)arg;
 
         /* Array to hold epoll events */
         struct epoll_event events[MAX_CLIENTS];
+
+        /* Prepare epoll_event for the pipe read end */
+        struct epoll_event ev = {.events = EPOLLIN, .data.fd = worker_ptr->pipe_read_fd};
 
         /* Create an epoll instance */
         int epfd = epoll_create1(0);
@@ -139,9 +143,6 @@ void *worker_run(void *arg)
             log_error("worker_run: epoll_create1 failed: %s", strerror(errno));
             return NULL;
         }
-
-        /* Prepare epoll_event for the pipe read end */
-        struct epoll_event ev = {.events = EPOLLIN, .data.fd = worker_ptr->pipe_read_fd};
 
         /* Add the pipe read side to monitored sockets */
         if(epoll_ctl(epfd, EPOLL_CTL_ADD, worker_ptr->pipe_read_fd, &ev) == -1)
@@ -154,12 +155,9 @@ void *worker_run(void *arg)
         /* Main worker thread loop */
         while(atomic_load(&worker_ptr->status) == SERVER_STATUS_ACTIVE)
         {
-            // log_info("[worker] Sleeping in epoll_wait...");
-
             /* Wait for events on the pipe or client sockets */
+            /* Here the worker stops if there's nothing to do */
             int nfds = epoll_wait(epfd, events, MAX_CLIENTS, -1);
-
-            // log_info("[worker] Woke up with %d event(s)", nfds);
 
             /* Check for errors */
             if(nfds < 0)
@@ -173,8 +171,9 @@ void *worker_run(void *arg)
             {
                 int fd = events[i].data.fd;
 
-                /* If the event is on the pipe, read new client fds */
-                if(fd == worker_ptr->pipe_read_fd)
+                /* If the event is on the pipe and there is space for new clients, read new client
+                 * fds */
+                if(fd == worker_ptr->pipe_read_fd && worker_ptr->active_sockets_no < MAX_CLIENTS)
                 {
                     int client_fd;
                     /* Read all available client fds from the pipe */
@@ -196,26 +195,36 @@ void *worker_run(void *arg)
                         }
                     }
                 }
+                
                 /* Otherwise, the event is on a client socket */
                 else
                 {
+                    /**
+                     * assumes an entire HTTP request fits in one read(). A slow-loris or pipelined stream breaks this.
+                     * Keep a per-connection buffer, feed it to llhttp_execute() in a loop,
+                     * and send responses only when a complete message is parsed.
+                     */
+                    /* make the receiving buffer */
                     char recv_buf[HTTP_RECEIVE_BUFFER_LEN];
+
                     /* Read data from the client socket */
                     ssize_t n = read(fd, recv_buf, HTTP_RECEIVE_BUFFER_LEN - 1);
 
+                    /* Connection closed or error, clean up */
                     if(n <= 0)
                     {
-                        /* Connection closed or error, clean up */
 #ifdef DEBUG_MODE
                         log_info("[worker] Closing fd %d", fd);
 #endif /* DEBUG_MODE */
                         epoll_ctl(epfd, EPOLL_CTL_DEL, fd, NULL);
                         close(fd);
                     }
+
+                    /* A valid buffer has been red  */
                     else
                     {
 #ifdef DEBUG_MODE
-                        // log_info("[worker] Received from fd %d:\n%.*s", fd, (int)n, recv_buf);
+                        log_info("[worker] Received from fd %d:\n%.*s", fd, (int)n, recv_buf);
 #endif /* DEBUG_MODE */
 
                         if(browser_manage_client_req(fd, recv_buf, n) != STATUS_SUCCESS)
