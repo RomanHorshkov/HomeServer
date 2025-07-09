@@ -29,6 +29,7 @@
 #include <stdatomic.h> /* atomic_int */
 #include <stdlib.h>    /* malloc(), calloc() etc */
 #include <sys/epoll.h> /* epoll_create1(), epoll_ctl(), epoll_wait(), struct epoll_event */
+#include <sys/timerfd.h> /* timerfd_create(), struct itimerspec */
 #include <unistd.h>    /* fork(), close(), read(), write(), etc. */
 
 #include "browser.h"         /* browser_manage_client_req */
@@ -46,15 +47,48 @@
  ****************************************************************************
  */
 
+typedef struct
+{
+    int fd;
+    time_t last_activity;
+    int request_count;
+} connection_t;
+
+typedef struct
+{
+    /* epoll instance */
+    int epoll_fd;
+
+    /* events array */
+    struct epoll_event events[MAX_CLIENTS];
+
+} epoll_var_t;
+
+typedef struct
+{
+    /* timer fd instance */
+    int timer_fd;
+
+    /* interval + initial expiry */
+    struct itimerspec spec;
+
+} timer_var_t;
+
 struct worker
 {
-    /* sockets file descriptors */
-    int sockets_fds[MAX_CLIENTS];
+    /* epoll instance */
+    epoll_var_t epoll_vars;
 
-    /* active listening sockets */
-    int active_sockets_no;
+    /* timer instance */
+    timer_var_t timer_vars;
 
-    /* pipe read fd */
+    /* connections */
+    connection_t connections[MAX_CLIENTS];
+
+    /* active connections */
+    int active_connections_no;
+
+    /* listener - worker pipe read fd */
     int pipe_read_fd;
 
     /* status variable */
@@ -71,7 +105,14 @@ struct worker
  * PRIVATE FUNCTIONS PROTOTYPES
  ****************************************************************************
  */
-/* None */
+
+static int add_connection(worker_t *worker_ptr);
+
+static int delete_connection(worker_t *worker_ptr, int fd);
+
+static int update_connection(worker_t *worker_ptr, int fd);
+
+static int timer_init(timer_var_t *tv, int epfd);
 
 /****************************************************************************
  * PUBLIC FUNCTIONS DEFINITIONS
@@ -80,7 +121,9 @@ struct worker
 
 int worker_init(worker_t **worker_ptr, const int *pipe_read_fd)
 {
+#ifdef DEBUG_MODE
     log_info("Starting Worker...");
+#endif /* DEBUG_MODE */
 
     /* return value */
     int res = STATUS_FAILURE;
@@ -88,27 +131,46 @@ int worker_init(worker_t **worker_ptr, const int *pipe_read_fd)
     /* Allocate memory for the worker */
     *worker_ptr = (worker_t *)calloc(1, sizeof(worker_t));
 
+    /* Create an epoll instance */
+    int epoll_fd = epoll_create1(0);
+
     /* Check input */
     if(pipe_read_fd == NULL)
     {
-        log_error("worker_init: invalid input");
+        log_error("[worker]:worker_init: invalid input");
     }
 
+    /* check memory allocation */
     else if(*worker_ptr == NULL)
     {
-        log_error("worker_init: memory allocation failed: %s", strerror(errno));
+        log_error("[worker]:worker_init: memory allocation failed: %s", strerror(errno));
+    }
+
+    /* check epoll instance */
+    else if(epoll_fd == -1)
+    {
+        log_error("[worker]: worker_init: epoll_create1 failed: %s", strerror(errno));
     }
 
     else
     {
+        /* Initialize the worker's epoll instance */
+        (*worker_ptr)->epoll_vars.epoll_fd = epoll_fd;
+
+        /* Initialize the worker's connections(_t) */
+        memset((*worker_ptr)->connections, 0, MAX_CLIENTS * sizeof(connection_t));
+
         /* Initialize the worker's pipe read file descriptor */
         (*worker_ptr)->pipe_read_fd = *pipe_read_fd;
 
         /* Initialize the worker's active sockets number */
-        (*worker_ptr)->active_sockets_no = 0;
+        (*worker_ptr)->active_connections_no = 0;
 
         /* Initialize the worker's state */
-        (*worker_ptr)->status = SERVER_STATUS_ACTIVE;
+        atomic_store(&(*worker_ptr)->status, SERVER_STATUS_ACTIVE);
+
+        /* init the timer */
+        timer_init(&(*worker_ptr)->timer_vars, (*worker_ptr)->epoll_vars.epoll_fd);
 
         /* set return to success */
         res = STATUS_SUCCESS;
@@ -124,127 +186,83 @@ void *worker_run(void *arg)
         log_error("[worker]: worker_run: invalid input");
         return NULL;
     }
-    else
+
+    /* make a local copy of the worker ptr */
+    worker_t *worker_ptr = (worker_t *)arg;
+
+    /* Prepare epoll_event for the pipe read end */
+    struct epoll_event ev = {.events = EPOLLIN, .data.fd = worker_ptr->pipe_read_fd};
+
+    /* Add the pipe read side to monitored sockets */
+    if(epoll_ctl(worker_ptr->epoll_vars.epoll_fd, EPOLL_CTL_ADD, worker_ptr->pipe_read_fd, &ev) == -1)
     {
-        /* make a local copy of the worker ptr */
-        worker_t *worker_ptr = (worker_t *)arg;
-
-        /* Array to hold epoll events */
-        struct epoll_event events[MAX_CLIENTS];
-
-        /* Prepare epoll_event for the pipe read end */
-        struct epoll_event ev = {.events = EPOLLIN, .data.fd = worker_ptr->pipe_read_fd};
-
-        /* Create an epoll instance */
-        int epfd = epoll_create1(0);
-
-        if(epfd == -1)
-        {
-            log_error("[worker]: worker_run: epoll_create1 failed: %s", strerror(errno));
-            return NULL;
-        }
-
-        /* Add the pipe read side to monitored sockets */
-        if(epoll_ctl(epfd, EPOLL_CTL_ADD, worker_ptr->pipe_read_fd, &ev) == -1)
-        {
-            log_error("[worker]: worker_run: epoll_ctl failed: %s", strerror(errno));
-            close(epfd);
-            return NULL;
-        }
-
-        /* Main worker thread loop */
-        while(atomic_load(&worker_ptr->status) == SERVER_STATUS_ACTIVE)
-        {
-            /* Wait for events on the pipe or client sockets */
-            /* Here the worker stops if there's nothing to do */
-            int nfds = epoll_wait(epfd, events, MAX_CLIENTS, -1);
-
-            /* Check for errors */
-            if(nfds < 0)
-            {
-                log_error("[worker]: worker_run: epoll_wait failed: %s", strerror(errno));
-                continue;
-            }
-
-            /* Process all ready events */
-            for(int i = 0; i < nfds; i++)
-            {
-                int fd = events[i].data.fd;
-
-                /* If the event is on the pipe and there is space for new clients, read new client
-                 * fds */
-                if(fd == worker_ptr->pipe_read_fd && worker_ptr->active_sockets_no < MAX_CLIENTS)
-                {
-                    int client_fd;
-                    /* Read all available client fds from the pipe */
-                    while(read(worker_ptr->pipe_read_fd, &client_fd, sizeof(client_fd)) > 0)
-                    {
-                        /* Prepare epoll_event for the new client fd */
-                        struct epoll_event cev = {.events = EPOLLIN, .data.fd = client_fd};
-
-                        /* Add the new client fd to epoll */
-                        if(epoll_ctl(epfd, EPOLL_CTL_ADD, client_fd, &cev) == -1)
-                        {
-                            log_error("[worker] Failed to add client fd %d to epoll: %s", client_fd,
-                                      strerror(errno));
-                            close(client_fd);
-                        }
-                        else
-                        {
-                            log_info("[worker] Registered client fd %d to epoll", client_fd);
-                        }
-                    }
-                }
-
-                /* Otherwise, the event is on a client socket */
-                else
-                {
-                    /* make the receiving buffer */
-                    char recv_buf[HTTP_RECEIVE_BUFFER_LEN];
-
-                    /** TODO
-                     * worker_run() assumes an entire HTTP request fits in one read(). A slow-loris
-                     * or pipelined stream breaks this. Keep a per-connection buffer, feed it to
-                     * llhttp_execute() in a loop, and send responses only when a complete message
-                     * is parsed.
-                     */
-                    /* Read data from the client socket */
-                    ssize_t n = read(fd, recv_buf, HTTP_RECEIVE_BUFFER_LEN - 1);
-
-                    /* Connection closed or error, clean up */
-                    if(n <= 0)
-                    {
-#ifdef DEBUG_MODE
-                        log_info("[worker] Closing fd %d", fd);
-#endif /* DEBUG_MODE */
-                        epoll_ctl(epfd, EPOLL_CTL_DEL, fd, NULL);
-                        close(fd);
-                    }
-
-                    /* A valid buffer has been red  */
-                    else
-                    {
-#ifdef DEBUG_MODE
-                        log_info("[worker] Received from fd %d:\n%.*s", fd, (int)n, recv_buf);
-#endif /* DEBUG_MODE */
-
-                        if(browser_manage_client_req(fd, recv_buf, n) != STATUS_SUCCESS)
-                        {
-#ifdef DEBUG_MODE
-                            log_info("[worker] browser_manage_client_req failed fd %d", fd);
-#endif /* DEBUG_MODE */
-                            /* Close the socket and remove from epoll */
-                            epoll_ctl(epfd, EPOLL_CTL_DEL, fd, NULL);
-                            close(fd);
-                        }
-                    }
-                }
-            }
-        }
-
-        /* Close the epoll file descriptor */
-        close(epfd);
+        log_error("[worker]: worker_run: epoll_ctl failed on pipe: %s", strerror(errno));
+        close(worker_ptr->epoll_vars.epoll_fd);
+        return NULL;
     }
+
+    /* Main worker thread loop */
+    while(atomic_load(&worker_ptr->status) == SERVER_STATUS_ACTIVE)
+    {
+        /* Wait for events on the pipe or client sockets */
+        /* Here the worker stops if there's nothing to do */
+        int nfds =
+            epoll_wait(worker_ptr->epoll_vars.epoll_fd, worker_ptr->epoll_vars.events, MAX_CLIENTS, -1);
+
+        /* Check for errors */
+        if(nfds < 0)
+        {
+            log_error("[worker]: worker_run: epoll_wait failed: %s", strerror(errno));
+            continue;
+        }
+
+        /* Process all ready events */
+        for(int i = 0; i < nfds; i++)
+        {
+            int fd = worker_ptr->epoll_vars.events[i].data.fd;
+
+            /* If the event is on the timer handle logic */
+            if (fd == worker_ptr->timer_vars.timer_fd)
+            {
+                uint64_t expirations;
+                ssize_t s = read(fd, &expirations, sizeof(expirations));
+                if (s != sizeof(expirations)) {
+                    log_error("[worker] Failed to read timerfd: %s", strerror(errno));
+                }
+#ifdef DEBUG_MODE
+                log_info("[worker] Timer event received, handling idle connections");
+#endif /* DEBUG_MODE */
+            }
+            
+
+            /* If the event is on the pipe add a new connection */
+            else if(fd == worker_ptr->pipe_read_fd)
+            {
+                if(add_connection(worker_ptr) != STATUS_SUCCESS)
+                {
+                    log_error("[worker] Failed to add connection for fd %d", fd);
+                    delete_connection(worker_ptr, fd);
+                }
+            }
+
+            /* Otherwise, the event is on a client socket */
+            else if(browser_manage_client_req(fd) != STATUS_SUCCESS)
+            {
+                log_error("[worker] browser_manage_client_req failed fd %d", fd);
+                delete_connection(worker_ptr, fd);
+            }
+
+            /* Refresh connection's request_count and last_activity */
+            else if(update_connection(worker_ptr, fd) != STATUS_SUCCESS)
+            {
+                log_error("[worker] update_connection failed for fd %d", fd);
+                delete_connection(worker_ptr, fd);
+            }
+        }
+    } /* while(SERVER_STATUS_ACTIVE) */
+
+    /* Close the epoll file descriptor */
+    close(worker_ptr->epoll_vars.epoll_fd);
 
     return NULL;
 }
@@ -263,4 +281,189 @@ void worker_set_status(worker_t *worker_ptr, int status)
         /* Log the status change */
         log_info("Listener status set to %d", status);
     }
+}
+
+static int add_connection(worker_t *worker_ptr)
+{
+    /* Return variable */
+    int res = STATUS_FAILURE;
+
+    /* Client file descriptor read from the pipe */
+    int client_fd;
+
+    /* Check input */
+    if(worker_ptr == NULL)
+    {
+        log_error("[worker] add_connection: invalid input");
+    }
+
+    /* Check total connections available */
+    else if(worker_ptr->active_connections_no >= MAX_CLIENTS)
+    {
+        log_error("[worker] add_connection: Maximum number of connections reached: %d",
+                  MAX_CLIENTS);
+    }
+
+    /* Check if slot is free */
+    else if(worker_ptr->connections[worker_ptr->active_connections_no].fd != 0)
+    {
+        log_error("[worker] add_connection: No free slot at %d, busy by fd ",
+                  worker_ptr->active_connections_no,
+                  worker_ptr->connections[worker_ptr->active_connections_no].fd);
+    }
+
+    else
+    {
+        /* Read all available client fds from the pipe */
+        while(read(worker_ptr->pipe_read_fd, &client_fd, sizeof(client_fd)) > 0)
+        {
+            /* Prepare epoll_event for the new client fd */
+            struct epoll_event cev = {.events = EPOLLIN, .data.fd = client_fd};
+
+            /* Add the new client fd to epoll */
+            if(epoll_ctl(worker_ptr->epoll_vars.epoll_fd, EPOLL_CTL_ADD, client_fd, &cev) == -1)
+            {
+                log_error("[worker] Failed to add client fd %d to epoll: %s", client_fd,
+                          strerror(errno));
+            }
+
+            /* Set everything */
+            else
+            {
+                worker_ptr->connections[worker_ptr->active_connections_no].fd = client_fd;
+                worker_ptr->connections[worker_ptr->active_connections_no].last_activity =
+                    time(NULL);
+                worker_ptr->connections[worker_ptr->active_connections_no].request_count = 0;
+                worker_ptr->active_connections_no++;
+
+                /* set return to success */
+                res = STATUS_SUCCESS;
+#ifdef DEBUG_MODE
+                log_info("[worker] Registered client fd %d to epoll", client_fd);
+#endif /* DEBUG_MODE */
+            }
+        }
+    }
+
+    return res;
+}
+
+static int delete_connection(worker_t *worker_ptr, int fd)
+{
+    /* Return variable */
+    int res = STATUS_FAILURE;
+
+    /* Check input */
+    if(worker_ptr == NULL)
+    {
+        log_error("[worker] delete_connection: invalid input");
+    }
+
+    /* Find the connection and remove it */
+    for(int j = 0; j < MAX_CLIENTS; ++j)
+    {
+        if(worker_ptr->connections[j].fd == fd)
+        {
+            /* Remove from epoll */
+            epoll_ctl(worker_ptr->epoll_vars.epoll_fd, EPOLL_CTL_DEL, fd, NULL);
+
+            /* Close the socket */
+            close(fd);
+
+            /* Reset the connection slot */
+            worker_ptr->connections[j].fd = 0;
+            worker_ptr->connections[j].last_activity = 0;
+            worker_ptr->connections[j].request_count = 0;
+            worker_ptr->active_connections_no--;
+
+            /* Set return to success */
+            res = STATUS_SUCCESS;
+        }
+    }
+
+    return res;
+}
+
+static int update_connection(worker_t *worker_ptr, int fd)
+{
+    /* Return variable */
+    int res = STATUS_FAILURE;
+
+    /* Check input */
+    if(worker_ptr == NULL)
+    {
+        log_error("[worker] update_connection: invalid input");
+    }
+
+    /* TO DO : HASH TABLE */
+    /* Find the connection and update it */
+    for(int j = 0; j < MAX_CLIENTS; ++j)
+    {
+        if(worker_ptr->connections[j].fd == fd)
+        {
+            worker_ptr->connections[j].last_activity = time(NULL);
+            worker_ptr->connections[j].request_count++;
+            res = STATUS_SUCCESS;
+            break;
+        }
+    }
+
+    return res;
+}
+
+
+static int timer_init(timer_var_t *tv, int epfd)
+{
+    /* Return variable */
+    int res = STATUS_FAILURE;
+
+    /* Check input */
+    if(tv == NULL)
+    {
+        log_error("[worker] timer_init: invalid input");
+    }
+    else
+    {
+        /* Create a timer fd */
+        tv->timer_fd = timerfd_create(CLOCK_MONOTONIC, TFD_NONBLOCK | TFD_CLOEXEC);
+        if(tv->timer_fd == -1)
+        {
+            log_error("[worker] timer_init: timerfd_create failed: %s", strerror(errno));
+        }
+        else
+        {
+            /* Set the timer interval and initial expiry */
+            tv->spec.it_value.tv_sec = SERVER_SLEEP_TIME_S; /* Initial expiry in seconds */
+            tv->spec.it_value.tv_nsec = 0;
+            tv->spec.it_interval.tv_sec = SERVER_SLEEP_TIME_S; /* Interval in seconds */
+            tv->spec.it_interval.tv_nsec = 0;
+
+            /* Set the timer */
+            if(timerfd_settime(tv->timer_fd, 0, &tv->spec, NULL) == -1)
+            {
+                log_error("[worker] timer_init: timerfd_settime failed: %s", strerror(errno));
+                close(tv->timer_fd);
+            }
+            else
+            {
+                /* Prepare epoll_event for the timer fd */
+                struct epoll_event tev = {.events = EPOLLIN, .data.fd = tv->timer_fd};
+
+                /* Add the timer fd to epoll */
+                if(epoll_ctl(epfd, EPOLL_CTL_ADD, tv->timer_fd, &tev) == -1)
+                {
+                    log_error("[worker] timer_init: epoll_ctl failed on timer fd: %s",
+                              strerror(errno));
+                    close(tv->timer_fd);
+                }
+                else
+                {
+                    /* Set return to success */
+                    res = STATUS_SUCCESS;
+                }
+            }
+        }
+    }
+
+    return res;
 }

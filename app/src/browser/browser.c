@@ -63,8 +63,6 @@ static int send_response(int fd, const HttpResponse *resp);
  * partial sends or EINTR. It is binary-safe and suitable for large files.
  *
  * @param fd   Client socket descriptor.
- * @param buf  Pointer to data buffer.
- * @param len  Number of bytes to send.
  * @return     Total bytes sent (=len) or -1 on unrecoverable error.
  */
 static ssize_t send_all(int fd, const void *buf, size_t len);
@@ -73,7 +71,7 @@ static ssize_t send_all(int fd, const void *buf, size_t len);
  * PUBLIC FUNCTIONS DEFINITIONS
  ****************************************************************************
  */
-int browser_manage_client_req(int fd, const char *recv_buf, size_t n)
+int browser_manage_client_req(int fd)
 {
     /* return variable */
     int res = STATUS_FAILURE;
@@ -84,6 +82,22 @@ int browser_manage_client_req(int fd, const char *recv_buf, size_t n)
 
     memset(&request, 0, sizeof(HttpRequest));
     memset(&response, 0, sizeof(HttpResponse));
+
+    /* make the receiving buffer */
+    char recv_buf[HTTP_RECEIVE_BUFFER_LEN];
+
+    /** TODO
+     * worker_run() assumes an entire HTTP request fits in one read(). A slow-loris
+     * or pipelined stream breaks this. Keep a per-connection buffer, feed it to
+     * llhttp_execute() in a loop, and send responses only when a complete message
+     * is parsed.
+     */
+    /* Read data from the client socket */
+    ssize_t n = read(fd, recv_buf, HTTP_RECEIVE_BUFFER_LEN - 1);
+
+#ifdef DEBUG_MODE
+    log_info("[worker] Received from fd %d:\n%.*s", fd, (int)n, recv_buf);
+#endif /* DEBUG_MODE */
 
     /* manage http request */
     if(http_manage_request(recv_buf, n, &request) != STATUS_SUCCESS)
