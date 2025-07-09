@@ -252,7 +252,7 @@ void *listener_run(void *arg)
     {
         listener_t *listener_ptr = (listener_t *)arg;
 
-        int epfd = epoll_create1(0);
+        int epoll_fd = epoll_create1(0);
         struct epoll_event ev, events[MAX_LISTENERS];
 
         /* Register all listening sockets with epoll */
@@ -260,7 +260,7 @@ void *listener_run(void *arg)
         {
             ev.events = EPOLLIN;
             ev.data.fd = listener_ptr->sockets_fds[i];
-            epoll_ctl(epfd, EPOLL_CTL_ADD, listener_ptr->sockets_fds[i], &ev);
+            epoll_ctl(epoll_fd, EPOLL_CTL_ADD, listener_ptr->sockets_fds[i], &ev);
         }
 
         /* While the listener is active */
@@ -271,7 +271,7 @@ void *listener_run(void *arg)
 #endif /* DEBUG_MODE */
 
             /* Wait for incoming connections on any listening socket */
-            int nfds = epoll_wait(epfd, events, MAX_LISTENERS, -1);
+            int nfds = epoll_wait(epoll_fd, events, MAX_LISTENERS, -1);
 
 #ifdef DEBUG_MODE
             // log_info("listener: epoll_wait returned %d events", nfds);
@@ -338,7 +338,7 @@ void *listener_run(void *arg)
         listener_shutdown(&listener_ptr);
 
         /* Close the epoll file descriptor */
-        close(epfd);
+        close(epoll_fd);
     }
     return NULL;
 }

@@ -1,3 +1,5 @@
+#ifndef SERVER_SOCKET_HELPER_H
+#define SERVER_SOCKET_HELPER_H
 /**
  * @file socket_helper.h
  * @brief Helper functions for socket configuration and management.
@@ -8,8 +10,6 @@
  * @author  Roman Horshkov
  * @date    2025-05-11
  */
-
-#pragma once
 
 #include <stddef.h>
 #include <sys/types.h>
@@ -68,3 +68,5 @@ int client_socket_init(const int *client_fd);
  * @retval -1 Failure (see log for details).
  */
 int pipe_fd_set_non_blocking(const int *pipe_fd);
+
+#endif /* SERVER_SOCKET_HELPER_H */

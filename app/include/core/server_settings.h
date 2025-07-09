@@ -10,11 +10,6 @@ enum status
 {
     STATUS_FAILURE = -1,               /* error occurred */
     STATUS_SUCCESS = 0,                /* everything is fine */
-    CLIENT_NEW_CLIENT_CREATED,         // new client created
-    CLIENT_NEW_SOCKET_CREATED,         // new socket created for an existing client
-    CLIENT_MANAGER_NEW_CLIENT_NONE,    // no new client
-    CLIENT_MANAGER_CLIENT_NOT_EXISTS,  // new client process
-    CLIENT_MANAGER_CLIENT_EXISTS,      // new socket for an existing client
 };
 
 enum server_status
@@ -37,7 +32,7 @@ enum server_status
 #define MAX_LISTENERS 2
 
 /* Max clients amount */
-#define MAX_CLIENTS 100
+#define MAX_CLIENTS 64
 
 // /* Max sockets per client */
 // #define MAX_SOCKETS_PER_CLIENT 10
@@ -45,12 +40,18 @@ enum server_status
 /* Max pending connections on one listener socket */
 #define MAX_PENDING_CONNECTIONS 10
 
-//
-#define MAX_EVENTS 64
+/* keep a little head-room for pipe + timer + wiggle */
+#define MAX_EVENTS (MAX_CLIENTS + 8)
+
+/* Measurement unit */
+// #define _S
+// #define _MS
+// #define _US
+// #define _NS
 
 /* Sleep time */
-#define SERVER_SLEEP_TIME_S 0
-#define SERVER_SLEEP_TIME_MS 50
+#define SERVER_SLEEP_TIME_S 2
+#define SERVER_SLEEP_TIME_MS 0
 #define SERVER_SLEEP_TIME_US ((SERVER_SLEEP_TIME_MS) * 1000)
 #define SERVER_SLEEP_TIME_NS ((SERVER_SLEEP_TIME_US) * 1000)
 

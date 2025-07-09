@@ -27,7 +27,7 @@ typedef struct {
    ```c
    conn->last_activity = now; conn->req_count++; 
    ev.events = EPOLLIN | EPOLLONESHOT | EPOLLET; 
-   epoll_ctl(epfd, EPOLL_CTL_MOD, fd, &ev);
+   epoll_ctl(epoll_fd, EPOLL_CTL_MOD, fd, &ev);
    ```
 
 3. **Idle‑sweep** (timerfd tick every 2 s):
