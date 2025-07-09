@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Build Notes | C-Server</title>
+  <link rel="stylesheet" href="/assets/style.css">
+  <!-- this will inject <header> and <footer> -->
+  <script src="/assets/boot.js" defer></script>
+  <!-- markdown‑to‑html -->
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+  <!-- strip any nasty scripts an attacker could hide in a note -->
+  <script src="https://cdn.jsdelivr.net/npm/dompurify/dist/purify.min.js"></script>
+  <!-- PlantUML encoder -->
+  <script src="https://cdn.jsdelivr.net/npm/plantuml-encoder/dist/plantuml-encoder.js"></script>
+  <!-- your script that fetches manifest.json, diagrams & notes -->
+  <script src="/build_notes/load-notes.js" defer></script>
+</head>
+<body>
+  <main>
+    <!-- NOTES SECTION -->
+    <section>
+      <h2>Notes</h2>
+      <div id="notesContainer"></div>
+    </section>
+  </main>
+<!-- DIAGRAMS SECTION -->
+  <section id="diagrams">
+    <h2>Diagrams</h2>
+    <select id="diagramSelect"></select>
+    <iframe
+      id="diagram"
+      frameborder="0"
+      title="PlantUML diagram"
+      loading="lazy"
+    ></iframe>
+  </section>
+</body>
+</html>

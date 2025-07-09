@@ -1,7 +1,7 @@
 # Concurrent TCP + HTTP/1.1 Server (C11 / POSIX, Multithreaded)
 
 A compact yet fully‑featured teaching project that demonstrates how to write a **modular, multithreaded TCP + HTTP/1.1 server** in pure C11/POSIX.  
-It now serves **dynamic JSON APIs**, **rich client‑side pages**, a **build‑notes viewer**, and a **directory‑driven file browser**, with:
+It now serves **dynamic JSON APIs**, **rich client‑side pages**, a **build-notes viewer**, and a **directory‑driven file browser**, with:
 
 * non‑blocking *listener* sockets (epoll-based)
 * event-driven *worker* thread managing all client sockets
@@ -10,7 +10,7 @@ It now serves **dynamic JSON APIs**, **rich client‑side pages**, a **build‑n
 * production‑grade **HTTP/1.1 parsing** via the 🏎️ **[llhttp](https://github.com/nodejs/llhttp)** state‑machine library (static‑linked)
 * full request‑header capture (e.g. *User‑Agent*, *Accept*, …)
 * proper **Connection: keep‑alive / close** negotiation and persistent sockets (120 s idle timeout)
-* serving real **static pages** (`index.html`, `style.css`, **header component**, images, …) from `www/`
+* serving real **static pages** (`index.html`, `style.css`, **header component**, images, …) from `var/www/`
 * a **JSON API** endpoint (`/api/whoami`) providing request metadata
 * a **Drive API** endpoint (`/api/drive?path=/subdir`) that returns JSON directory listings
 * a **Build Notes viewer** (`/build_notes`) that turns Markdown + PlantUML source into live docs
@@ -41,7 +41,7 @@ Everything builds with **`gcc -std=c11 -Wall -Wextra -Werror -pedantic`** and on
 ## Quick start
 
 ```bash
-$ make            # or `make debug` / `make release`
+$ make all            # or `make debug` / `make release`
 $ ./build/bin/server
 ```
 
@@ -74,27 +74,50 @@ You should see the styled **index.html** page with **header.html** included, plu
 ├── Makefile
 ├── README.md              ← this file
 ├── compile_commands.json   # clangd / tooling database
-├── copy_project.sh         # helper snapshot script
-├── external/               # third‑party static libraries
-│   ├── cjson/
-│   │   ├── cJSON.h
-│   │   └── libcjson.a
-│   └── llhttp/
-│       ├── libllhttp.a
-│       └── llhttp.h
-├── src/
-│   ├── main
-│   ├── browser/
-│   │   ├── browser
-│   │   ├── handlers
-│   │   ├── http_manager
-│   │   ├── router
-│   │   └── static_page
-│   └── core/
-│       ├── core
-│       ├── listener
-│       ├── logger
-│       └── worker
+├── TODO.txt
+├── app/                   # all source, include, and external files
+│   ├── external/
+│   │   ├── cjson/
+│   │   │   ├── cJSON.h
+│   │   │   └── libcjson.a
+│   │   └── llhttp/
+│   │       ├── libllhttp.a
+│   │       └── llhttp.h
+│   ├── include/
+│   │   ├── browser/
+│   │   │   ├── browser.h
+│   │   │   ├── handlers/
+│   │   │   │   ├── handler_drive.h
+│   │   │   │   ├── handler_expenses.h
+│   │   │   │   ├── handler_static.h
+│   │   │   │   ├── handler_utils.h
+│   │   │   │   ├── handler_whoami.h
+│   │   │   │   └── handlers.h
+│   │   │   ├── http_manager.h
+│   │   │   └── router.h
+│   │   └── core/
+│   │       ├── core.h
+│   │       ├── listener.h
+│   │       ├── logger.h
+│   │       ├── server_settings.h
+│   │       └── worker.h
+│   └── src/
+│       ├── browser/
+│       │   ├── browser.c
+│       │   ├── handlers/
+│       │   │   ├── handler_drive.c
+│       │   │   ├── handler_expenses.c
+│       │   │   ├── handler_static.c
+│       │   │   ├── handler_utils.c
+│       │   │   └── handler_whoami.c
+│       │   ├── http_manager.c
+│       │   └── router.c
+│       ├── core/
+│       │   ├── core.c
+│       │   ├── listener.c
+│       │   ├── logger.c
+│       │   └── worker.c
+│       └── main.c
 ├── utils/
 │   ├── MemoryTests/
 │   │   └── memcheck_short.sh
@@ -102,25 +125,35 @@ You should see the styled **index.html** page with **header.html** included, plu
 │       ├── connect_11_times.sh
 │       ├── connect_11_with_msg.sh
 │       └── watch_port.sh
-└── www/
-    ├── assets/
-    │   ├── header.html     # reusable navbar / hero component
-    │   └── header.js       # helper script to inject header
-    ├── build_notes/        # static “Build Notes” viewer
-    │   ├── index.html
-    │   ├── load-notes.js
-    │   ├── manifest.json
-    │   ├── diagrams/
-    │   └── notes/
-    ├── drive.html          # Drive UI – fetches /api/drive
-    ├── dynamic.html        # Animation demo
-    ├── images/
-    ├── index.html
-    ├── style.css
-    └── whoami.html         # fetches /api/whoami
+└── var/
+    └── www/
+        ├── assets/
+        │   ├── footer.html     # reusable footer component
+        │   ├── header.html     # reusable navbar / hero component
+        │   ├── boot.js         # helper script to inject structure
+        │   └── style.css
+        ├── build_notes/        # static “Build Notes” viewer
+        │   ├── index.html
+        │   ├── load-notes.js
+        │   ├── manifest.json
+        │   ├── diagrams/
+        │   └── notes/
+        ├── images/
+        │   ├── html_headers_viasual_representation.png
+        │   ├── img1.jpg
+        │   ├── img2.jpg
+        │   ├── img3.jpg
+        │   └── img4.jpg
+        ├── pages/
+        │   ├── drive.html
+        │   ├── dynamic.html
+        │   ├── expenses.html
+        │   ├── index.html
+        │   └── whoami.html
+        └── server.log
 ```
 
-> **.gitignore** (not shown) skips `www/images/` binaries, generated docs, IDE folders and the compilation database.
+> **.gitignore** (not shown) skips `var/www/images/` binaries, generated docs, IDE folders and the compilation database.
 
 ---
 
@@ -161,15 +194,15 @@ Main thread (core)
 | **Listener sockets** | **NON‑blocking** | Managed by listener thread, epoll-based, dual-stack (IPv4/6)   |
 | **Client sockets**   | **NON‑blocking** | Managed by worker thread, epoll-based, persistent connections  |
 
-- **Admission control:** Max-clients cap enforced in worker.
-- **Shutdown:** Atomic status flags signal threads to exit cleanly.
-- **Inter-thread communication:** Pipe (listener → worker) for new client FDs.
+**Admission control:** Max-clients cap enforced in worker.
+**Shutdown:** Atomic status flags signal threads to exit cleanly.
+**Inter-thread communication:** Pipe (listener → worker) for new client FDs.
 
 ---
 
 ## Timeouts & limits
 
-(see `include/core/server_settings.h`)
+(see `app/include/core/server_settings.h`)
 
 | Symbol                    | Meaning                           | Default   |
 | ------------------------- | --------------------------------- | --------- |
@@ -180,42 +213,37 @@ Main thread (core)
 
 ---
 
-
 ## HTTP capabilities & dynamic features
 
-* **HTTP/1.1 parsing** via **llhttp** in `src/browser/http_manager.c`.
+* **HTTP/1.1 parsing** via **llhttp** in `app/src/browser/http_manager.c`.
   Callbacks (`on_url`, `on_method`, `on_header_field`, `on_header_value`) build an `HttpRequest` struct.
   `determine_connection_policy()` honours `Connection: close`.
-* **Request orchestration** in `src/browser/browser.c` → `browser_manage_client_req()`.
+* **Request orchestration** in `app/src/browser/browser.c` → `browser_manage_client_req()`.
   Parses → routes → `send_response()` (headers + binary‑safe body).
-* **Static file serving** in `src/browser/static_page.c` – binary‑safe buffer returned to caller (**must free**).
-* **JSON APIs** in `src/browser/handlers.c`:
+* **Static file serving** in `app/src/browser/handlers/handler_static.c` – binary‑safe buffer returned to caller (**must free**).
+* **JSON APIs** in `app/src/browser/handlers/handlers.c`:
 
   * **`/api/whoami`**: echos request metadata + server UTC timestamp.
-  * **`/api/drive?path=/subdir`**: JSON array of directory entries under `www/`.
-* **Router paths** (defined in `src/browser/router.c`):
+  * **`/api/drive?path=/subdir`**: JSON array of directory entries under `var/www/`.
+* **Router paths** (defined in `app/src/browser/router.c`):
 
   | Path / Prefix    | Handler                                       |
   | ---------------- | --------------------------------------------- |
-  | `/`, `/home`     | `index.html` (static)                         |
-  | `/style.css`     | `style.css` (static)                          |
-  | `/whoami`        | `whoami.html` (static)                        |
-  | `/dynamic`       | `dynamic.html` (static)                       |
-  | `/drive`         | `drive.html` (static JS page)                 |
-  | `/build_notes`   | `build_notes/index.html` (static + client JS) |
-  | `/build_notes/…` | Static files under `www/build_notes/`         |
-  | `/api/whoami`    | `handler_whoami()` (JSON API)            |
-  | `/api/drive`     | `handler_drive()` (directory listing)    |
-  | `/images/…`      | Binary files under `www/images/`              |
-  | `/assets/…`      | Shared HTML/JS bits under `www/assets/`       |
+  | `/`, `/home`     | `pages/index.html` (static)                   |
+  | `/assets/…`      | Shared HTML/JS/CSS under `var/www/assets/`    |
+  | `/pages/…`       | HTML pages under `var/www/pages/`             |
+  | `/images/…`      | Binary files under `var/www/images/`          |
+  | `/build_notes/…` | Static files under `var/www/build_notes/`     |
+  | `/api/whoami`    | `handler_whoami()` (JSON API)                 |
+  | `/api/drive`     | `handler_drive()` (directory listing)         |
   | *anything else*  | `404 Not Found`                               |
 
 ---
 
 ## Build details
 
-* **Makefile** auto‑detects all `src/` and `src/browser/` C sources, mirrors the directory tree in `build/obj`, and drops the final binary in `build/bin/`.
-* Links static libraries from **`external/llhttp/`** and **`external/cjson/`** (`-Lexternal/... -lllhttp -lcjson`).
+* **Makefile** auto‑detects all `app/src/` C sources, mirrors the directory tree in `build/obj`, and drops the final binary in `build/bin/`.
+* Links static libraries from **`app/external/llhttp/`** and **`app/external/cjson/`** (`-Lapp/external/... -lllhttp -lcjson`).
 * **Compilation flags**: `-std=c11 -Wall -Wextra -Werror -pedantic` plus `-g` by default; add `-O0` for *debug* and `-O2 -DNDEBUG` for *release*.
 * **Targets**
 
@@ -235,10 +263,10 @@ Main thread (core)
 
 ## Logging semantics
 
-* Log file: **`server.log`** (overwritten each run)
+* Log file: **`var/www/server.log`** (overwritten each run)
 * Format: `[YYYY‑MM‑DD hh:mm:ss] [LEVEL] message`
 * Levels: `INFO`, `ERROR` (extend as you wish)
-* Every write is flushed so `tail -f server.log` shows live traffic.
+* Every write is flushed so `tail -f var/www/server.log` shows live traffic.
 
 ---
 
@@ -282,22 +310,13 @@ Feel free to extend the hook with `make tidy` or unit‑test execution once the 
 
 ---
 
-## Logging semantics
-
-* Log file: **`server.log`** (overwritten each run)
-* Format: `[YYYY‑MM‑DD hh:mm:ss] [LEVEL] message`
-* Levels: `INFO`, `ERROR` (extend as you wish)
-* Every write is flushed so `tail -f server.log` shows live traffic.
-
----
-
 ## Testing matrix
 
 | Scenario                                      | Expected result                                                                                   |
 | --------------------------------------------- | ------------------------------------------------------------------------------------------------- |
-| Browser `/` + `/style.css` on same TCP socket | Served through keep‑alive; connection persists                                                    |
-| Static `/whoami.html` + JS fetch              | HTML delivered; JS fetches `/api/whoami`; clock animates                                          |
-| `/drive` page                                 | JS UI loads; JS fetches `/api/drive`; list renders                                                |
+| Browser `/` + `/assets/style.css` on same TCP socket | Served through keep‑alive; connection persists                                                    |
+| Static `/pages/whoami.html` + JS fetch        | HTML delivered; JS fetches `/api/whoami`; clock animates                                          |
+| `/pages/drive.html` page                      | JS UI loads; JS fetches `/api/drive`; list renders                                                |
 | `/build_notes` page                           | HTML delivered; JS fetches `manifest.json` + notes + diagrams; accordion & PlantUML iframe render |
 | JSON `/api/whoami`                            | 200, correct JSON payload, content‑type `application/json`                                        |
 | JSON `/api/drive?path=/images`                | 200, array of files (`img1.jpg` …)                                                                |
@@ -308,6 +327,7 @@ Feel free to extend the hook with `make tidy` or unit‑test execution once the 
 | Press `q` in server                           | Parent stops accepting, reaps children, exits cleanly                                             |
 
 ---
+
 ## Security Concerns
 
 Below is a deep‑dive catalogue of security issues identified in the current multithreaded, event-driven server implementation.  
@@ -410,7 +430,6 @@ For each item you will find **the underlying cause**, **the practical impact/a
 
 ---
 
-
 ## Future work
 
 * Chunked‑encoding & streamed responses
@@ -422,6 +441,5 @@ For each item you will find **the underlying cause**, **the practical impact/a
 * In‑band metrics (`/api/metrics`) for Prometheus
 * Hot‑reload configuration with `inotify`
 * Fuzz tests with libFuzzer
-
 
 Pull requests & ideas welcome — **happy coding!**
