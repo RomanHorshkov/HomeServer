@@ -480,18 +480,46 @@ static int on_header_value(llhttp_t* parser, const char* at, size_t length)
 
 static int on_body(llhttp_t* parser, const char* at, size_t length)
 {
-    LlhttpParserContext* ctx = parser->data;
+    LlhttpParserContext* ctx = (LlhttpParserContext*)parser->data;
     HttpRequest* req = ctx->req;
 
-    // grow buffer
-    char* new_buf = realloc(req->body, req->body_len + length + 1);
-    if(!new_buf) return 1;  // out of memory → abort parse
+    /* If this chunk would push us over the RAM cap, abort */
+    if(req->body_len + length > HTTP_MAX_BODY_RAM_CAPACITY)
+    {
+        log_error("[http]: Request body exceeds HTTP_MAX_BODY_RAM_CAPACITY (%d bytes)",
+                  HTTP_MAX_BODY_RAM_CAPACITY);
 
-    // copy in the new chunk
+        /* drop any data we’d buffered so far */
+        free(req->body);
+        req->body = NULL;
+        req->body_len = 0;
+
+        /* return non-zero to tell llhttp to stop parsing with error */
+        return 1;
+    }
+
+    /* Otherwise append into RAM buffer */
+
+    /* allocate or grow to exactly fit new size + null terminator */
+    char* new_buf = realloc(req->body, req->body_len + length + 1);
+    if(!new_buf)
+    {
+        log_error("[http]: Failed to reallocate memory for request body", "");
+
+        /* Clean up on OOM */
+        free(req->body);
+        req->body = NULL;
+        req->body_len = 0;
+        return 1;
+    }
+
+    /* copy in the new chunk and update length */
     memcpy(new_buf + req->body_len, at, length);
     req->body = new_buf;
     req->body_len += length;
     req->body[req->body_len] = '\0';
+
+    /* success! */
     return 0;
 }
 
@@ -504,11 +532,23 @@ static int on_method(llhttp_t* parser, const char* at, size_t length)
 
 static http_method_t parse_http_method(const char* at, size_t length)
 {
-    if(length == 3 && strncmp(at, "GET", 3) == 0) return HTTP_METHOD_GET;
-    if(length == 4 && strncmp(at, "POST", 4) == 0) return HTTP_METHOD_POST;
-    if(length == 3 && strncmp(at, "PUT", 3) == 0) return HTTP_METHOD_PUT;
-    if(length == 6 && strncmp(at, "DELETE", 6) == 0) return HTTP_METHOD_DELETE;
-    return HTTP_METHOD_UNKNOWN;
+    /* return variable */
+    http_method_t method = HTTP_METHOD_UNKNOWN;
+
+    if(length > HTTP_MAX_METHOD_LEN)
+    {
+        log_error("[http]: HTTP method too long", "");
+    }
+    else if(length == 3 && strncmp(at, "GET", 3) == 0)
+        method = HTTP_METHOD_GET;
+    else if(length == 4 && strncmp(at, "POST", 4) == 0)
+        method = HTTP_METHOD_POST;
+    else if(length == 3 && strncmp(at, "PUT", 3) == 0)
+        method = HTTP_METHOD_PUT;
+    else if(length == 6 && strncmp(at, "DELETE", 6) == 0)
+        method = HTTP_METHOD_DELETE;
+
+    return method;
 }
 
 static void determine_connection_policy(HttpRequest* req)

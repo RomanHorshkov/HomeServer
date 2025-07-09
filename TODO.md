@@ -2,44 +2,6 @@
 
 ## Immediate Network Hardening
 
-### 2  Content‑Length guard (8 MiB default)
-
-| Step | File                                                                                   | Code pointer                 |
-| ---- | -------------------------------------------------------------------------------------- | ---------------------------- |
-| 1    | `http_manager.c`                                                                       | after `http_parse_request()` |
-| 2    | Read header: `const char *cl = http_get_header(req, "Content-Length");`                |                              |
-| 3    | `if (cl && strtoull(cl,NULL,10) > settings.max_body_bytes)` → `error_413(fd); return;` |                              |
-
-`error_413()` sends:
-
-```http
-HTTP/1.1 413 Payload Too Large
-Connection: close
-Content-Length: 0
-
-
-```
-
-### 3  Body streaming (spill > 64 KiB)
-
-1. **Struct upgrades**
-
-   ```c
-   typedef struct {
-       size_t body_bytes;
-       int    tmp_fd;      /* -1 until spill */
-       char   *mem_buf;    /* <= 64 KiB */
-   } body_store_t;
-   ```
-2. **When `body_bytes + chunk > BODY_RAM_THRESHOLD`**
-
-   * `if (tmp_fd == -1) tmp_fd = mkstemp("/tmp/upXXXXXX");`
-   * `write(tmp_fd, chunk, len);`
-   * Free `mem_buf` if it exists.
-3. **Router contract** — handlers now receive either
-
-   * `req->body_fd  != -1` **or** `req->body_ptr`.
-
 ### 4  Keep‑alive lifecycle
 
 | Parameter           | Value | Location     |
@@ -67,6 +29,7 @@ typedef struct {
    ev.events = EPOLLIN | EPOLLONESHOT | EPOLLET; 
    epoll_ctl(epfd, EPOLL_CTL_MOD, fd, &ev);
    ```
+
 3. **Idle‑sweep** (timerfd tick every 2 s):
 
    * Iterate `conn_set`; close if `now‑last_activity > KEEPALIVE_TIMEOUT` *or* `req_count >= MAX_REQ_PER_CONN`.
