@@ -17,7 +17,10 @@
  * (c) 2025
  */
 
-#include <stdio.h>  /* printf / fprintf / perror                          */
+#ifdef DEBUG_MODE
+#    include <stdio.h> /* printf / fprintf / perror                          */
+#endif                 /* DEBUG_MODE */
+
 #include <unistd.h> /* chdir                                              */
 
 #include "core.h" /* server_init / run / shutdown                       */
@@ -46,13 +49,17 @@ int main(int argc, char *argv[])
     /* Check input */
     if(argc != 2)
     {
+#ifdef DEBUG_MODE
         printf("Usage: %s <port>\n", argv[0]);
+#endif /* DEBUG_MODE */
     }
 
     /* Set working directory */
     else if(chdir(CHDIR_PATH) != 0)
     {
+#ifdef DEBUG_MODE
         printf("chdir to %s failed", CHDIR_PATH);
+#endif /* DEBUG_MODE */
     }
 
     /* Initialize the server */
@@ -64,7 +71,9 @@ int main(int argc, char *argv[])
     /* Run the server */
     else
     {
+#ifdef DEBUG_MODE
         printf("Server started on port %s...", argv[1]);
+#endif /* DEBUG_MODE */
         server_run();
 
         /* Set return variable to success */

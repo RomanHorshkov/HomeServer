@@ -42,29 +42,10 @@ Everything builds with **`gcc -std=c11 -Wall -Wextra -Werror -pedantic`** and on
 
 ```bash
 $ make all            # or `make debug` / `make release`
-$ ./build/bin/server
+$ make run            # runs on :3490
 ```
 
 *Press* **`q`** *+ ENTER* in the same terminal to shut down cleanly.
-
-### Try it
-
-```bash
-# Terminal‑1 (server)
-$ ./build/bin/server
-
-# Browser
-http://localhost:3490/
-```
-
-You should see the styled **index.html** page with **header.html** included, plus links to:
-
-* **Who Am I** (`whoami.html` → calls `/api/whoami`)
-* **Drive** (`drive.html` → calls `/api/drive`)
-* **Build Notes** (`build_notes/index.html` → loads `/build_notes`)
-* **Dynamic demo** (`dynamic.html` – CSS/JS animations)
-
----
 
 ## Directory layout
 
@@ -73,50 +54,19 @@ You should see the styled **index.html** page with **header.html** included, plu
 ├── Doxyfile
 ├── Makefile
 ├── README.md              ← this file
-├── compile_commands.json   # clangd / tooling database
-├── TODO.txt
+├── TODO.md                # to do file
 ├── app/                   # all source, include, and external files
 │   ├── external/
 │   │   ├── cjson/
-│   │   │   ├── cJSON.h
-│   │   │   └── libcjson.a
 │   │   └── llhttp/
-│   │       ├── libllhttp.a
-│   │       └── llhttp.h
 │   ├── include/
 │   │   ├── browser/
-│   │   │   ├── browser.h
 │   │   │   ├── handlers/
-│   │   │   │   ├── handler_drive.h
-│   │   │   │   ├── handler_expenses.h
-│   │   │   │   ├── handler_static.h
-│   │   │   │   ├── handler_utils.h
-│   │   │   │   ├── handler_whoami.h
-│   │   │   │   └── handlers.h
-│   │   │   ├── http_manager.h
-│   │   │   └── router.h
 │   │   └── core/
-│   │       ├── core.h
-│   │       ├── listener.h
-│   │       ├── logger.h
-│   │       ├── server_settings.h
-│   │       └── worker.h
 │   └── src/
 │       ├── browser/
-│       │   ├── browser.c
 │       │   ├── handlers/
-│       │   │   ├── handler_drive.c
-│       │   │   ├── handler_expenses.c
-│       │   │   ├── handler_static.c
-│       │   │   ├── handler_utils.c
-│       │   │   └── handler_whoami.c
-│       │   ├── http_manager.c
-│       │   └── router.c
 │       ├── core/
-│       │   ├── core.c
-│       │   ├── listener.c
-│       │   ├── logger.c
-│       │   └── worker.c
 │       └── main.c
 ├── utils/
 │   ├── MemoryTests/
@@ -125,31 +75,18 @@ You should see the styled **index.html** page with **header.html** included, plu
 │       ├── connect_11_times.sh
 │       ├── connect_11_with_msg.sh
 │       └── watch_port.sh
-└── var/
-    └── www/
+└── var
+    ├── lib
+    │   └── expenses
+    │       ├── 2024
+    │       ├── 2025
+    │       └── settings.json
+    └── www
         ├── assets/
-        │   ├── footer.html     # reusable footer component
-        │   ├── header.html     # reusable navbar / hero component
-        │   ├── boot.js         # helper script to inject structure
-        │   └── style.css
         ├── build_notes/        # static “Build Notes” viewer
-        │   ├── index.html
-        │   ├── load-notes.js
-        │   ├── manifest.json
-        │   ├── diagrams/
-        │   └── notes/
+        ├── favicon.ico
         ├── images/
-        │   ├── html_headers_viasual_representation.png
-        │   ├── img1.jpg
-        │   ├── img2.jpg
-        │   ├── img3.jpg
-        │   └── img4.jpg
-        ├── pages/
-        │   ├── drive.html
-        │   ├── dynamic.html
-        │   ├── expenses.html
-        │   ├── index.html
-        │   └── whoami.html
+        ├── views/
         └── server.log
 ```
 
@@ -194,9 +131,58 @@ Main thread (core)
 | **Listener sockets** | **NON‑blocking** | Managed by listener thread, epoll-based, dual-stack (IPv4/6)   |
 | **Client sockets**   | **NON‑blocking** | Managed by worker thread, epoll-based, persistent connections  |
 
-**Admission control:** Max-clients cap enforced in worker.
-**Shutdown:** Atomic status flags signal threads to exit cleanly.
+**Admission control:** Max-clients cap enforced in worker.  
+**Shutdown:** Atomic status flags signal threads to exit cleanly.  
 **Inter-thread communication:** Pipe (listener → worker) for new client FDs.
+
+**Listener sockets:**
+
+- Set **SO_REUSEADDR** to allow immediate rebinding after shutdown.
+- Set **SO_LINGER** (zero timeout) so sockets close instantly, discarding unsent data.
+- Set **O_NONBLOCK** to ensure accept/read/write never block the listener thread.
+- For IPv6, set **IPV6_V6ONLY** to avoid IPv4/IPv6 ambiguity.
+- Registered with **epoll** for efficient event-driven notification.
+
+**Client sockets:**
+
+- Set **O_NONBLOCK** so all I/O is non-blocking, allowing the worker thread to multiplex many clients.
+- Set **TCP_NODELAY** to disable Nagle’s algorithm, reducing latency for interactive protocols.
+- Each client socket is registered with epoll by the worker for read events.
+- Connection state (e.g., last activity, request count) is tracked for keep-alive and idle timeout enforcement.
+- When a client disconnects or times out, the socket is removed from epoll and closed cleanly.
+
+**Communication pipe (listener → worker):**
+
+- Implemented as a regular UNIX pipe (two file descriptors).
+- Both ends are set **O_NONBLOCK** to prevent blocking on read/write.
+- The listener writes accepted client file descriptors into the pipe.
+- The worker monitors the pipe with epoll and reads new client FDs as they arrive.
+- This decouples the accept loop from the worker’s event loop and enables safe, lock-free handoff of new connections.
+
+This setup ensures that all network and inter-thread communication is non-blocking, scalable, and robust against slow or malicious clients. All resource limits and timeouts are enforced in the worker, and the system is designed to recover quickly from restarts or overloads.
+
+---
+
+### Listener socket setup and management
+
+When the server starts, the listener thread creates and configures one or more listening sockets (typically one for IPv4 and one for IPv6). Each socket is set up with the following options and flags to ensure robust, non-blocking, and restart-friendly operation:
+
+- **SO_REUSEADDR** is enabled so that the server can be restarted quickly without waiting for old sockets to leave the TIME_WAIT state. This allows the address/port to be reused immediately after shutdown.
+- **SO_LINGER** is set with a zero timeout, which ensures that when the socket is closed, any unsent data is discarded and the socket closes immediately. This prevents sockets from lingering in the system and speeds up restarts.
+- **O_NONBLOCK** is set on all sockets so that operations like accept, read, and write do not block the thread. This is essential for event-driven (epoll-based) concurrency and prevents a single slow client from stalling the server.
+- **IPV6_V6ONLY** is enabled for IPv6 sockets to ensure they only accept IPv6 connections, avoiding ambiguity and conflicts with IPv4-mapped addresses.
+- **TCP_NODELAY** is enabled on accepted client sockets to disable Nagle's algorithm, reducing latency for interactive protocols by sending small packets immediately.
+- All listener sockets are registered with **epoll** to efficiently monitor multiple sockets for incoming connections without busy-waiting or polling.
+
+**Lifecycle:**
+
+1. The listener thread calls `getaddrinfo()` with dual-stack hints to obtain suitable addresses.
+2. For each address, it creates a socket and applies the above options.
+3. Each socket is bound and set to listen with a configurable backlog.
+4. All sockets are added to an epoll instance.
+5. When a connection arrives, the listener accepts it with `accept4()` (using `SOCK_NONBLOCK`), disables Nagle's algorithm (`TCP_NODELAY`) on the client socket, and forwards the new client file descriptor to the worker thread via a pipe.
+
+This setup ensures that the server can handle many simultaneous incoming connections efficiently and can be restarted without waiting for old sockets to time out.
 
 ---
 
@@ -250,13 +236,13 @@ Main thread (core)
   * `make` (alias of *debug*) – fast build with symbols
   * `make debug` / `make release`
   * `make run` – launch the server in‑place
-  * `make clean` – wipe `build/` + `server.log`
-  * **Static‑analysis helpers**:
+  * `make clean` – wipe `build/` and other files.
 
-    * `make format` – clang‑format all `*.c`/`*.h` (or staged files via `FILES=...`)
+  * **Static‑analysis helpers**:
+    * `make format` – clang‑format all `*.c`/`*.h`
     * `make lint` – `cppcheck` on the whole tree (suppressing missing‑system‑includes)
-    * `make tidy` – generate `compile_commands.json` with **bear** and run **clang‑tidy** (disabling the *unsafe buffer* warning) then clean intermediates
-* `make tidy` leaves **compile\_commands.json** in the repo root so editors (VS Code + clangd) get full‑fledged IntelliSense.
+    * `make tidy` – generate `compile_commands.json` with **bear** and run **clang‑tidy** then clean intermediates
+    * `make tidy` leaves **compile\_commands.json** in the repo root so editors (VS Code + clangd) get full‑fledged IntelliSense.
 * Every build treats warnings as errors – the CI pipeline must always be green.
 
 ---
@@ -272,41 +258,12 @@ Main thread (core)
 
 ## Git pre‑commit hook
 
-A sample `pre-commit` script (drop it in `.git/hooks/`) enforces the quality gates locally:
+A sample `pre-commit` script (drop it in `.git/hooks/`) enforces the quality gates locally running make lint and make format
 
-```bash
-#!/usr/bin/env bash
-
-echo "🔍 Running pre‑commit checks..."
-
-if ! make lint; then
-    echo "❌ Lint failed. Fix the issues before committing."
-    exit 1
-else
-    echo "✅ lint passed."
-fi
-
-# Get staged .c/.h files
-STAGED=$(git diff --cached --name-only --diff-filter=ACM | grep -E '\.(c|h)$')
-
-if [ -n "$STAGED" ]; then
-    # Auto‑format in place and re‑stage
-    make format FILES="$STAGED" > /dev/null
-    git add $STAGED
-    echo "✅ formatting applied."
-else
-    echo "ℹ️  No staged C/header files — skipping format."
-fi
-
-echo "✅ Pre‑commit passed."
-```
-
-Running `git commit` now guarantees:
+Running `git commit` guarantees:
 
 1. *cppcheck* passes with no new issues.
 2. All touched C source files follow the project style guide.
-
-Feel free to extend the hook with `make tidy` or unit‑test execution once the test‑suite lands.
 
 ---
 

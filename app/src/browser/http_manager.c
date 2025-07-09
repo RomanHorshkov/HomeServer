@@ -82,6 +82,8 @@ static int on_header_field(llhttp_t* parser, const char* at, size_t length);
  */
 static int on_header_value(llhttp_t* parser, const char* at, size_t length);
 
+static int on_body(llhttp_t* parser, const char* at, size_t length);
+
 /**
  * @brief llhttp callback: called when the HTTP method is parsed.
  *
@@ -175,7 +177,7 @@ int http_manage_request(const char* recv_buf, const size_t buffer_len, HttpReque
     /* result variable */
     int res = STATUS_FAILURE;
 
-    /* Parse raw HTTP request into HttpRequest struct */
+    /* Allocate memory and parse raw HTTP request into HttpRequest struct */
     if(http_parse_request(recv_buf, buffer_len, request) != STATUS_SUCCESS)
     {
         log_error("[browser] parse failed", strerror(errno));
@@ -220,6 +222,7 @@ static int http_parse_request(const char* buffer, const size_t buffer_len, HttpR
     settings.on_method = on_method;
     settings.on_header_field = on_header_field;
     settings.on_header_value = on_header_value;
+    settings.on_body = on_body;
 
     llhttp_init(&parser, HTTP_REQUEST, &settings);
 
@@ -254,43 +257,15 @@ static int http_parse_request(const char* buffer, const size_t buffer_len, HttpR
     {
         log_error("[http]: llhttp parse error", llhttp_errno_name(err));
     }
+
     else
     {
-        /* set return variable to success */
+        /* Set return to success */
         res = STATUS_SUCCESS;
 
-        /* --- BODY PARSING LOGIC --- */
-        /* Find end of headers (\r\n\r\n) */
-        const char* header_end = strstr(buffer, "\r\n\r\n");
-        if(header_end)
-        {
-            size_t header_bytes = header_end + 4 - buffer;
-            if(buffer_len > header_bytes)
-            {
-                /* Allocate and copy the body */
-                req->body_len = buffer_len - header_bytes;
-                req->body = malloc(req->body_len + 1);
-                if(req->body)
-                {
-                    memcpy(req->body, buffer + header_bytes, req->body_len);
-                    req->body[req->body_len] = '\0';  // null-terminate for safety
-                }
-            }
-            else
-            {
-                req->body = NULL;
-                req->body_len = 0;
-            }
-        }
-        else
-        {
-            req->body = NULL;
-            req->body_len = 0;
-        }
-
 #ifdef DEBUG_MODE
-        log_info("[http]: parse request: METHOD: %s, PATH: %s", http_method_to_string(req->method),
-                 req->path);
+        log_info("[http]: parse request: METHOD: %s, PATH: %s, HEADERS: %d",
+                 http_method_to_string(req->method), req->path, req->header_count);
         // log_info("[http]: Parsed %d headers:", req->header_count);
         // for(int i = 0; i < req->header_count; ++i)
         // {
@@ -500,6 +475,23 @@ static int on_header_value(llhttp_t* parser, const char* at, size_t length)
     LlhttpParserContext* ctx = (LlhttpParserContext*)parser->data;
     snprintf(ctx->current_value, HTTP_MAX_HEADER_VALUE_LEN, "%.*s", (int)length, at);
     ctx->in_header_field = 0;
+    return 0;
+}
+
+static int on_body(llhttp_t* parser, const char* at, size_t length)
+{
+    LlhttpParserContext* ctx = parser->data;
+    HttpRequest* req = ctx->req;
+
+    // grow buffer
+    char* new_buf = realloc(req->body, req->body_len + length + 1);
+    if(!new_buf) return 1;  // out of memory → abort parse
+
+    // copy in the new chunk
+    memcpy(new_buf + req->body_len, at, length);
+    req->body = new_buf;
+    req->body_len += length;
+    req->body[req->body_len] = '\0';
     return 0;
 }
 

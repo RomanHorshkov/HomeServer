@@ -20,21 +20,23 @@
  */
 
 #define _POSIX_C_SOURCE 200112L
-#define _GNU_SOURCE
+#define _GNU_SOURCE   /* for accept4 */
 #include "listener.h" /* listener */
 
-#include <arpa/inet.h> /* inet_ntop(), struct sockaddr_in, struct sockaddr_in6 */
-#include <errno.h>     /* errno, EADDRINUSE, etc. */
-#include <fcntl.h>     /* fcntl(), F_GETFL, F_SETFL, O_NONBLOCK */
-#include <netdb.h>     /* getaddrinfo(), addrinfo, gai_strerror() */
-#include <stdatomic.h> /* atomic_int */
-#include <stdlib.h>    /* malloc(), calloc(), free, etc. */
-#include <string.h>    /* memset(), strcpy(), strlen(), etc. */
-#include <sys/epoll.h> /* epoll_create1(), epoll_ctl(), epoll_wait(), struct epoll_event */
-#include <unistd.h>    /* fork(), close(), read(), write(), etc. */
+#include <arpa/inet.h>   /* inet_ntop(), struct sockaddr_in, struct sockaddr_in6 */
+#include <errno.h>       /* errno, EADDRINUSE, etc. */
+#include <fcntl.h>       /* fcntl(), F_GETFL, F_SETFL, O_NONBLOCK */
+#include <netdb.h>       /* getaddrinfo(), addrinfo, gai_strerror() */
+#include <netinet/tcp.h> /* TCP_NODELAY */
+#include <stdatomic.h>   /* atomic_int */
+#include <stdlib.h>      /* malloc(), calloc(), free, etc. */
+#include <string.h>      /* memset(), strcpy(), strlen(), etc. */
+#include <sys/epoll.h>   /* epoll_create1(), epoll_ctl(), epoll_wait(), struct epoll_event */
+#include <unistd.h>      /* fork(), close(), read(), write(), etc. */
 
 #include "logger.h"          /* logger */
 #include "server_settings.h" /* settings */
+#include "socket_helper.h"
 
 /****************************************************************************
  * PRIVATE DEFINES
@@ -268,7 +270,7 @@ void *listener_run(void *arg)
             // log_info("listener: waiting for incoming connections...");
 #endif /* DEBUG_MODE */
 
-            /* Wait for incoming connections */
+            /* Wait for incoming connections on any listening socket */
             int nfds = epoll_wait(epfd, events, MAX_LISTENERS, -1);
 
 #ifdef DEBUG_MODE
@@ -277,35 +279,46 @@ void *listener_run(void *arg)
 
             if(nfds < 0)
             {
+                /* epoll_wait failed, log the error */
                 log_error("listener: epoll_wait failed: %s", strerror(errno));
             }
             else
             {
+                /* Loop through all ready listening sockets */
                 for(int i = 0; i < nfds; ++i)
                 {
                     int listen_fd = events[i].data.fd;
                     struct sockaddr_storage client_addr;
                     socklen_t addrlen = sizeof(client_addr);
-                    int client_fd = accept4(listen_fd, (struct sockaddr *)&client_addr, &addrlen,
-                                            SOCK_NONBLOCK);
+
+                    /* Accept a new client connection */
+                    int client_fd = accept(listen_fd, (struct sockaddr *)&client_addr, &addrlen);
+
                     if(client_fd >= 0)
                     {
-                        set_socket_non_blocking(&client_fd);
+                        /* Set socket settings */
+                        client_socket_init(&client_fd);
 
                         char ipstr[INET6_ADDRSTRLEN];
                         void *addr;
                         if(client_addr.ss_family == AF_INET)
                         {
+                            /* IPv4 address extraction */
                             addr = &((struct sockaddr_in *)&client_addr)->sin_addr;
                         }
+
                         else
                         {
+                            /* IPv6 address extraction */
                             addr = &((struct sockaddr_in6 *)&client_addr)->sin6_addr;
                         }
+
+                        /* Convert client address to string for logging */
                         inet_ntop(client_addr.ss_family, addr, ipstr, sizeof(ipstr));
 #ifdef DEBUG_MODE
                         log_info("[listener] Accepted client from %s, fd %d", ipstr, client_fd);
 #endif /* DEBUG_MODE */
+
                         /* Write the client_fd to the pipe for the worker */
                         if(write(listener_ptr->pipe_write_fd, &client_fd, sizeof(client_fd)) !=
                            sizeof(client_fd)) /* Check if write succeeded */
@@ -347,42 +360,6 @@ void listener_set_status(listener_t *listener_ptr, int status)
 #endif /* DEBUG_MODE */
     }
 }
-
-static void listener_close(listener_t **listener_ptr)
-{
-#ifdef DEBUG_MODE
-    log_info("[listener]: listener_close: closing all listening sockets");
-#endif /* DEBUG_MODE */
-    if(listener_ptr == NULL || *listener_ptr == NULL)
-    {
-        log_error("[listener]: listener_close: invalid listener pointer");
-    }
-
-    /* loop through all listener's sockets */
-    else
-    {
-        for(int i = 0; i < (*listener_ptr)->active_sockets_no; i++)
-        {
-            /* check if listener is active */
-            if((*listener_ptr)->sockets_fds[i] > 0)
-            {
-                /* close listener file descriptor */
-                close((*listener_ptr)->sockets_fds[i]);
-
-                /* reset to 0 */
-                (*listener_ptr)->sockets_fds[i] = 0;
-            }
-            else
-            {
-                continue;
-            }
-        }
-
-        /* reset listener sockets number */
-        (*listener_ptr)->active_sockets_no = 0;
-    }
-}
-
 /****************************************************************************
  * PRIVATE FUNCTIONS DEFINITIONS
  ****************************************************************************
@@ -440,7 +417,8 @@ static int create_listener(struct addrinfo *server_info_out, listener_t **listen
         }
 
         /* If everything worked fine */
-        else {
+        else
+        {
             /* Put the socket in the listener */
             (*listener_ptr)->sockets_fds[(*listener_ptr)->active_sockets_no] = listener_socket_fd;
 
@@ -555,36 +533,6 @@ static int set_listener_socket_restartability(const int *socket_fd)
     return res;
 }
 
-int set_socket_non_blocking(const int *socket_fd)
-{
-    /* return value */
-    int res = STATUS_FAILURE;
-
-    /* read flags of the socket */
-    int flags = fcntl(*socket_fd, F_GETFL, 0);
-
-    /* check if successfully red */
-    if(flags != -1)
-    {
-        /* add O_NONBLOCK flag to the socket */
-        if(fcntl(*socket_fd, F_SETFL, flags | O_NONBLOCK) != -1)
-        {
-            /* Set the return to Success */
-            res = STATUS_SUCCESS;
-        }
-        else
-        {
-            log_error("fcntl set listener flags failed: %s\n", strerror(errno));
-        }
-    }
-    else
-    {
-        log_error("fcntl get listener flags failed: %s\n", strerror(errno));
-    }
-
-    return res;
-}
-
 static int set_listener_socket_options(const int *listener_socket_fd, const int32_t *ai_family)
 {
     /* return value */
@@ -603,9 +551,9 @@ static int set_listener_socket_options(const int *listener_socket_fd, const int3
     }
 
     /* set socket non-blocking */
-    else if(set_socket_non_blocking(listener_socket_fd) != STATUS_SUCCESS)
+    else if(listener_socket_init(listener_socket_fd) != STATUS_SUCCESS)
     {
-        log_error("set_socket_non_blocking failed.");
+        log_error("listener_socket_init failed.");
     }
 
     else
@@ -631,6 +579,41 @@ static int set_listener_socket_options(const int *listener_socket_fd, const int3
     }
 
     return res;
+}
+
+static void listener_close(listener_t **listener_ptr)
+{
+#ifdef DEBUG_MODE
+    log_info("[listener]: listener_close: closing all listening sockets");
+#endif /* DEBUG_MODE */
+    if(listener_ptr == NULL || *listener_ptr == NULL)
+    {
+        log_error("[listener]: listener_close: invalid listener pointer");
+    }
+
+    /* loop through all listener's sockets */
+    else
+    {
+        for(int i = 0; i < (*listener_ptr)->active_sockets_no; i++)
+        {
+            /* check if listener is active */
+            if((*listener_ptr)->sockets_fds[i] > 0)
+            {
+                /* close listener file descriptor */
+                close((*listener_ptr)->sockets_fds[i]);
+
+                /* reset to 0 */
+                (*listener_ptr)->sockets_fds[i] = 0;
+            }
+            else
+            {
+                continue;
+            }
+        }
+
+        /* reset listener sockets number */
+        (*listener_ptr)->active_sockets_no = 0;
+    }
 }
 
 static void listener_shutdown(listener_t **listener_ptr)

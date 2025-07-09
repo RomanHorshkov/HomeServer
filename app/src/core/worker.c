@@ -121,7 +121,7 @@ void *worker_run(void *arg)
     /* Check input */
     if(arg == NULL)
     {
-        log_error("worker_run: invalid input");
+        log_error("[worker]: worker_run: invalid input");
         return NULL;
     }
     else
@@ -140,14 +140,14 @@ void *worker_run(void *arg)
 
         if(epfd == -1)
         {
-            log_error("worker_run: epoll_create1 failed: %s", strerror(errno));
+            log_error("[worker]: worker_run: epoll_create1 failed: %s", strerror(errno));
             return NULL;
         }
 
         /* Add the pipe read side to monitored sockets */
         if(epoll_ctl(epfd, EPOLL_CTL_ADD, worker_ptr->pipe_read_fd, &ev) == -1)
         {
-            log_error("worker_run: epoll_ctl failed: %s", strerror(errno));
+            log_error("[worker]: worker_run: epoll_ctl failed: %s", strerror(errno));
             close(epfd);
             return NULL;
         }
@@ -162,7 +162,7 @@ void *worker_run(void *arg)
             /* Check for errors */
             if(nfds < 0)
             {
-                log_error("worker_run: epoll_wait failed: %s", strerror(errno));
+                log_error("[worker]: worker_run: epoll_wait failed: %s", strerror(errno));
                 continue;
             }
 
@@ -195,18 +195,19 @@ void *worker_run(void *arg)
                         }
                     }
                 }
-                
+
                 /* Otherwise, the event is on a client socket */
                 else
                 {
-                    /**
-                     * assumes an entire HTTP request fits in one read(). A slow-loris or pipelined stream breaks this.
-                     * Keep a per-connection buffer, feed it to llhttp_execute() in a loop,
-                     * and send responses only when a complete message is parsed.
-                     */
                     /* make the receiving buffer */
                     char recv_buf[HTTP_RECEIVE_BUFFER_LEN];
 
+                    /** TODO
+                     * worker_run() assumes an entire HTTP request fits in one read(). A slow-loris
+                     * or pipelined stream breaks this. Keep a per-connection buffer, feed it to
+                     * llhttp_execute() in a loop, and send responses only when a complete message
+                     * is parsed.
+                     */
                     /* Read data from the client socket */
                     ssize_t n = read(fd, recv_buf, HTTP_RECEIVE_BUFFER_LEN - 1);
 

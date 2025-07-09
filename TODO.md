@@ -2,21 +2,6 @@
 
 ## Immediate Network Hardening
 
-*Bite‑size tasks that close the easiest denial‑of‑service holes while we work on the bigger redesign.*
-
-### 1  Socket flags & Nagle
-
-* **Where:** `listener.c` right after each `accept()`.
-* **Exact code:**
-
-  ```c
-  int fd = accept4(listen_fd, NULL, NULL, SOCK_NONBLOCK);
-  if (fd < 0) { /* handle */ }
-  int one = 1;
-  setsockopt(fd, IPPROTO_TCP, TCP_NODELAY, &one, sizeof(one));
-  ```
-* **Re‑test:** open 10 k keep‑alive fetches via `wrk2`; latency p99 ≤ 5 ms.
-
 ### 2  Content‑Length guard (8 MiB default)
 
 | Step | File                                                                                   | Code pointer                 |
