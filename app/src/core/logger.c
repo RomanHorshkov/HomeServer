@@ -78,9 +78,15 @@ void logger_init(const char *filename)
         log_file = fopen(filename, "w");
         if(!log_file)
         {
-            perror("Failed to open log file");
+            perror("Failed to open log file, falling back to stdout");
             /* fallback to stdout if problems with file */
             log_file = stdout;
+        }
+        else
+        {
+            /* log file opened successfully */
+            printf("Logger initialized: %s\n", filename);
+            fflush(log_file);
         }
     }
 }

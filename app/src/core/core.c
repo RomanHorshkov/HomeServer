@@ -35,6 +35,7 @@
 #include "listener.h"
 #include "logger.h"
 #include "server_settings.h"
+#include "socket_helper.h"
 #include "worker.h"
 
 /****************************************************************************
@@ -113,51 +114,58 @@ int server_init(const char *port)
     const struct passwd *pw = getpwuid(uid);
     if(pw)
     {
-        printf("CORE: running as user: %s\n", pw->pw_name);
+        printf("[CORE]: running as user: %s\n", pw->pw_name);
     }
     else
     {
-        printf("CORE: running as user: UNKNOWN (uid=%d)\n", (int)uid);
+        printf("[CORE]: running as user: UNKNOWN (uid=%d)\n", (int)uid);
     }
 
     /* Print current working directory */
     char cwd[HTTP_MAX_PATH_LEN];
-    if(getcwd(cwd, sizeof(cwd)) != NULL) printf("CORE: cwd: %s\n", cwd);
+    if(getcwd(cwd, sizeof(cwd)) != NULL) printf("[CORE]: cwd: %s\n", cwd);
 
     /* List directory contents */
-    printf("CORE: ls -la:\n");
+    printf("[CORE]: ls -la:\n");
     system("ls -la");
 #endif /* DEBUG_MODE */
 
+    printf("[CORE]: Initializing pipe\n");
     /* Initialize the pipe between listener and worker */
     if(pipe(srv.pipe_fds) == -1)
     {
-        log_error("CORE: pipe failed to create: %s", strerror(errno));
+        log_error("[CORE] pipe failed to create: %s", strerror(errno));
     }
+
+    printf("[CORE]: Setting pipe file descriptor 0 to non-blocking\n");
     /* Set the pipe file descriptors to non-blocking */
-    else if(set_socket_non_blocking(&srv.pipe_fds[0]) != STATUS_SUCCESS)
+    if(pipe_fd_set_non_blocking(&srv.pipe_fds[0]) != STATUS_SUCCESS)
     {
-        log_error("CORE: set_socket_non_blocking failed for pipe 0.");
+        log_error("[CORE] pipe_fd_set_non_blocking failed for pipe 0.");
     }
-    else if(set_socket_non_blocking(&srv.pipe_fds[1]) != STATUS_SUCCESS)
+
+    printf("[CORE]: Setting pipe file descriptor 1 to non-blocking\n");
+    if(pipe_fd_set_non_blocking(&srv.pipe_fds[1]) != STATUS_SUCCESS)
     {
-        log_error("CORE: set_socket_non_blocking failed for pipe 1.");
+        log_error("[CORE] pipe_fd_set_non_blocking failed for pipe 1.");
     }
+
     else
     {
+        printf("[CORE]: Setting logger\n");
         /* Initialize the logger */
         logger_init("server.log");
 
         /* Initialize the listener */
         if(listener_init(&srv.listener, port, &srv.pipe_fds[1]) != STATUS_SUCCESS)
         {
-            log_error("CORE: listener failed to init.", strerror(errno));
+            log_error("[CORE] listener failed to init.", strerror(errno));
         }
 
         /* Initialize the worker */
-        if(worker_init(&srv.worker, &srv.pipe_fds[0]) != STATUS_SUCCESS)
+        else if(worker_init(&srv.worker, &srv.pipe_fds[0]) != STATUS_SUCCESS)
         {
-            log_error("CORE: worker failed to init.", strerror(errno));
+            log_error("[CORE] worker failed to init.", strerror(errno));
         }
 
         /* Successful initialization */

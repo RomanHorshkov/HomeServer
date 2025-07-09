@@ -336,5 +336,31 @@
     "directory": "/home/roman/HomeServer",
     "file": "/home/roman/HomeServer/app/src/core/core.c",
     "output": "/home/roman/HomeServer/build/obj/app/src/core/core.o"
+  },
+  {
+    "arguments": [
+      "/usr/bin/gcc",
+      "-std=c11",
+      "-Wall",
+      "-Werror",
+      "-Wextra",
+      "-pedantic",
+      "-g",
+      "-O0",
+      "-DDEBUG_MODE",
+      "-Iapp/include",
+      "-Iapp/include/core",
+      "-Iapp/include/browser",
+      "-Iapp/include/browser/handlers",
+      "-Iapp/external/llhttp",
+      "-Iapp/external/cjson",
+      "-c",
+      "-o",
+      "build/obj/app/src/core/socket_helper.o",
+      "app/src/core/socket_helper.c"
+    ],
+    "directory": "/home/roman/HomeServer",
+    "file": "/home/roman/HomeServer/app/src/core/socket_helper.c",
+    "output": "/home/roman/HomeServer/build/obj/app/src/core/socket_helper.o"
   }
 ]

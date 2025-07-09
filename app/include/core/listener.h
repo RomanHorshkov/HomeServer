@@ -81,15 +81,4 @@ void *listener_run(void *arg);
  */
 void listener_set_status(listener_t *listener_ptr, int status);
 
-/**
- * @brief Set a socket file descriptor to non-blocking mode.
- *
- * Utility function to set the O_NONBLOCK flag on a socket.
- *
- * @param socket_fd  Pointer to the socket file descriptor.
- * @retval  0  Success.
- * @retval -1  Failure (see log for details).
- */
-int set_socket_non_blocking(const int *socket_fd);
-
 #endif /* SERVER_LISTENER_H */
