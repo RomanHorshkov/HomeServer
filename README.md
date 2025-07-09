@@ -1,40 +1,42 @@
-# Concurrent TCP + HTTP/1.1 Server (C11 / POSIX, Multithreaded)
+# Concurrent TCP + HTTP/1.1 Server (C11 / POSIX, Multithreaded)
 
-A compact yet fully‑featured teaching project that demonstrates how to write a **modular, multithreaded TCP + HTTP/1.1 server** in pure C11/POSIX.  
+A compact yet fully‑featured teaching project that demonstrates how to write a **modular, multithreaded TCP + HTTP/1.1 server** in pure C11/POSIX.
 It now serves **dynamic JSON APIs**, **rich client‑side pages**, a **build-notes viewer**, and a **directory‑driven file browser**, with:
 
 * non‑blocking *listener* sockets (epoll-based)
 * event-driven *worker* thread managing all client sockets
 * graceful admission control (max‑connections cap)
 * structured logging (to `server.log`)
-* production‑grade **HTTP/1.1 parsing** via the 🏎️ **[llhttp](https://github.com/nodejs/llhttp)** state‑machine library (static‑linked)
-* full request‑header capture (e.g. *User‑Agent*, *Accept*, …)
-* proper **Connection: keep‑alive / close** negotiation and persistent sockets (120 s idle timeout)
+* production‑grade **HTTP/1.1 parsing** via the 🏎️ **[llhttp](https://github.com/nodejs/llhttp)** state‑machine library (static‑linked)
+* full request‑header capture (e.g. *User‑Agent*, *Accept*, …)
+* proper **Connection: keep‑alive / close** negotiation and persistent sockets (120 s idle timeout)
 * serving real **static pages** (`index.html`, `style.css`, **header component**, images, …) from `var/www/`
 * a **JSON API** endpoint (`/api/whoami`) providing request metadata
 * a **Drive API** endpoint (`/api/drive?path=/subdir`) that returns JSON directory listings
-* a **Build Notes viewer** (`/build_notes`) that turns Markdown + PlantUML source into live docs
-* matching HTML front‑ends: **Who Am I** (`whoami.html`), **Drive** (`drive.html`) and **Build Notes** (`build_notes/index.html`)
+* a **Build Notes viewer** (`/build_notes`) that turns Markdown + PlantUML source into live docs
+* matching HTML front‑ends: **Who Am I** (`whoami.html`), **Drive** (`drive.html`) and **Build Notes** (`build_notes/index.html`)
 * an optional **rich animation** demo (`dynamic.html`) with CSS/JS effects
 * log‑controlled terminal shutdown (`q`)
 
-Everything builds with **`gcc -std=c11 -Wall -Wextra -Werror -pedantic`** and only the POSIX libc + the bundled **`libllhttp.a`** and **`libcjson.a`**—no external runtime deps.
+Everything builds with **`gcc -std=c11 -Wall -Wextra -Werror -pedantic`** and only the POSIX libc + the bundled **`libllhttp.a`** and **`libcjson.a`**—no external runtime deps.
 
 ---
 
-## Table of Contents
+## Table of Contents
 
-1. [Quick start](#quick-start)
+1. [Quick start](#quick-start)
 2. [Directory layout](#directory-layout)
 3. [Utils](#utils)
-4. [Top‑level data‑flow](#top-level-data-flow)
+4. [Top-level data-flow](#top-level-data-flow)
 5. [Sockets & threading model](#sockets--threading-model)
 6. [Timeouts & limits](#timeouts--limits)
 7. [HTTP capabilities & dynamic features](#http-capabilities--dynamic-features)
-8. [Build details](#build-details)
-9. [Logging semantics](#logging-semantics)
-10. [Testing matrix](#testing-matrix)
-11. [Future work](#future-work)
+8. [Router paths](#router-paths)
+9. [Build details](#build-details)
+10. [Logging semantics](#logging-semantics)
+11. [Testing matrix](#testing-matrix)
+12. [Security Concerns](#security-concerns)
+13. [Future work](#future-work)
 
 ---
 
@@ -45,7 +47,7 @@ $ make all            # or `make debug` / `make release`
 $ make run            # runs on :3490
 ```
 
-*Press* **`q`** *+ ENTER* in the same terminal to shut down cleanly.
+*Press* **`q`** *+ ENTER* in the same terminal to shut down cleanly.
 
 ## Directory layout
 
