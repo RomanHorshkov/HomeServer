@@ -184,12 +184,16 @@ void server_run(void)
     /* run threads */
     pthread_create(&srv.listener_thread, NULL, listener_run, srv.listener);
     pthread_create(&srv.worker_thread, NULL, worker_run, srv.worker);
+#ifdef DEBUG_MODE
     pthread_create(&srv.control_thread, NULL, control_run, NULL);
+#endif /* DEBUG_MODE */
 
     /* wait threads */
     pthread_join(srv.listener_thread, NULL);
     pthread_join(srv.worker_thread, NULL);
+#ifdef DEBUG_MODE
     pthread_join(srv.control_thread, NULL);
+#endif /* DEBUG_MODE */
 }
 
 /****************************************************************************
@@ -197,6 +201,7 @@ void server_run(void)
  ****************************************************************************
  */
 
+#ifdef DEBUG_MODE
 void *control_run(void *arg)
 {
     (void)arg;  // Unused parameter
@@ -238,3 +243,4 @@ void *control_run(void *arg)
     }
     return NULL;
 }
+#endif /* DEBUG_MODE */

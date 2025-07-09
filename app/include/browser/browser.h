@@ -26,11 +26,8 @@
  * keep-alive and close connection policies.
  *
  * @param fd                      Client socket descriptor.
- * @param recv_buf                Pointer to the received HTTP request buffer.
- * @param n                       Number of bytes in @p recv_buf.
- * @param client_connection_policy Connection policy (in/out): HTTP_CONNECTION_CLOSE or KEEP_ALIVE.
  * @return Number of body bytes sent (may be 0 for no-body), or -1 on error.
  */
-int browser_manage_client_req(int fd, const char* recv_buf, size_t n);
+int browser_manage_client_req(int fd);
 
 #endif /* SERVER_BROWSER_H */
