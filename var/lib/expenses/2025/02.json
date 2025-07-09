@@ -1,0 +1,50 @@
+[
+  {
+    "date": "01/02/2025",
+    "category": "rent",
+    "amount": 850.00,
+    "comment": ""
+  },
+  {
+    "date": "03/02/2025",
+    "category": "transport",
+    "amount": 7.30,
+    "comment": "bus ticket"
+  },
+  {
+    "date": "04/02/2025",
+    "category": "transport",
+    "amount": 15.70,
+    "comment": "train"
+  },
+  {
+    "date": "05/02/2025",
+    "category": "food",
+    "amount": 12.50,
+    "comment": "lunch"
+  },
+  {
+    "date": "09/02/2025",
+    "category": "groceries",
+    "amount": 45.00,
+    "comment": ""
+  },
+  {
+    "date": "13/02/2025",
+    "category": "groceries",
+    "amount": 93.00,
+    "comment": ""
+  },
+  {
+    "date": "18/02/2025",
+    "category": "groceries",
+    "amount": 72.00,
+    "comment": ""
+  },
+  {
+    "date": "25/02/2025",
+    "category": "groceries",
+    "amount": 51.00,
+    "comment": ""
+  }
+]
