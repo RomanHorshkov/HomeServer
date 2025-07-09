@@ -1,0 +1,26 @@
+[{
+		"date":	"19/06/2025",
+		"category":	"transport",
+		"amount":	69,
+		"comment":	"no comment"
+	}, {
+		"date":	"19/06/2025",
+		"category":	"groceries",
+		"amount":	60,
+		"comment":	"groceries"
+	}, {
+		"date":	"19/06/2025",
+		"category":	"rent",
+		"amount":	850,
+		"comment":	""
+	}, {
+		"date":	"15/06/2025",
+		"category":	"groceries",
+		"amount":	80,
+		"comment":	"pim"
+	}, {
+		"date":	"25/06/2025",
+		"category":	"food",
+		"amount":	80,
+		"comment":	"pim"
+	}]

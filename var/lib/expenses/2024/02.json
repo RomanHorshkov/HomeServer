@@ -1,0 +1,26 @@
+[
+  {
+    "date": "01/02/2024",
+    "category": "rent",
+    "amount": 850.00,
+    "comment": ""
+  },
+  {
+    "date": "05/02/2024",
+    "category": "transport",
+    "amount": 7.30,
+    "comment": "bus ticket"
+  },
+  {
+    "date": "07/02/2024",
+    "category": "food",
+    "amount": 12.50,
+    "comment": "lunch"
+  },
+  {
+    "date": "13/02/2024",
+    "category": "groceries",
+    "amount": 45.00,
+    "comment": ""
+  }
+]
