@@ -1,11 +1,15 @@
 # ------ Build configuration ------
 CC              := gcc
-CFLAGS          := -std=c11 -Wall -Werror -Wextra -pedantic -g
-LDLIBS 			+= -Lexternal/llhttp -lllhttp\
-                   -Lexternal/cjson -lcjson
+# Default to debug flags for all/all: debug build
+CFLAGS          := -std=c11 -Wall -Werror -Wextra -pedantic -g -O0 -DDEBUG_MODE
 
-INCDIRS 		:= include include/core include/browser include/browser/handlers external/llhttp external/cjson
-SRCDIRS         := src
+# External libraries (relative to app/external)
+LDLIBS          += -Lapp/external/llhttp -lllhttp \
+				   -Lapp/external/cjson -lcjson
+
+# Include directories (relative to app/)
+INCDIRS         := app/include app/include/core app/include/browser app/include/browser/handlers app/external/llhttp app/external/cjson
+SRCDIRS         := app/src
 BUILDDIR        := build
 OBJDIR          := $(BUILDDIR)/obj
 BINDIR          := $(BUILDDIR)/bin
@@ -14,17 +18,17 @@ TARGET          := server
 # Expand include flags
 INCLUDES        := $(foreach dir,$(INCDIRS),-I$(dir))
 
+# For static analysis tools
+CPPCHECK_INCLUDES := $(foreach dir,$(INCDIRS),-I$(dir))
+CLANGTIDY_INCLUDES := $(CPPCHECK_INCLUDES)
+
 # ------ Source & object lists ------
-SOURCES 		:= $(shell find $(SRCDIRS) -name '*.c')
-# SOURCES := src/main.c src/core/core.c src/core/listener.c src/core/worker.c src/core/logger.c
-OBJECTS 		:= $(patsubst %.c,$(OBJDIR)/%.o,$(SOURCES))
+SOURCES         := $(shell find $(SRCDIRS) -name '*.c')
+OBJECTS         := $(patsubst %.c,$(OBJDIR)/%.o,$(SOURCES))
 DEPS            := $(OBJECTS:.o=.d)
 
 # ------ Phony targets ------
 .PHONY: all clean run debug release tidy lint format notes
-
-# ------ Default build ------
-all: $(BINDIR)/$(TARGET)
 
 # Link step ---------------------------------------------------------------
 $(BINDIR)/$(TARGET): $(OBJECTS)
@@ -42,19 +46,26 @@ $(OBJDIR):
 
 # Convenience helpers ------------------------------------------------------
 run: all
-	@./$(BINDIR)/$(TARGET)
+	@./$(BINDIR)/$(TARGET) 3490
 
-debug: export CFLAGS += -O0
+
+# ------ Default build ------
+all: $(BINDIR)/$(TARGET)
+
+# Debug build (same as default)
 debug: all
 
-release: export CFLAGS += -O2 -DNDEBUG
+# Release build: optimized, no debug flags, no DEBUG_MODE
+release: export CFLAGS = -std=c11 -Wall -Werror -Wextra -pedantic -O2 -DNDEBUG_MODE -DFHS_RELEASE
 release: all
+
+all: $(BINDIR)/$(TARGET)
 
 # Auto formatting ---------------------------------------------------------
 format:
 ifndef FILES
 	@echo "🛠  Formatting all .c/.h files in the project..."
-	@find . -regex '.*\.\(c\|h\)' -exec clang-format -i {} +
+	@find app -regex '.*\.\(c\|h\)' -exec clang-format -i {} +
 else
 	@echo "🛠  Formatting staged files: $(FILES)"
 	@clang-format -i $(FILES)
@@ -64,32 +75,24 @@ endif
 lint:
 	@cppcheck --enable=all --inconclusive --std=c11 --language=c --quiet \
 		--suppress=missingIncludeSystem \
-		-Iinclude -Iinclude/core -Iinclude/browser -Iinclude/clients \
-		-Iexternal/cjson -Iexternal/llhttp \
-		src/ \
+		$(CPPCHECK_INCLUDES) \
+		$(SRCDIRS)/
 
 # Better Static analysis
 tidy:
-	@echo "🐻 Generating compile_commands.json using bear..."
+	@echo "🐻 Generating compile_commands.json using bear…"
 	bear -- make -B > /dev/null
 
-	@echo "🧠 Running clang-tidy (suppressing C11 unsafe API warnings)..."
-	clang-tidy \
-		-checks=-clang-analyzer-security.insecureAPI.DeprecatedOrUnsafeBufferHandling \
-		$(shell find src -name '*.c') -p . -- \
-		-Iinclude -Iinclude/core -Iinclude/browser -Iinclude/clients \
-		-Iexternal/cjson -Iexternal/llhttp
+	@echo "🧠 Running clang-tidy (suppressing C11 unsafe API warnings)…"
+	clang-tidy $(SOURCES) -p . -- $(CLANGTIDY_INCLUDES)
 
-	@echo "🧼 Cleaning temporary build files..."
-	rm -f *.o */*.o */*/*.o
-
-# rm -f compile_commands.json // keep for now the compile_commands
+	@echo "🧼 Cleaning temporary build files…"
 	rm -f *.o */*.o */*/*.o
 
 # ─── Build a manifest of all .puml diagrams and .md/.txt notes ───
-NOTES_DIR := www/build_notes/notes
-DIAG_DIR  := www/build_notes/diagrams
-MANIFEST  := www/build_notes/manifest.json
+NOTES_DIR := var/www/build_notes/notes
+DIAG_DIR  := var/www/build_notes/diagrams
+MANIFEST  := var/www/build_notes/manifest.json
 
 notes:
 	@echo "Generating $(MANIFEST)…"
@@ -108,9 +111,37 @@ notes:
 	@echo "}"                                                         >> $(MANIFEST)
 	@echo "$(MANIFEST) updated."
 
+# ─── Container ──────────────────────────────────────────────
+IMAGE_APP      ?= homeserver-app
+IMAGE_TAG      ?= $(shell git rev-parse --short HEAD)
+COMPOSE        ?= docker compose
 
+.PHONY: docker-build docker-push docker-up docker-down docker-clean
+
+docker-build:             ## Build multi‑arch images via compose
+	$(COMPOSE) build
+
+docker-push:              ## Push images set in compose to registry
+	$(COMPOSE) push
+
+docker-up:                ## Start (or upgrade) the stack in detached mode
+	$(COMPOSE) up -d
+
+docker-down:              ## Stop & remove containers but keep the volume
+	$(COMPOSE) down
+
+docker-clean:             ## Remove dangling layers & old images
+	docker image prune -f
+
+# ─── Clean up ─────────────────────────────────────────────
 clean:
-	rm -rf $(BUILDDIR) server.log
+	rm -rf $(BUILDDIR)
+	rm var/www/server.log var/www/map.json 
 
 # Auto‑generated dependency files -----------------------------------------
 -include $(DEPS)
+
+# Notes:
+# - Source and include paths now use the 'app/' prefix for clarity.
+# - Static files should be placed in 'var/www', persistent data in 'var/lib'.
+# - This Makefile is standardized for maintainability and FHS alignment.
