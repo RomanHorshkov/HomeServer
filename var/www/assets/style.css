@@ -1,0 +1,335 @@
+/* import from Google Fonts (or host locally) */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap');
+
+:root {
+  
+  --font-base: 'Inter', sans-serif;
+
+
+  /* fluid padding: from 0 at 0px, to 40px at 1000px, and larger beyond */
+  --page-padding: clamp(0px, 4vw, 40px);
+  /* horizontal: up to 40px at 1000px, fluid below */
+  --page-padding-h: clamp(0px, 4vw, 40px);
+  /* vertical: up to 12px at 1000px, fluid below */
+  --page-padding-v: clamp(0px, 1.2vw, 12px);
+  --page-margin: 0px;
+  
+  /* theme variables */
+  /* fallback values if no theme attribute */
+  --bg:            #111;
+  --surface:       #1c1c1c;
+  --border:        #333;
+  --accent:        #0cf;
+  --accent-hover:  #0ae;
+  --magenta:       #f0f;
+  --text:          #eee;
+  --muted:         #999;
+  --radius:        8px;
+  --shadow:        0 4px 8px rgba(0, 0, 0, .45);
+  --font-base:     'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  --fab-blue:      #0cf;
+  --fab-blue-hover:#0ae;
+}
+
+:root[data-theme="evil"] {
+  /* “evil” (dark) palette */
+  --bg:            #111;
+  --surface:       #1c1c1c;
+  --border:        #333;
+  --accent:        #0cf;
+  --accent-hover:  #0ae;
+  --magenta:       #f0f;
+  --text:          #eee;
+  --muted:         #999;
+
+}
+
+:root[data-theme="angel"] {
+  /* “angel” (light) palette */
+  --bg:            #fff;
+  --surface:       #f9f9f9;
+  --border:        #ccc;
+  --accent:        #06c;
+  --accent-hover:  #048;
+  --magenta:       #c0f;
+  --text:          #111;
+  --muted:         #666;
+}
+
+/* ---------------------------------------------------------------------
+   Base layout / typography
+   ------------------------------------------------------------------ */
+html, body {
+  margin: 0;          /* no amrgin */  
+  padding: 0;         /* no padding */  
+  min-height: 100vh;  /* stretch to 100% viewport height */
+}
+body {
+  font-family: var(--font-base);
+  margin: 0;                      /* no padding */
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-base);
+  line-height: 1.6;
+  display: flex;
+  flex-direction: column;         /* column layout */
+  min-height: 100vh;              /* stretch to 100% viewport height */
+}
+
+/* Added styles for <main> element */
+main {
+  flex: 1;
+  padding: var(--page-padding);
+}
+
+/* ---------------------------------------------------------------------
+   Site‑wide sticky header
+   ------------------------------------------------------------------ */
+header {
+  position: sticky;              /* stays at top on scroll */
+  top: 0;
+  z-index: 1000;
+
+  display: flex;
+  /* align-items: center; */
+  /* Effect: Places the first item (e.g., the logo) at the start of the container
+    and the last item (e.g., navigation links) at the end, with equal spacing between them.
+    The logo stays on the left.
+    The navigation links shift to the right, leaving space in between. */
+  justify-content: space-between;
+
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  
+  /* vertical padding fixed, horizontal fluid */
+  padding: var(--page-padding-v) var(--page-padding-h);
+  margin: var(--page-margin);
+  
+  box-shadow: var(--shadow);
+}
+header .logo {
+    font-size: 1.5em;
+    font-weight: bold;
+    color: var(--magenta);
+    text-decoration: none;
+    margin-right: 20px;
+    transition: color 0.2s ease;
+}
+header .logo:hover {
+    color: var(--accent);
+    text-decoration: underline;
+}
+header nav {
+  display: flex;
+  gap: 24px;
+}
+header nav a {
+  color: var(--accent);
+  text-decoration: none;
+  font-size: .95rem;
+}
+/* Highlight the active page link in the header */
+header nav a.active {
+    color: var(--magenta);
+    font-weight: bold;
+}
+header nav a:hover { text-decoration: underline; }
+
+/* Enhanced styles for dynamic navigation */
+header nav .nav-link {
+  position: relative;
+  transition: all 0.3s ease;
+  padding: 8px 12px;
+  border-radius: var(--radius);
+}
+
+header nav .nav-link:hover {
+  background: rgba(0, 204, 255, 0.1);
+  transform: translateY(-1px);
+}
+
+/* Current page indicator */
+header nav .nav-link.current-page {
+  color: var(--magenta);
+  font-weight: bold;
+  background: rgba(255, 0, 255, 0.1);
+}
+
+header nav .nav-link.current-page::after {
+  content: '';
+  position: absolute;
+  bottom: -2px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 80%;
+  height: 2px;
+  background: var(--magenta);
+  border-radius: 1px;
+}
+
+/* Fallback links styling */
+header nav .nav-link.fallback {
+  opacity: 0.8;
+  font-style: italic;
+}
+
+/* Loading state for navigation */
+header nav.loading::after {
+  content: 'Loading navigation...';
+  color: var(--muted);
+  font-size: 0.8em;
+  margin-left: 16px;
+  animation: pulse 1.5s infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 0.5; }
+  50% { opacity: 1; }
+}
+
+/* Navigation animation when items are added */
+header nav .nav-link {
+  animation: slideInFromTop 0.3s ease-out forwards;
+  opacity: 0;
+  transform: translateY(-10px);
+}
+
+header nav .nav-link:nth-child(1) { animation-delay: 0.1s; }
+header nav .nav-link:nth-child(2) { animation-delay: 0.2s; }
+header nav .nav-link:nth-child(3) { animation-delay: 0.3s; }
+header nav .nav-link:nth-child(4) { animation-delay: 0.4s; }
+header nav .nav-link:nth-child(5) { animation-delay: 0.5s; }
+
+@keyframes slideInFromTop {
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* ---------------------------------------------------------------------
+   Footer
+   ------------------------------------------------------------------ */
+footer {
+    background-color: var(--surface);
+    color: var(--text);
+    text-align: center;
+    padding: 0px 0;        /* ↓ much less vertical space */
+    margin-top: auto !important;    /* pushes it down to the bottom */
+    border-top: 1px solid var(--border);
+    box-shadow: var(--shadow);
+    font-size: .8rem;      /* ↓ smaller text */
+}
+
+footer a {
+    color: var(--accent);
+    text-decoration: none;
+    transition: color 0.2s ease;
+}
+
+footer a:hover {
+    color: var(--accent-hover);
+    text-decoration: underline;
+}
+
+/* ---------------------------------------------------------------------
+   Headings / links
+   ------------------------------------------------------------------ */
+h1,h2,h3,h4,h5,h6 { margin-top: 0; font-weight: 600; }
+h1 { color: var(--magenta); }
+
+a            { color: var(--accent); text-decoration: none; }
+a:hover      { text-decoration: underline; }
+
+/* ---------------------------------------------------------------------
+   Buttons
+   ------------------------------------------------------------------ */
+button {
+  background: var(--accent);
+  color: #000;
+  border: none;
+  padding: 8px 14px;
+  font-size: .875rem;
+  border-radius: var(--radius);
+  cursor: pointer;
+  box-shadow: var(--shadow);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  transition: background .15s ease, transform .15s ease;
+}
+button:hover:not(:disabled)  { background: var(--accent-hover); transform: translateY(-1px); }
+button:active:not(:disabled) { transform: translateY(0); }
+button:disabled              { opacity: .4; cursor: default; }
+
+/* ---------------------------------------------------------------------
+   Blog post card
+   ------------------------------------------------------------------ */
+.post {
+  background: var(--surface);
+  padding: 20px;
+  margin: 30px 0;
+  border-left: 5px solid var(--accent);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+}
+.post-title { color: var(--accent); margin: 0; }
+.post-body  {
+  white-space: pre-wrap;
+  font-family: monospace;
+  font-size: .95em;
+  margin-top: 10px;
+  color: #ddd;
+}
+
+/* ---------------------------------------------------------------------
+   Utility components
+   ------------------------------------------------------------------ */
+.breadcrumbs { color: var(--muted); font-size: .9rem; overflow-x: auto; white-space: nowrap; }
+.toolbar     { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 1rem; }
+
+/* File‑tree widget ---------------------------------------------------- */
+#tree ul        { list-style: none; margin-left: 1rem; border-left: 1px solid var(--border); padding-left: .6rem; }
+#tree summary,
+#tree li         { display: flex; align-items: center; gap: 8px; padding: 4px 0; }
+.arrow           { width: .8rem; color: var(--accent); transition: transform .2s ease; }
+details[open] > summary .arrow { transform: rotate(90deg); }
+.entry-icon      { min-width: 1rem; text-align: center; }
+.directory       { font-weight: 600; color: var(--text); }
+.file            { color: var(--accent); font-family: monospace; }
+
+/* =========================
+   Responsive Chart Layout
+   ========================= */
+.charts-row {
+  display: flex;                /* Flexbox: charts side by side on large screens */
+  gap: 2rem;                    /* Space between charts */
+  justify-content: center;      /* Center charts horizontally */
+  align-items: flex-start;      /* Align charts to top */
+  flex-wrap: wrap;              /* Allow wrapping if not enough space */
+  margin-bottom: 2rem;          /* Space below charts */
+}
+.chart-wrapper {
+  max-width: 800px;             /* INCREASE THIS for wider/larger charts (e.g. 800px, 1000px, etc) */
+  width: 100%;                  /* Chart fills available width up to max-width */
+  flex: 1 1 300px;              /* Flex-grow/shrink, min width 300px */
+  min-width: 250px;             /* Prevents charts from getting too small */
+  box-sizing: border-box;
+}
+.chart-wrapper canvas {
+  width: 100% !important;       /* Canvas always fills wrapper width */
+  height: auto !important;      /* Height auto-scales with width */
+  max-height: 400px;            /* << INCREASE THIS for taller charts (e.g. 600px, 800px, etc) */
+  display: block;
+}
+@media (max-width: 1100px) {
+  .charts-row {
+    flex-direction: column;     /* Stack charts vertically on smaller screens */
+    gap: 1.5rem;
+    align-items: stretch;
+  }
+  .chart-wrapper {
+    max-width: 100%;            /* Chart takes full width on small screens */
+    min-width: 0;
+  }
+}
