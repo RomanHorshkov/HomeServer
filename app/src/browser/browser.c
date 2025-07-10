@@ -95,38 +95,55 @@ int browser_manage_client_req(int fd)
     /* Read data from the client socket */
     ssize_t n = read(fd, recv_buf, HTTP_RECEIVE_BUFFER_LEN - 1);
 
+    /* Peer closed connection (FIN) */
+    if(n == 0)
+    {
 #ifdef DEBUG_MODE
-    log_info("[worker] Received from fd %d:\n%.*s", fd, (int)n, recv_buf);
+        log_info("[browser] Peer closed connection (fd %d)", fd);
 #endif /* DEBUG_MODE */
-
-    /* manage http request */
-    if(http_manage_request(recv_buf, n, &request) != STATUS_SUCCESS)
-    {
-        log_error("[browser] http_manage_request failed", strerror(errno));
     }
 
-    /* Route request to generate HttpResponse (status, headers, body) */
-    else if(router_handle_request(&request, &response) != STATUS_SUCCESS)
+    /* If read() failed, log the error */
+    else if(n < 0)
     {
-        log_error("[browser] router_handle_request failed for fd %d", fd);
-    }
-
-    /* Send HTTP response over TCP (headers + binary body) */
-    else if(send_response(fd, &response) < 0)
-    {
-        log_error("[browser] send_response failed", strerror(errno));
-
-        /* Free any heap buffer allocated by handler_static_page */
-        free((void *)response.body);
+        log_error("[browser] read() error on fd %d: %s", fd, strerror(errno));
     }
 
     else
     {
-        /* Set return variable to success */
-        res = STATUS_SUCCESS;
+#ifdef DEBUG_MODE
+        log_info("[worker] Received from fd %d:\n%.*s", fd, (int)n, recv_buf);
+#endif /* DEBUG_MODE */
 
-        /* Free any heap buffer allocated by handler_static_page */
-        free((void *)response.body);
+        /* manage http request */
+        if(http_manage_request(recv_buf, n, &request) != STATUS_SUCCESS)
+        {
+            log_error("[browser] http_manage_request failed", strerror(errno));
+        }
+
+        /* Route request to generate HttpResponse (status, headers, body) */
+        else if(router_handle_request(&request, &response) != STATUS_SUCCESS)
+        {
+            log_error("[browser] router_handle_request failed for fd %d", fd);
+        }
+
+        /* Send HTTP response over TCP (headers + binary body) */
+        else if(send_response(fd, &response) < 0)
+        {
+            log_error("[browser] send_response failed", strerror(errno));
+
+            /* Free any heap buffer allocated by handler_static_page */
+            free((void *)response.body);
+        }
+
+        else
+        {
+            /* Set return variable to success */
+            res = STATUS_SUCCESS;
+
+            /* Free any heap buffer allocated by handler_static_page */
+            free((void *)response.body);
+        }
     }
 
     return res;
