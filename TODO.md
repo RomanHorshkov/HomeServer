@@ -41,24 +41,6 @@ typedef struct {
 
 ---
 
-## Project Structure & Organization
-
-**Goal:** Ensure maintainability, clarity, and scalability.
-
-* [ ] **Modular Codebase**: Organize code into logical modules/packages (e.g., `/app`, `/routes`, `/models`).
-
-  * **Why:** Modularization enables easier debugging, testing, and future expansion.
-* [ ] **Dedicated Directories**:
-
-  * `/static` for static assets (CSS, JS, images)
-  * `/templates` for HTML or template files
-  * `/logs` for log files
-  * `/tests` for test code
-  * **Why:** Separation of concerns prevents accidental overwrites and improves security.
-* [ ] **Configuration Files**: Store settings in files like `config.yaml`, `.env`, or `settings.py`.
-
-  * **Why:** Decouples code from environment-specific settings.
-
 ## Configuration Management
 
 **Goal:** Achieve flexibility and security.

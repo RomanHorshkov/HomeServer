@@ -126,40 +126,40 @@ Main thread (core)
 
 ---
 
-## Sockets & threading model
+## Sockets & threading model
 
-| Layer                | Blocking?         | Behaviour                                                      |
-| -------------------- | ---------------- | -------------------------------------------------------------- |
-| **Listener sockets** | **NON‑blocking** | Managed by listener thread, epoll-based, dual-stack (IPv4/6)   |
-| **Client sockets**   | **NON‑blocking** | Managed by worker thread, epoll-based, persistent connections  |
+| Layer / component            | Non‑blocking | Behaviour                                                                  |
+| ---------------------------- | ------------ | -------------------------------------------------------------------------- |
+| **Listener sockets**         | **Yes**      | Epoll‑based accept loop (IPv4 **and** IPv6); dual‑stack if required        |
+| **Pipe (listener → worker)** | **Yes**      | Lock‑free FD hand‑off; epoll‑monitored in worker                           |
+| **Client sockets**           | **Yes**      | Epoll‑multiplexed, HTTP/1.1 persistent connections, graceful FIN handshake |
+| **timerfd (idle reap)**      | **Yes**      | Adaptive cadence: 10 s while ≥ 1 client, 60 s when idle                    |
 
-**Admission control:** Max-clients cap enforced in worker.  
-**Shutdown:** Atomic status flags signal threads to exit cleanly.  
-**Inter-thread communication:** Pipe (listener → worker) for new client FDs.
+### Listener sockets
 
-**Listener sockets:**
+* `SO_REUSEADDR` / `SO_REUSEPORT` — fast restart without "address in use".
+* `O_NONBLOCK` — accept/read/write never block the listener thread.
+* `IPV6_V6ONLY` (IPv6 only) — avoid dual‑mapping ambiguity.
+* Full epoll mask `EPOLLIN | EPOLLRDHUP | EPOLLHUP | EPOLLERR`.
 
-- Set **SO_REUSEADDR** to allow immediate rebinding after shutdown.
-- Set **SO_LINGER** (zero timeout) so sockets close instantly, discarding unsent data.
-- Set **O_NONBLOCK** to ensure accept/read/write never block the listener thread.
-- For IPv6, set **IPV6_V6ONLY** to avoid IPv4/IPv6 ambiguity.
-- Registered with **epoll** for efficient event-driven notification.
+### Inter‑thread communication: pipe
 
-**Client sockets:**
+* Regular UNIX pipe, both ends `O_NONBLOCK`.
+* Listener writes accepted FDs; worker drains via epoll.
+* Admission control enforced in worker (`MAX_CLIENTS` cap).
 
-- Set **O_NONBLOCK** so all I/O is non-blocking, allowing the worker thread to multiplex many clients.
-- Set **TCP_NODELAY** to disable Nagle’s algorithm, reducing latency for interactive protocols.
-- Each client socket is registered with epoll by the worker for read events.
-- Connection state (e.g., last activity, request count) is tracked for keep-alive and idle timeout enforcement.
-- When a client disconnects or times out, the socket is removed from epoll and closed cleanly.
+### Client sockets (worker thread)
 
-**Communication pipe (listener → worker):**
+* `O_NONBLOCK` & `TCP_NODELAY` (Nagle off).
+* Registered with full epoll mask (`IN | RDHUP | HUP | ERR`).
+* Connection bookkeeping: `last_activity`, `request_count` for keep‑alive & DOS throttling.
+* **Graceful close**: `shutdown(fd, SHUT_WR)` → server FIN · epoll DEL → `close(fd)` — no RSTs in traces.
 
-- Implemented as a regular UNIX pipe (two file descriptors).
-- Both ends are set **O_NONBLOCK** to prevent blocking on read/write.
-- The listener writes accepted client file descriptors into the pipe.
-- The worker monitors the pipe with epoll and reads new client FDs as they arrive.
-- This decouples the accept loop from the worker’s event loop and enables safe, lock-free handoff of new connections.
+### Idle‑timeout / keep‑alive strategy
+
+* Single `timerfd` per worker.
+* Interval auto‑adjusts: 10 s when clients are present, 60 s when none.
+* On each tick the worker scans `connections[]`; fds idle > `CLIENT_MAX_TIMEOUT_S` are culled.
 
 This setup ensures that all network and inter-thread communication is non-blocking, scalable, and robust against slow or malicious clients. All resource limits and timeouts are enforced in the worker, and the system is designed to recover quickly from restarts or overloads.
 
