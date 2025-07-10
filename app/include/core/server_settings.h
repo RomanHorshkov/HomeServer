@@ -8,8 +8,8 @@
 
 enum status
 {
-    STATUS_FAILURE = -1,               /* error occurred */
-    STATUS_SUCCESS = 0,                /* everything is fine */
+    STATUS_FAILURE = -1, /* error occurred */
+    STATUS_SUCCESS = 0,  /* everything is fine */
 };
 
 enum server_status
@@ -43,17 +43,15 @@ enum server_status
 /* keep a little head-room for pipe + timer + wiggle */
 #define MAX_EVENTS (MAX_CLIENTS + 8)
 
-/* Measurement unit */
-// #define _S
-// #define _MS
-// #define _US
-// #define _NS
+/* Time measurement unit */
+#define _S 1UL
+#define _MS ((_S) * 1000)
+#define _US ((_MS) * 1000)
+#define _NS ((_US) * 1000)
 
-/* Sleep time */
-#define SERVER_SLEEP_TIME_S 2
-#define SERVER_SLEEP_TIME_MS 0
-#define SERVER_SLEEP_TIME_US ((SERVER_SLEEP_TIME_MS) * 1000)
-#define SERVER_SLEEP_TIME_NS ((SERVER_SLEEP_TIME_US) * 1000)
+/* Server timeout */
+#define SERVER_KEEPALIVE_TIMEOUT_ALONE (60UL * _S)
+#define SERVER_KEEPALIVE_TIMEOUT_NOT_ALONE (10UL * _S)
 
 /*
  * SOCKET PROPERTIES
