@@ -15,7 +15,7 @@ set -euo pipefail
 
 HOST="${1:-localhost}"
 PORT="${2:-3490}"
-MAX_ALLOWED=64
+MAX_ALLOWED=80
 SLEEP_BETWEEN=0.05   # seconds between launches so epoll can register
 
 PIDS=()

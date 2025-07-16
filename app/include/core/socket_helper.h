@@ -89,10 +89,10 @@ int client_socket_init(const int *client_fd);
  *
  * Uses fcntl() to set O_NONBLOCK on the pipe file descriptor.
  *
- * @param pipe_fd  File descriptor of the pipe.
+ * @param pipe_fds  File descriptor of the pipe.
  * @retval  0  Success.
  * @retval -1 Failure (see log for details).
  */
-int pipe_socket_init(const int *pipe_fd);
+int pipe_socket_init(const int *pipe_fds);
 
 #endif /* SERVER_SOCKET_HELPER_H */
