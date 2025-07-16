@@ -5,10 +5,11 @@ CFLAGS          := -std=c11 -Wall -Werror -Wextra -pedantic -g -O0 -DDEBUG_MODE
 
 # External libraries (relative to app/external)
 LDLIBS          += -Lapp/external/llhttp -lllhttp \
-				   -Lapp/external/cjson -lcjson
+				   -Lapp/external/cjson -lcjson \
+				   -Lapp/external/spsc_ring -lspsc_ring
 
 # Include directories (relative to app/)
-INCDIRS         := app/include app/include/core app/include/browser app/include/browser/handlers app/external/llhttp app/external/cjson
+INCDIRS         := app/include app/include/core app/include/browser app/include/browser/handlers app/external/llhttp app/external/cjson app/external/spsc_ring
 SRCDIRS         := app/src
 BUILDDIR        := build
 OBJDIR          := $(BUILDDIR)/obj

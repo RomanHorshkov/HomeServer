@@ -88,6 +88,50 @@ int socket_set_non_blocking(const int *socket_fd)
     return res;
 }
 
+int socket_set_reusability(const int *socket_fd)
+{
+    /* return value */
+    int res = STATUS_FAILURE;
+
+    /* Allow reuse of address (critical for restarts) */
+    int yes = 1;
+
+    if(setsockopt(*socket_fd, SOL_SOCKET, SO_REUSEADDR, &yes, sizeof(yes)) != -1)
+    {
+        res = STATUS_SUCCESS;
+    }
+    else
+    {
+        log_error("listener socket reusability failed to set: %s", strerror(errno));
+    }
+
+    return res;
+}
+
+int socket_set_restartability(const int *socket_fd)
+{
+    /* return value */
+    int res = STATUS_FAILURE;
+
+    /* Options for restart:
+     * Just kill it. Don’t wait. Don’t flush data.
+     * These options are ok for listeners.
+     */
+    struct linger sl;
+    sl.l_onoff = 1;
+    sl.l_linger = 0;
+    if(setsockopt(*socket_fd, SOL_SOCKET, SO_LINGER, &sl, sizeof(sl)) != -1)
+    {
+        res = STATUS_SUCCESS;
+    }
+    else
+    {
+        log_error("listener socket restartability failed to set: %s", strerror(errno));
+    }
+
+    return res;
+}
+
 int socket_disable_nagle(const int *socket_fd)
 {
     int res = STATUS_FAILURE;
@@ -111,27 +155,58 @@ int socket_disable_nagle(const int *socket_fd)
     return res;
 }
 
-int listener_socket_init(const int *listen_fd)
+int listener_socket_init(const int *listen_fd, const int32_t *ai_family)
 {
+    /* Return variable */
     int res = STATUS_FAILURE;
 
-    if(listen_fd == NULL)
+    /* Check input */
+    if(listen_fd == NULL || ai_family == NULL)
     {
         log_error("[socket_helper] listener_socket_init: invalid input");
     }
+
+    /* Set sockets reusability */
+    else if(socket_set_reusability(listen_fd) != STATUS_SUCCESS)
+    {
+        log_error("set_listener_socket_reusability failed.");
+    }
+
+    /* Set sockets restartability */
+    else if(socket_set_restartability(listen_fd) != STATUS_SUCCESS)
+    {
+        log_error("set_listener_socket_restartability failed.");
+    }
+
+    /* Set non-blocking mode */
+    else if(socket_set_non_blocking(listen_fd) != STATUS_SUCCESS)
+    {
+        log_error("[socket_helper] listener_socket_init: failed to set non-blocking");
+    }
+
+    /* Everything went ok */
     else
     {
-        /* Set non-blocking mode */
-        if(socket_set_non_blocking(listen_fd) == STATUS_SUCCESS)
+        /* Set the return to Success */
+        res = STATUS_SUCCESS;
+
+        /* restrict the socket to only ipv6 if socket for ipv6 */
+        if(*ai_family == AF_INET6)
         {
-            /* Additional listener options (SO_REUSEADDR, etc.) can be set here */
-            res = STATUS_SUCCESS;
-        }
-        else
-        {
-            log_error("[socket_helper] listener_socket_init: failed to set non-blocking");
+            /* yes value */
+            int yes = 1;
+
+            /* Check if restriction successfully occurred */
+            if(setsockopt(*listen_fd, IPPROTO_IPV6, IPV6_V6ONLY, &yes, sizeof(yes)) !=
+               STATUS_SUCCESS)
+            {
+                /* if restriction fails set return variable to failure */
+                res = STATUS_FAILURE;
+                log_error("Socket ipv6 opts failed: %s\n", strerror(errno));
+            }
         }
     }
+
     return res;
 }
 
@@ -167,8 +242,34 @@ int client_socket_init(const int *client_fd)
     return res;
 }
 
-int pipe_fd_set_non_blocking(const int *pipe_fd)
+int pipe_socket_init(const int *pipe_fds)
 {
-    /* Just a wrapper for socket_set_non_blocking */
-    return socket_set_non_blocking(pipe_fd);
+    /* Return variable */
+    int res = STATUS_FAILURE;
+
+    /* Check input */
+    if(pipe_fds == NULL)
+    {
+        log_error("[socket_helper] pipe_socket_init: invalid input");
+    }
+
+    /* Set non-blocking for the first pipe file descriptor */
+    else if(socket_set_non_blocking(&pipe_fds[0]) != STATUS_SUCCESS)
+    {
+        log_error("[socket_helper] pipe_socket_init: failed to set non-blocking for pipe 0");
+    }
+
+    /* Set non-blocking for the second pipe file descriptor */
+    else if(socket_set_non_blocking(&pipe_fds[1]) != STATUS_SUCCESS)
+    {
+        log_error("[socket_helper] pipe_socket_init: failed to set non-blocking for pipe 1");
+    }
+
+    /* If everything went ok */
+    else
+    {
+        res = STATUS_SUCCESS;
+    }
+
+    return res;
 }
