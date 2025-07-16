@@ -250,17 +250,16 @@ void *listener_run(void *arg)
         epoll_ctl(epoll_fd, EPOLL_CTL_ADD, pipe_read_fd, &ev);
         /* At this point the pipe is added to epoll ctl before entering infinite loop */
 
-        worker_status worker_old_status = WORKER_STATUS_INACTIVE;
-        worker_status worker_actual_status = WORKER_STATUS_INACTIVE;
+        worker_status worker_old_status = (worker_status)LISTENER_STATUS_ACTIVE;
+        worker_status worker_actual_status = (worker_status)LISTENER_STATUS_ACTIVE;
+
+        /* Create epoll events */
+        struct epoll_event events[MAX_FAN_OUT_SOCKETS];
 
         while(atomic_load(&listener_ptr->status) == LISTENER_STATUS_ACTIVE)
         {
-            /* Create epoll events, + 1 for pipeline pipe read */
-            struct epoll_event events[MAX_LISTENERS + 1];
-
             /* Wait for epoll events on pipe / listener sockets */
             int nfds = epoll_wait(epoll_fd, events, MAX_LISTENERS, -1);
-            log_info("[listener] get out of epoll wait for nfds %d", nfds);
 
             if(nfds < 0)
             {
@@ -272,14 +271,15 @@ void *listener_run(void *arg)
             {
                 int listen_fd = events[i].data.fd;
 
-                /* Check if the pipe has something to say */
+                /* Check if the worker on pipe has something to say */
                 if(listen_fd == pipe_read_fd)
                 {
+#ifdef DEBUG_MODE
                     log_info("[listener] pipe_read_fd %d", listen_fd);
+#endif
                     /* Read the pipe to clear it */
                     uint32_t worker_msg;
-                    ssize_t s = read(pipe_read_fd, &worker_msg, sizeof(uint32_t));
-                    if(s != sizeof(uint32_t))
+                    if(read(pipe_read_fd, &worker_msg, sizeof(uint32_t)) != sizeof(uint32_t))
                     {
                         log_error("[listener] Failed to read from pipe: %s", strerror(errno));
                         continue;
@@ -292,7 +292,7 @@ void *listener_run(void *arg)
 #ifdef DEBUG_MODE
                         log_info(
                             "[listener] Pipe event received on fd %d, worker_msg %ld, size %ld",
-                            pipe_read_fd, worker_msg, s);
+                            pipe_read_fd, worker_msg, sizeof(uint32_t));
 #endif /* DEBUG_MODE */
                         /* Check the worker's status and set the listener accordingly */
                         /* Check if a status change occurred */
@@ -327,10 +327,9 @@ void *listener_run(void *arg)
                     continue;
                 }
 
+                /* Not a pipe so a listener catched a new connecting client */
                 else
                 {
-                    log_info("[listener] NOT pipe_read_fd %d, worker_status %d", listen_fd,
-                             worker_actual_status);
                     switch(worker_actual_status)
                     {
                         case WORKER_STATUS_ACTIVE:
@@ -362,17 +361,12 @@ void *listener_run(void *arg)
                                 /* Set socket settings */
                                 client_socket_init(&client_fd);
 
-                                /** Write the client_fd to the ring for the worker;
-                                 * Send as well a wake-up signal
-                                 */
-
-                                spsc_ring_t *ring = listener_ptr->pipeline->ring_ptr;
-
                                 /* Check if ring has free space */
-                                if(!spsc_ring_is_full(ring))
+                                if(!spsc_ring_is_full(listener_ptr->pipeline->ring_ptr))
                                 {
                                     /* Check if push on ring successful */
-                                    if(spsc_ring_push(ring, client_fd) != 0)
+                                    if(spsc_ring_push(listener_ptr->pipeline->ring_ptr,
+                                                      client_fd) != 0)
                                     {
                                         close(client_fd);
                                         log_error("[listener]: spsc_ring_push failed! Fd %d closed",
@@ -392,11 +386,9 @@ void *listener_run(void *arg)
                                 }
                                 else
                                 {
-#ifdef DEBUG_MODE
-                                    log_info(
+                                    log_error(
                                         "[listener] spsc_ring_is_full, fd %d refused and closed",
                                         client_fd);
-#endif /* DEBUG_MODE */
                                 }
                             }
                             else
@@ -418,7 +410,7 @@ void *listener_run(void *arg)
                         default:
 
 #ifdef DEBUG_MODE
-                            log_info("[listener] worker status UNKNOWN!!!... ");
+                            log_info("[listener] worker status UNKNOWN %d", worker_actual_status);
 #endif /* DEBUG_MODE */
                             break;
                     }

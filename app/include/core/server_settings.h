@@ -56,14 +56,12 @@ typedef enum
 /* Capacity of the SPSC ring buffer for file descriptors */
 #define SPSC_RING_CAPACITY 8
 
-// /* Max sockets per client */
-// #define MAX_SOCKETS_PER_CLIENT 10
+/* Fan-Out: the number of independent endpoints that can become ready at the same time—e.g. how many
+ * client sockets might have data waiting when you call epoll_wait().*/
+#define MAX_FAN_OUT_SOCKETS 8
 
 /* Max pending connections on one listener socket */
-#define MAX_PENDING_CONNECTIONS 10
-
-/* keep a little head-room for pipe + timer + wiggle */
-#define MAX_EVENTS (MAX_CLIENTS + 8)
+#define MAX_PENDING_CONNECTIONS 8
 
 /* Time measurement unit */
 #define _S 1UL
