@@ -73,7 +73,7 @@ static ssize_t send_all(int fd, const void *buf, size_t len);
  */
 int browser_manage_client_req(int fd)
 {
-    /* return variable */
+    /* Return variable */
     int res = STATUS_FAILURE;
 
     /* create the request and response variables */

@@ -208,7 +208,7 @@ int http_manage_request(const char* recv_buf, const size_t buffer_len, HttpReque
 
 static int http_parse_request(const char* buffer, const size_t buffer_len, HttpRequest* req)
 {
-    /* return variable */
+    /* Return variable */
     int res = STATUS_FAILURE;
 
     /* llhttp parser declare */
@@ -279,7 +279,7 @@ static int http_parse_request(const char* buffer, const size_t buffer_len, HttpR
 
 static int validate_http_path(const char* path)
 {
-    /* return variable */
+    /* Return variable */
     int res = STATUS_FAILURE;
 
     /* Check input */
@@ -532,7 +532,7 @@ static int on_method(llhttp_t* parser, const char* at, size_t length)
 
 static http_method_t parse_http_method(const char* at, size_t length)
 {
-    /* return variable */
+    /* Return variable */
     http_method_t method = HTTP_METHOD_UNKNOWN;
 
     if(length > HTTP_MAX_METHOD_LEN)

@@ -116,65 +116,84 @@ Main thread (core)
 │
 ├─ Initializes logger, listener, worker, and control subsystems
 ├─ Starts three threads:
-│    ├─ Listener thread: accepts new TCP connections (epoll, non-blocking)
-│    │    └─ Forwards client FDs to worker via pipe
-│    ├─ Worker thread: event-driven (epoll), manages all client sockets
-│    │    └─ Reads new client FDs from pipe, handles all I/O and HTTP requests
-│    └─ Control thread: interactive menu (shutdown, info)
+│    ├─ Listener thread
+│    │    • Accepts new TCP connections (epoll, non‑blocking)
+│    │    • Pushes client FDs into an SPSC ring buffer
+│    │    • Signals the worker with eventfd “wakeup”
+│    ├─ Worker thread
+│    │    • Epoll‑driven loop over timerfd, wakeup eventfd, pipe, and client sockets
+│    │    • Drains the ring buffer, handles all HTTP I/O
+│    │    • Feeds back its load state to the listener via a pipe
+│    └─ Control thread (debug‑only, interactive menu)
 └─ Waits for all threads to finish (shutdown or fatal error)
 ```
 
 ---
 
-## Sockets & threading model
+## Sockets & threading model
 
-| Layer / component            | Non‑blocking | Behaviour                                                                  |
-| ---------------------------- | ------------ | -------------------------------------------------------------------------- |
-| **Listener sockets**         | **Yes**      | Epoll‑based accept loop (IPv4 **and** IPv6); dual‑stack if required        |
-| **Pipe (listener → worker)** | **Yes**      | Lock‑free FD hand‑off; epoll‑monitored in worker                           |
-| **Client sockets**           | **Yes**      | Epoll‑multiplexed, HTTP/1.1 persistent connections, graceful FIN handshake |
-| **timerfd (idle reap)**      | **Yes**      | Adaptive cadence: 10 s while ≥ 1 client, 60 s when idle                    |
+| Channel / component          | Non‑blocking | Purpose & behaviour                                                                                   |
+| ---------------------------- | ------------ | ----------------------------------------------------------------------------------------------------- |
+| **Listener sockets**         | **Yes**      | Epoll‑based `accept` loop (dual IPv4/IPv6)                                                            |
+| **Ring buffer (L → W)**      |  N/A         | Lock‑free SPSC queue (*single‑producer / single‑consumer*) that stores accepted client FDs            |
+| **eventfd “wakeup” (L → W)** | **Yes**      | 1‑increment semaphore; notifies the worker that new FDs are waiting in the ring                       |
+| **Pipe (W → L)**             | **Yes**      | Worker writes its load status (`ACTIVE`, `FULL`, …); listener reacts by (un)pausing accepts via epoll |
+| **Client sockets**           | **Yes**      | Epoll‑multiplexed, HTTP/1.1 persistent, graceful FIN handshake                                        |
+| **timerfd (idle reap)**      | **Yes**      | 10 s cadence while clients ≥ 1, falls back to 60 s when idle                                          |
 
-### Listener sockets
+\### How the listener and worker cooperate
 
-* `SO_REUSEADDR` / `SO_REUSEPORT` — fast restart without "address in use".
-* `O_NONBLOCK` — accept/read/write never block the listener thread.
-* `IPV6_V6ONLY` (IPv6 only) — avoid dual‑mapping ambiguity.
-* Full epoll mask `EPOLLIN | EPOLLRDHUP | EPOLLHUP | EPOLLERR`.
+1. **Accept → enqueue → wake‑up**
 
-### Inter‑thread communication: pipe
+   * Listener accepts on any ready listen FD.
+   * Accepted FD is pushed into the ring buffer.
+   * Listener writes `1` to the eventfd.
+   * Worker’s epoll is woken, reads the eventfd (counter‑style), drains the ring, and registers the new client FDs.
 
-* Regular UNIX pipe, both ends `O_NONBLOCK`.
-* Listener writes accepted FDs; worker drains via epoll.
-* Admission control enforced in worker (`MAX_CLIENTS` cap).
+2. **Back‑pressure**
 
-### Client sockets (worker thread)
+   * Worker tracks `active_connections_no`.
+   * When it crosses `MAX_CLIENTS`, the worker sends `WORKER_STATUS_FULL` through the pipe (write end is EPOLLOUT‑armed, one‑shot).
+   * Listener reads the pipe, sees the `FULL` flag, and **removes** all listen FDs from epoll (`pause_listening`).
+   * As soon as the worker drops below the threshold, it writes `WORKER_STATUS_ACTIVE`, and the listener **re‑adds** the listen FDs (`resume_listening`).
 
-* `O_NONBLOCK` & `TCP_NODELAY` (Nagle off).
-* Registered with full epoll mask (`IN | RDHUP | HUP | ERR`).
-* Connection bookkeeping: `last_activity`, `request_count` for keep‑alive & DOS throttling.
-* **Graceful close**: `shutdown(fd, SHUT_WR)` → server FIN · epoll DEL → `close(fd)` — no RSTs in traces.
+   This feedback loop prevents the accept queue from over‑filling and keeps latency stable under load.
 
-### Idle‑timeout / keep‑alive strategy
+3. **Keep‑alive / idle timeout**
 
-* Single `timerfd` per worker.
-* Interval auto‑adjusts: 10 s when clients are present, 60 s when none.
-* On each tick the worker scans `connections[]`; fds idle > `CLIENT_MAX_TIMEOUT_S` are culled.
-
-This setup ensures that all network and inter-thread communication is non-blocking, scalable, and robust against slow or malicious clients. All resource limits and timeouts are enforced in the worker, and the system is designed to recover quickly from restarts or overloads.
+   * Single `timerfd` in the worker ticks every 10 s while at least one client is connected, or every 60 s when the worker is idle.
+   * On each tick the worker scans its `connections[]`; sockets idle longer than `CLIENT_MAX_TIMEOUT_S` are closed gracefully (`shutdown → epoll DEL → close`).
 
 ---
 
-### Listener socket setup and management
+\### Listener socket setup and management
 
-When the server starts, the listener thread creates and configures one or more listening sockets (typically one for IPv4 and one for IPv6). Each socket is set up with the following options and flags to ensure robust, non-blocking, and restart-friendly operation:
+* **SO\_REUSEADDR / SO\_REUSEPORT** – fast restarts.
+* **SO\_LINGER {0,0}** – no half‑open leftovers.
+* **O\_NONBLOCK** – never stalls the epoll loop.
+* **IPV6\_V6ONLY** – explicit dual‑stack control.
+* **TCP\_NODELAY** – low‑latency on accepted client sockets.
+* Epoll mask: `EPOLLIN | EPOLLRDHUP | EPOLLHUP | EPOLLERR`.
 
-- **SO_REUSEADDR** is enabled so that the server can be restarted quickly without waiting for old sockets to leave the TIME_WAIT state. This allows the address/port to be reused immediately after shutdown.
-- **SO_LINGER** is set with a zero timeout, which ensures that when the socket is closed, any unsent data is discarded and the socket closes immediately. This prevents sockets from lingering in the system and speeds up restarts.
-- **O_NONBLOCK** is set on all sockets so that operations like accept, read, and write do not block the thread. This is essential for event-driven (epoll-based) concurrency and prevents a single slow client from stalling the server.
-- **IPV6_V6ONLY** is enabled for IPv6 sockets to ensure they only accept IPv6 connections, avoiding ambiguity and conflicts with IPv4-mapped addresses.
-- **TCP_NODELAY** is enabled on accepted client sockets to disable Nagle's algorithm, reducing latency for interactive protocols by sending small packets immediately.
-- All listener sockets are registered with **epoll** to efficiently monitor multiple sockets for incoming connections without busy-waiting or polling.
+Lifecycle:
+
+1. `getaddrinfo()` (dual‑stack hints) → create socket → apply options.
+2. `bind()` + `listen()` with configurable backlog.
+3. Add each listen FD to epoll.
+4. On `EPOLLIN`: `accept4(..., SOCK_NONBLOCK)` → push FD to ring → **eventfd write(1)** to wake the worker.
+
+---
+
+\### Why this matters
+
+* **Zero‑copy hand‑off** – passing raw FDs avoids memcpy of payloads.
+* **Lock‑free** – SPSC ring & eventfd are wait‑free on uncontended paths.
+* **Back‑pressure** – pipe‑based feedback lets the listener shed load early instead of queueing.
+* **Fully edge‑triggered** – no busy‑polling, minimal wake‑ups.
+* **One timer per worker** – constant, tiny memory footprint.
+
+This tiny, epoll‑only micro‑HTTP server comfortably scales to thousands of concurrent connections while remaining simple and predictable.
+
 
 **Lifecycle:**
 
