@@ -18,13 +18,13 @@
  */
 
 #ifdef DEBUG_MODE
-#    include <stdio.h> /* printf / fprintf / perror                          */
+#    include <stdio.h> /* printf / fprintf / perror */
 #endif                 /* DEBUG_MODE */
 
-#include <unistd.h> /* chdir                                              */
+#include <unistd.h> /* chdir */
 
-#include "core.h" /* server_init / run / shutdown                       */
-// #include "logger.h" /* loginfo / log_error / logger_init                  */
+#include "core.h" /* server_init / run / shutdown */
+// #include "logger.h" /* loginfo / log_error / logger_init */
 
 /****************************************************************************
  * PRIVATE DEFINES

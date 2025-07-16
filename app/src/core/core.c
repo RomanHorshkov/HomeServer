@@ -34,6 +34,7 @@
 
 #include "listener.h"
 #include "logger.h"
+#include "pipeline.h"
 #include "server_settings.h"
 #include "socket_helper.h"
 #include "worker.h"
@@ -45,14 +46,14 @@
 
 typedef struct
 {
-    /* pipe for communication between listener and worker */
-    int pipe_fds[2];
-
     /* listener instance */
     listener_t *listener;
 
     /* worker instance */
     worker_t *worker;
+
+    /* collaboration structure */
+    pipeline_t *pipeline;
 
     /* listener thread */
     pthread_t listener_thread;
@@ -78,13 +79,14 @@ typedef struct
  * for the lifetime of the server process. This instance is private to the
  * core module and should not be accessed directly from outside.
  */
-static server_t srv;
+static server_t server;
 
 /****************************************************************************
  * PRIVATE FUNCTIONS PROTOTYPES
  ****************************************************************************
  */
 
+#ifdef DEBUG_MODE
 /**
  * @brief Control thread entry point: handles interactive server menu and shutdown.
  *
@@ -97,6 +99,7 @@ static server_t srv;
  * @return     NULL on exit.
  */
 void *control_run(void *arg);
+#endif /* DEBUG_MODE */
 
 /****************************************************************************
  * PUBLIC FUNCTIONS DEFINITIONS
@@ -109,6 +112,8 @@ int server_init(const char *port)
     int ret = STATUS_FAILURE;
 
 #ifdef DEBUG_MODE
+    // all this is a partial representation of the server's core folder and
+    // what is visible in it, from which user it is running, and the current working directory.
     /* Print current user */
     uid_t uid = geteuid();
     const struct passwd *pw = getpwuid(uid);
@@ -130,40 +135,25 @@ int server_init(const char *port)
     system("ls -la");
 #endif /* DEBUG_MODE */
 
-    printf("[CORE]: Initializing pipe\n");
-    /* Initialize the pipe between listener and worker */
-    if(pipe(srv.pipe_fds) == -1)
+    /* Initialize the pipeline between listener and worker */
+    if(pipeline_init(&server.pipeline) != STATUS_SUCCESS)
     {
-        log_error("[CORE] pipe failed to create: %s", strerror(errno));
-    }
-
-    printf("[CORE]: Setting pipe file descriptor 0 to non-blocking\n");
-    /* Set the pipe file descriptors to non-blocking */
-    if(pipe_fd_set_non_blocking(&srv.pipe_fds[0]) != STATUS_SUCCESS)
-    {
-        log_error("[CORE] pipe_fd_set_non_blocking failed for pipe 0.");
-    }
-
-    printf("[CORE]: Setting pipe file descriptor 1 to non-blocking\n");
-    if(pipe_fd_set_non_blocking(&srv.pipe_fds[1]) != STATUS_SUCCESS)
-    {
-        log_error("[CORE] pipe_fd_set_non_blocking failed for pipe 1.");
+        log_error("[CORE]: W <-> L communication_init failed.");
     }
 
     else
     {
-        printf("[CORE]: Setting logger\n");
         /* Initialize the logger */
         logger_init("server.log");
 
-        /* Initialize the listener */
-        if(listener_init(&srv.listener, port, &srv.pipe_fds[1]) != STATUS_SUCCESS)
+        /* Initialize the listener with port, pipe read end, wakeup_fd, and ring */
+        if(listener_init(&server.listener, port, server.pipeline) != STATUS_SUCCESS)
         {
             log_error("[CORE] listener failed to init.", strerror(errno));
         }
 
         /* Initialize the worker */
-        else if(worker_init(&srv.worker, &srv.pipe_fds[0]) != STATUS_SUCCESS)
+        else if(worker_init(&server.worker, server.pipeline) != STATUS_SUCCESS)
         {
             log_error("[CORE] worker failed to init.", strerror(errno));
         }
@@ -182,17 +172,17 @@ int server_init(const char *port)
 void server_run(void)
 {
     /* run threads */
-    pthread_create(&srv.listener_thread, NULL, listener_run, srv.listener);
-    pthread_create(&srv.worker_thread, NULL, worker_run, srv.worker);
+    pthread_create(&server.listener_thread, NULL, listener_run, server.listener);
+    pthread_create(&server.worker_thread, NULL, worker_run, server.worker);
 #ifdef DEBUG_MODE
-    pthread_create(&srv.control_thread, NULL, control_run, NULL);
+    pthread_create(&server.control_thread, NULL, control_run, NULL);
 #endif /* DEBUG_MODE */
 
     /* wait threads */
-    pthread_join(srv.listener_thread, NULL);
-    pthread_join(srv.worker_thread, NULL);
+    pthread_join(server.listener_thread, NULL);
+    pthread_join(server.worker_thread, NULL);
 #ifdef DEBUG_MODE
-    pthread_join(srv.control_thread, NULL);
+    pthread_join(server.control_thread, NULL);
 #endif /* DEBUG_MODE */
 }
 
@@ -229,10 +219,9 @@ void *control_run(void *arg)
         }
         else if(input[0] == 'q')
         {
-            printf("Shutting down server...\n");
             /* Set listener and worker status to shutdown */
-            worker_set_status(srv.worker, SERVER_STATUS_SHUTDOWN);
-            listener_set_status(srv.listener, SERVER_STATUS_SHUTDOWN);
+            worker_set_status(server.worker, WORKER_STATUS_SHUTDOWN);
+            listener_set_status(server.listener, LISTENER_STATUS_SHUTDOWN);
             logger_close();
             break;
         }

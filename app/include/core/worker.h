@@ -17,6 +17,8 @@
 #ifndef SERVER_WORKER_H
 #define SERVER_WORKER_H
 
+#include "pipeline.h" /* pipeline */
+
 /****************************************************************************
  * PUBLIC STRUCTURED VARIABLES DECLARATIONS
  ****************************************************************************
@@ -44,12 +46,12 @@ typedef struct worker worker_t;
  * safe for the caller to terminate.
  *
  * @param worker_ptr     Address of a pointer to a worker_t; will be allocated.
- * @param pipe_read_fd   Pointer to the read end of the listener→worker pipe.
+ * @param pipeline_ptr   Pointer to the communication pipeline with listener.
  *
  * @retval  0  Success.
  * @retval -1  Failure (see log for details).
  */
-int worker_init(worker_t **worker_ptr, const int *pipe_read_fd);
+int worker_init(worker_t **worker_ptr, pipeline_t *pipeline_ptr);
 
 /**
  * @brief Main worker thread function: manages all active client sockets.
@@ -75,6 +77,6 @@ void *worker_run(void *arg);
  * @param worker_ptr  Pointer to the worker instance.
  * @param status      New status value (e.g., SERVER_STATUS_ACTIVE or _SHUTDOWN).
  */
-void worker_set_status(worker_t *worker_ptr, int status);
+int worker_set_status(worker_t *worker_ptr, worker_status status);
 
 #endif /* SERVER_WORKER_H */

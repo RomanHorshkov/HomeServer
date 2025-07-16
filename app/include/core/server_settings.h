@@ -12,12 +12,31 @@ enum status
     STATUS_SUCCESS = 0,  /* everything is fine */
 };
 
-enum server_status
+typedef enum
 {
     SERVER_STATUS_INACTIVE = 0, /* server is inactive */
     SERVER_STATUS_ACTIVE = 1,   /* server is active */
     SERVER_STATUS_SHUTDOWN = 2, /* server is shutting down */
-};
+    SERVER_STATUS_INVALID = 3,  /* max value for server status */
+} server_status;
+
+typedef enum
+{
+    LISTENER_STATUS_INACTIVE = 0, /* listener is inactive */
+    LISTENER_STATUS_ACTIVE = 1,   /* listener is active */
+    LISTENER_STATUS_PAUSED = 2,   /* listener is paused */
+    LISTENER_STATUS_SHUTDOWN = 3, /* listener to shutdown */
+    LISTENER_STATUS_INVALID = 4,  /* max value for listener status */
+} listener_status;
+
+typedef enum
+{
+    WORKER_STATUS_INACTIVE = 0, /* worker is inactive */
+    WORKER_STATUS_ACTIVE = 1,   /* worker is active */
+    WORKER_STATUS_FULL = 2,     /* worker is full */
+    WORKER_STATUS_SHUTDOWN = 3, /* worker to shutdown */
+    WORKER_STATUS_INVALID = 4,  /* max value for worker status */
+} worker_status;
 
 /****************************************************************************
  * PUBLIC DEFINES
@@ -33,6 +52,9 @@ enum server_status
 
 /* Max clients amount */
 #define MAX_CLIENTS 64
+
+/* Capacity of the SPSC ring buffer for file descriptors */
+#define SPSC_RING_CAPACITY 8
 
 // /* Max sockets per client */
 // #define MAX_SOCKETS_PER_CLIENT 10

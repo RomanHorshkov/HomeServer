@@ -36,7 +36,7 @@
 
 #include "logger.h"          /* logger */
 #include "server_settings.h" /* settings */
-#include "socket_helper.h"
+#include "socket_helper.h"   /* socket helper */
 
 /****************************************************************************
  * PRIVATE DEFINES
@@ -49,19 +49,22 @@
  ****************************************************************************
  */
 
+/* Define a handy alias for the enum listener_status in atomic version */
+typedef _Atomic listener_status atomic_listener_status_t;
+
 struct listener
 {
-    /* sockets file descriptors */
+    /* Listening sockets file descriptors */
     int sockets_fds[MAX_LISTENERS];
 
-    /* active listening sockets */
+    /* Total active listening sockets */
     int active_sockets_no;
 
-    /* pipe write fd */
-    int pipe_write_fd;
+    /* Listener status variable */
+    atomic_listener_status_t status;
 
-    /* status variable */
-    atomic_int status; /* 0 = inactive, 1 = active */
+    /* collaboration with worker structure */
+    pipeline_t *pipeline;
 };
 
 /****************************************************************************
@@ -82,12 +85,12 @@ struct listener
  * and listening on each socket. Successfully created sockets are stored in the
  * listener instance. Supports both IPv4 and IPv6 as available.
  *
- * @param server_info_out   Linked list of addrinfo structures from getaddrinfo().
  * @param listener_ptr      Address of a pointer to the listener instance.
+ * @param port              Pointer to the port char arr.
  * @retval  0  Success (at least one socket created and listening).
  * @retval -1 Failure (no sockets created; see log for details).
  */
-static int create_listener(struct addrinfo *server_info_out, listener_t **listener_ptr);
+static int create_listener(listener_t **listener_ptr, const char *port);
 
 /**
  * @brief Allocate and initialize memory for a new listener instance.
@@ -113,42 +116,9 @@ static int init_memory(listener_t **listener_ptr);
  */
 static int set_socket_hints(struct addrinfo *hints);
 
-/**
- * @brief Enable address reuse on a socket.
- *
- * Sets the SO_REUSEADDR option on the provided socket file descriptor,
- * allowing the server to restart without waiting for old sockets to time out.
- *
- * @param socket_fd  Pointer to the socket file descriptor.
- * @retval  0  Success.
- * @retval -1 Failure (setsockopt failed).
- */
-static int set_listener_socket_reusability(const int *socket_fd);
+static void pause_listening(listener_t *L, int epoll_fd);
 
-/**
- * @brief Enable fast restart on a socket by setting SO_LINGER.
- *
- * Configures the socket to discard unsent data and close immediately on shutdown,
- * which is suitable for listener sockets.
- *
- * @param socket_fd  Pointer to the socket file descriptor.
- * @retval  0  Success.
- * @retval -1 Failure (setsockopt failed).
- */
-static int set_listener_socket_restartability(const int *socket_fd);
-
-/**
- * @brief Apply all recommended socket options for a listener socket.
- *
- * Sets SO_REUSEADDR, SO_LINGER, and O_NONBLOCK on the provided socket, and
- * restricts IPv6 sockets to IPv6-only if required.
- *
- * @param listener_socket_fd  Pointer to the socket file descriptor.
- * @param ai_family          Pointer to the address family (AF_INET/AF_INET6).
- * @retval  0  Success.
- * @retval -1 Failure (one or more options failed).
- */
-static int set_listener_socket_options(const int *listener_socket_fd, const int32_t *ai_family);
+static void resume_listening(listener_t *L, int epoll_fd);
 
 /**
  * @brief Close all active listening sockets and reset the listener state.
@@ -170,24 +140,26 @@ static void listener_close(listener_t **listener_ptr);
  */
 static void listener_shutdown(listener_t **listener_ptr);
 
+#ifdef DEBUG_MODE
+/**
+ * @brief
+ */
+static int listener_accept_and_p_client_info(int listen_fd);
+#endif /* DEBUG_MODE */
+
 /****************************************************************************
  * PUBLIC FUNCTIONS DEFINITIONS
  ****************************************************************************
  */
 
-int listener_init(listener_t **listener_ptr, const char *port, const int *pipe_write_fd)
+int listener_init(listener_t **listener_ptr, const char *port, pipeline_t *pipeline_ptr)
 {
+    log_info("listener_init");
     /* return value */
     int res = STATUS_FAILURE;
 
-    /* Hints for getaddrinfo research */
-    struct addrinfo hints;
-
-    /* getaddrinfo output info */
-    struct addrinfo *server_info_out = NULL;
-
     /* Check input */
-    if(port == NULL || pipe_write_fd == NULL)
+    if(port == NULL || pipeline_ptr == NULL)
     {
         log_error("listener_init invalid input");
     }
@@ -198,49 +170,28 @@ int listener_init(listener_t **listener_ptr, const char *port, const int *pipe_w
         log_error("listener memory initialization failed ", strerror(errno));
     }
 
-    /* Set socket hints for getaddr */
-    else if(set_socket_hints(&hints) != STATUS_SUCCESS)
-    {
-        log_error("listener socket hints failed ", strerror(errno));
-    }
-
-    /* get connectable sockets with hints */
-    else if(getaddrinfo(NULL, port, &hints, &server_info_out) != 0)
-    {
-        log_error("listener getaddrinfo failed ", strerror(errno));
-    }
-
     /* Create and start the listener sockets */
-    else if(create_listener(server_info_out, listener_ptr) != STATUS_SUCCESS)
+    else if(create_listener(listener_ptr, port) != STATUS_SUCCESS)
     {
         log_error("listener start failed ", strerror(errno));
     }
 
-    /* Print info */
+    /* If everything succceded */
     else
     {
-        /* Set the pipe write file descriptor */
-        (*listener_ptr)->pipe_write_fd = *pipe_write_fd;
+        /* Set the pipeline collaboration structure */
+        (*listener_ptr)->pipeline = pipeline_ptr;
 
         /* Set the status to on */
-        atomic_store(&(*listener_ptr)->status, SERVER_STATUS_ACTIVE);
-        (*listener_ptr)->status = SERVER_STATUS_ACTIVE;
+        listener_set_status(*listener_ptr, LISTENER_STATUS_ACTIVE);
 
         res = STATUS_SUCCESS;
-
-        log_info("getaddrinfo(NULL, %s) succeeded. Printing address info list results:\n", port);
-        log_addrinfo_list(server_info_out);
     }
-
-    /* now can freeup the memory allocated in server_info out */
-    freeaddrinfo(server_info_out);
     return res;
 }
 
 void *listener_run(void *arg)
 {
-    log_info("Starting Listener...");
-
     /* Check input */
     if(arg == NULL)
     {
@@ -252,106 +203,256 @@ void *listener_run(void *arg)
     {
         listener_t *listener_ptr = (listener_t *)arg;
 
+        /* Create epoll instance */
         int epoll_fd = epoll_create1(0);
-        struct epoll_event ev, events[MAX_LISTENERS];
+
+        /** Create epoll event
+         * The event argument describes the object linked to the file descriptor fd.  The struct
+         * epoll_event is described in epoll_event(3type). The data member of the epoll_event
+         * structure specifies data that the kernel should save and then return (via epoll_wait(2))
+         * when this file descriptor becomes ready. The events member of the epoll_event structure
+         * is a bit mask composed by ORing together zero or more event types, returned by
+         * epoll_wait(2), and input flags, which affect its behaviour, but aren't returned.
+         */
+        struct epoll_event ev;
+
+        /** Set the epoll event to monitor for incoming connections
+         * EPOLLIN: The associated file is available for read(2) operations
+         * EPOLLOUT: The associated file is available for write(2) operations
+         * EPOLLRDHUP: (since Linux 2.6.17) Stream  socket  peer  closed  connection, or shut down
+         * writing half of connection.
+         * EPOLLERR: Error condition happened on the associated file descriptor.  This event is also
+         * reported for the write end of a pipe when the read end has been closed.
+         * EPOLLONESHOT: (since Linux 2.6.2) Requests one-shot notification for the associated file
+         * descriptor.  This means that after an event notified for the file descriptor by
+         * epoll_wait(2), the file descriptor is disabled in the interest list and no other events
+         * will be reported by the epoll interface.  The user must call epoll_ctl() with
+         * EPOLL_CTL_MOD to rearm the file descriptor with a new event mask.
+         */
+        ev.events = EPOLLIN;
 
         /* Register all listening sockets with epoll */
         for(int i = 0; i < listener_ptr->active_sockets_no; ++i)
         {
-            ev.events = EPOLLIN;
+            /**
+             * int epoll_ctl(int epfd, int op, int fd, struct epoll_event *_Nullable event);
+             * This  system  call  is used to add, modify, or remove entries in the interest list of
+             * the epoll(7) instance referred to by the file descriptor epfd.  It requests that the
+             * operation op be performed for the target file descriptor, fd.
+             */
             ev.data.fd = listener_ptr->sockets_fds[i];
             epoll_ctl(epoll_fd, EPOLL_CTL_ADD, listener_ptr->sockets_fds[i], &ev);
         }
 
-        /* While the listener is active */
-        while(atomic_load(&listener_ptr->status) == SERVER_STATUS_ACTIVE)
+        /* Register the read end of the pipeline control pipe */
+        int pipe_read_fd = listener_ptr->pipeline->pipe_fds[0];
+        ev.data.fd = pipe_read_fd;
+        epoll_ctl(epoll_fd, EPOLL_CTL_ADD, pipe_read_fd, &ev);
+        /* At this point the pipe is added to epoll ctl before entering infinite loop */
+
+        worker_status worker_old_status = WORKER_STATUS_INACTIVE;
+        worker_status worker_actual_status = WORKER_STATUS_INACTIVE;
+
+        while(atomic_load(&listener_ptr->status) == LISTENER_STATUS_ACTIVE)
         {
-#ifdef DEBUG_MODE
-            // log_info("listener: waiting for incoming connections...");
-#endif /* DEBUG_MODE */
+            /* Create epoll events, + 1 for pipeline pipe read */
+            struct epoll_event events[MAX_LISTENERS + 1];
 
-            /* Wait for incoming connections on any listening socket */
+            /* Wait for epoll events on pipe / listener sockets */
             int nfds = epoll_wait(epoll_fd, events, MAX_LISTENERS, -1);
-
-#ifdef DEBUG_MODE
-            // log_info("listener: epoll_wait returned %d events", nfds);
-#endif /* DEBUG_MODE */
+            log_info("[listener] get out of epoll wait for nfds %d", nfds);
 
             if(nfds < 0)
             {
-                /* epoll_wait failed, log the error */
                 log_error("listener: epoll_wait failed: %s", strerror(errno));
+                continue;
             }
-            else
+
+            for(int i = 0; i < nfds; ++i)
             {
-                /* Loop through all ready listening sockets */
-                for(int i = 0; i < nfds; ++i)
+                int listen_fd = events[i].data.fd;
+
+                /* Check if the pipe has something to say */
+                if(listen_fd == pipe_read_fd)
                 {
-                    int listen_fd = events[i].data.fd;
-                    struct sockaddr_storage client_addr;
-                    socklen_t addrlen = sizeof(client_addr);
-
-                    /* Accept a new client connection */
-                    int client_fd = accept(listen_fd, (struct sockaddr *)&client_addr, &addrlen);
-
-                    if(client_fd >= 0)
+                    log_info("[listener] pipe_read_fd %d", listen_fd);
+                    /* Read the pipe to clear it */
+                    uint32_t worker_msg;
+                    ssize_t s = read(pipe_read_fd, &worker_msg, sizeof(uint32_t));
+                    if(s != sizeof(uint32_t))
                     {
-                        /* Set socket settings */
-                        client_socket_init(&client_fd);
+                        log_error("[listener] Failed to read from pipe: %s", strerror(errno));
+                        continue;
+                    }
 
-                        char ipstr[INET6_ADDRSTRLEN];
-                        void *addr;
-                        if(client_addr.ss_family == AF_INET)
-                        {
-                            /* IPv4 address extraction */
-                            addr = &((struct sockaddr_in *)&client_addr)->sin_addr;
-                        }
-
-                        else
-                        {
-                            /* IPv6 address extraction */
-                            addr = &((struct sockaddr_in6 *)&client_addr)->sin6_addr;
-                        }
-
-                        /* Convert client address to string for logging */
-                        inet_ntop(client_addr.ss_family, addr, ipstr, sizeof(ipstr));
+                    /* Set worker status just received on pipe */
+                    else
+                    {
+                        worker_actual_status = (worker_status)worker_msg;
 #ifdef DEBUG_MODE
-                        log_info("[listener] Accepted client from %s, fd %d", ipstr, client_fd);
+                        log_info(
+                            "[listener] Pipe event received on fd %d, worker_msg %ld, size %ld",
+                            pipe_read_fd, worker_msg, s);
+#endif /* DEBUG_MODE */
+                        /* Check the worker's status and set the listener accordingly */
+                        /* Check if a status change occurred */
+                        if(worker_actual_status != worker_old_status)
+                        {
+#ifdef DEBUG_MODE
+                            log_info("[listener] worker_actual_status[%d] != worker_old_status[%d]",
+                                     worker_actual_status, worker_old_status);
+#endif /* DEBUG_MODE */
+                            switch(worker_actual_status)
+                            {
+                                case WORKER_STATUS_ACTIVE:
+
+                                    resume_listening(listener_ptr, epoll_fd);
+                                    break;
+
+                                case WORKER_STATUS_FULL:
+
+                                    pause_listening(listener_ptr, epoll_fd);
+                                    break;
+
+                                default:
+                                    log_error("[listener] Unknown worker_status: %s",
+                                              strerror(errno));
+                                    break;
+                            }
+
+                            /* Update the old status */
+                            worker_old_status = worker_actual_status;
+                        }
+                    }
+                    continue;
+                }
+
+                else
+                {
+                    log_info("[listener] NOT pipe_read_fd %d, worker_status %d", listen_fd,
+                             worker_actual_status);
+                    switch(worker_actual_status)
+                    {
+                        case WORKER_STATUS_ACTIVE:
+
+#ifdef DEBUG_MODE
+                            log_info(
+                                "[listener] a new client incoming, worker status active, "
+                                "accepting... ");
 #endif /* DEBUG_MODE */
 
-                        /* Write the client_fd to the pipe for the worker */
-                        if(write(listener_ptr->pipe_write_fd, &client_fd, sizeof(client_fd)) !=
-                           sizeof(client_fd)) /* Check if write succeeded */
-                        {
+                            /** Accept a new client connection
+                             * At this point, the TCP connection is established — the kernel queues
+                             * the connection into the pending accept queue
+                             */
 #ifdef DEBUG_MODE
-                            log_error("[listener] Failed to write client_fd to pipe: %s",
-                                      strerror(errno));
-#endif                                        /* DEBUG_MODE */
-                            close(client_fd); /* Close the client file descriptor on failure */
-                        }
+                            int client_fd = listener_accept_and_p_client_info(listen_fd);
+#else
+                            /**
+                             * Pulls the connection from the completed handshake queue.
+                             * Returns a new file descriptor (client_fd) for that client connection.
+                             * No new packet is sent at that exact moment — the handshake is already
+                             * done. the application is now ready to read/write on client_fd.
+                             */
+                            int client_fd = accept(listen_fd, NULL, NULL);
+#endif /* DEBUG_MODE */
+
+                            if(client_fd >= 0)
+                            {
+                                /* Set socket settings */
+                                client_socket_init(&client_fd);
+
+                                /** Write the client_fd to the ring for the worker;
+                                 * Send as well a wake-up signal
+                                 */
+
+                                spsc_ring_t *ring = listener_ptr->pipeline->ring_ptr;
+
+                                /* Check if ring has free space */
+                                if(!spsc_ring_is_full(ring))
+                                {
+                                    /* Check if push on ring successful */
+                                    if(spsc_ring_push(ring, client_fd) != 0)
+                                    {
+                                        close(client_fd);
+                                        log_error("[listener]: spsc_ring_push failed! Fd %d closed",
+                                                  client_fd);
+                                    }
+
+                                    /* Send a wake-up signal */
+                                    else
+                                    {
+                                        uint64_t inc = 1;
+                                        write(listener_ptr->pipeline->wakeup_fd, &inc,
+                                              sizeof(uint64_t));
+#ifdef DEBUG_MODE
+                                        log_info("[listener] wakeup signal sent to worker");
+#endif
+                                    }
+                                }
+                                else
+                                {
+#ifdef DEBUG_MODE
+                                    log_info(
+                                        "[listener] spsc_ring_is_full, fd %d refused and closed",
+                                        client_fd);
+#endif /* DEBUG_MODE */
+                                }
+                            }
+                            else
+                            {
+                                log_error("[listener] Failed to accept client: %s",
+                                          strerror(errno));
+                            }
+
+                            break;
+
+                        case WORKER_STATUS_FULL:
+
+#ifdef DEBUG_MODE
+                            log_info("[listener] worker status FULL... ");
+#endif /* DEBUG_MODE */
+                            /* Should proceed here and lock the listeners */
+                            break;
+
+                        default:
+
+#ifdef DEBUG_MODE
+                            log_info("[listener] worker status UNKNOWN!!!... ");
+#endif /* DEBUG_MODE */
+                            break;
                     }
                 }
             }
-        }
+        } /* while(1) */
 
-        /* if got out of the while loop then switching off is required */
+        /* Cleanup */
         listener_shutdown(&listener_ptr);
-
-        /* Close the epoll file descriptor */
         close(epoll_fd);
     }
+#ifdef DEBUG_MODE
+    log_info("[listener] Listener thread exiting.");
+#endif /* DEBUG_MODE */
+
     return NULL;
 }
 
 void listener_set_status(listener_t *listener_ptr, int status)
 {
+    /* check input */
     if(listener_ptr == NULL)
     {
         log_error("listener_set_status: invalid listener pointer");
     }
+
+    else if(status >= LISTENER_STATUS_INVALID)
+    {
+        log_error("listener_set_status: invalid status value %d", status);
+    }
+
+    /* Set the status */
     else
     {
-        /* Set the status */
         atomic_store(&listener_ptr->status, status);
 
 #ifdef DEBUG_MODE
@@ -360,79 +461,109 @@ void listener_set_status(listener_t *listener_ptr, int status)
 #endif /* DEBUG_MODE */
     }
 }
+
 /****************************************************************************
  * PRIVATE FUNCTIONS DEFINITIONS
  ****************************************************************************
  */
 
-static int create_listener(struct addrinfo *server_info_out, listener_t **listener_ptr)
+static int create_listener(listener_t **listener_ptr, const char *port)
 {
     /* return value */
     int res = STATUS_FAILURE;
 
-    /* loop through all the getaddrinfo output results */
-    while(server_info_out != NULL)
+    /* Hints for getaddrinfo research */
+    struct addrinfo hints;
+
+    /* getaddrinfo output info */
+    struct addrinfo *server_info_out = NULL;
+
+    /* Set socket hints for getaddr */
+    if(set_socket_hints(&hints) != STATUS_SUCCESS)
     {
-        /* Create a socket */
-        int listener_socket_fd = socket(server_info_out->ai_family, server_info_out->ai_socktype,
-                                        server_info_out->ai_protocol);
-
-        if(listener_socket_fd == -1)
-        {
-            log_error("socket creation failed: %s\n", strerror(errno));
-        }
-
-        /* Set socket options */
-        else if(set_listener_socket_options(&listener_socket_fd, &server_info_out->ai_family) !=
-                STATUS_SUCCESS)
-        {
-            log_error("setsockopt failed: %s\n", strerror(errno));
-            /* delete the socket */
-            close(listener_socket_fd);
-        }
-
-        /* Bind the socket */
-        else if(bind(listener_socket_fd, server_info_out->ai_addr, server_info_out->ai_addrlen) ==
-                -1)
-        {
-            log_error("bind failed: %s\n", strerror(errno));
-            /* delete the socket */
-            close(listener_socket_fd);
-        }
-
-        /* Start listening */
-        else if(listen(listener_socket_fd, MAX_PENDING_CONNECTIONS) == -1)
-        {
-            log_error("listen failed: %s\n", strerror(errno));
-            /* delete the socket */
-            close(listener_socket_fd);
-        }
-
-        /* check if available space for more sockets */
-        else if((*listener_ptr)->active_sockets_no >= MAX_LISTENERS)
-        {
-            log_error("Maximum number of listeners reached: %d", MAX_LISTENERS);
-            /* delete the socket */
-            close(listener_socket_fd);
-        }
-
-        /* If everything worked fine */
-        else
-        {
-            /* Put the socket in the listener */
-            (*listener_ptr)->sockets_fds[(*listener_ptr)->active_sockets_no] = listener_socket_fd;
-
-            /* Increase the counter */
-            (*listener_ptr)->active_sockets_no++;
-
-            /* Set return value to success */
-            res = STATUS_SUCCESS;
-        }
-
-        /* TODO: check separately each listener, not in batch. */
-
-        server_info_out = server_info_out->ai_next;
+        log_error("listener socket hints failed ", strerror(errno));
     }
+
+    /* get connectable sockets with hints */
+    else if(getaddrinfo(NULL, port, &hints, &server_info_out) != 0)
+    {
+        log_error("listener getaddrinfo failed ", strerror(errno));
+    }
+
+    else
+    {
+        log_info("getaddrinfo(NULL, %s) succeeded. Printing address info list results:\n", port);
+        log_addrinfo_list(server_info_out);
+
+        /* loop through all the getaddrinfo output results */
+        while(server_info_out != NULL)
+        {
+            /* Create a socket */
+            int listener_socket_fd =
+                socket(server_info_out->ai_family, server_info_out->ai_socktype,
+                       server_info_out->ai_protocol);
+
+            if(listener_socket_fd == -1)
+            {
+                log_error("socket creation failed: %s\n", strerror(errno));
+            }
+
+            /* check if available space for more sockets */
+            else if((*listener_ptr)->active_sockets_no >= MAX_LISTENERS)
+            {
+                log_error("Maximum number of listeners reached: %d", MAX_LISTENERS);
+                /* delete the socket */
+                close(listener_socket_fd);
+            }
+
+            /* Set socket options */
+            else if(listener_socket_init(&listener_socket_fd, &server_info_out->ai_family) !=
+                    STATUS_SUCCESS)
+            {
+                log_error("setsockopt failed: %s\n", strerror(errno));
+                /* delete the socket */
+                close(listener_socket_fd);
+            }
+
+            /* Bind the socket */
+            else if(bind(listener_socket_fd, server_info_out->ai_addr,
+                         server_info_out->ai_addrlen) == -1)
+            {
+                log_error("bind failed: %s\n", strerror(errno));
+                /* delete the socket */
+                close(listener_socket_fd);
+            }
+
+            /* Start listening */
+            else if(listen(listener_socket_fd, MAX_PENDING_CONNECTIONS) == -1)
+            {
+                log_error("listen failed: %s\n", strerror(errno));
+                /* delete the socket */
+                close(listener_socket_fd);
+            }
+
+            /* If everything worked fine */
+            else
+            {
+                /* Put the socket in the listener */
+                (*listener_ptr)->sockets_fds[(*listener_ptr)->active_sockets_no] =
+                    listener_socket_fd;
+
+                /* Increase the counter */
+                (*listener_ptr)->active_sockets_no++;
+
+                /* Set return value to success */
+                res = STATUS_SUCCESS;
+            }
+
+            /* TODO: check separately each listener, not in batch. */
+
+            server_info_out = server_info_out->ai_next;
+        }
+    }
+
+    /* Freeup the memory allocated in server_info out */
+    freeaddrinfo(server_info_out);
 
     return res;
 }
@@ -491,94 +622,37 @@ static int set_socket_hints(struct addrinfo *hints)
     return res;
 }
 
-static int set_listener_socket_reusability(const int *socket_fd)
+static void pause_listening(listener_t *L, int epoll_fd)
 {
-    /* return value */
-    int res = STATUS_FAILURE;
-
-    /* Allow reuse of address (critical for restarts) */
-    int yes = 1;
-
-    if(setsockopt(*socket_fd, SOL_SOCKET, SO_REUSEADDR, &yes, sizeof(yes)) != -1)
+    for(int i = 0; i < L->active_sockets_no; ++i)
     {
-        res = STATUS_SUCCESS;
-    }
-    else
-    {
-        log_error("listener socket reusability failed to set: %s", strerror(errno));
-    }
-
-    return res;
-}
-
-static int set_listener_socket_restartability(const int *socket_fd)
-{
-    /* return value */
-    int res = STATUS_FAILURE;
-
-    /* Options for restart: Just kill it. Don’t wait. Don’t flush data.
-    These options are ok for listeners. */
-    struct linger sl;
-    sl.l_onoff = 1;
-    sl.l_linger = 0;
-    if(setsockopt(*socket_fd, SOL_SOCKET, SO_LINGER, &sl, sizeof(sl)) != -1)
-    {
-        res = STATUS_SUCCESS;
-    }
-    else
-    {
-        log_error("listener socket restartability failed to set: %s", strerror(errno));
-    }
-
-    return res;
-}
-
-static int set_listener_socket_options(const int *listener_socket_fd, const int32_t *ai_family)
-{
-    /* return value */
-    int res = STATUS_FAILURE;
-
-    /* set sockets reusability */
-    if(set_listener_socket_reusability(listener_socket_fd) != STATUS_SUCCESS)
-    {
-        log_error("set_listener_socket_reusability failed.");
-    }
-
-    /* set sockets restartability */
-    else if(set_listener_socket_restartability(listener_socket_fd) != STATUS_SUCCESS)
-    {
-        log_error("set_listener_socket_restartability failed.");
-    }
-
-    /* set socket non-blocking */
-    else if(listener_socket_init(listener_socket_fd) != STATUS_SUCCESS)
-    {
-        log_error("listener_socket_init failed.");
-    }
-
-    else
-    {
-        /* Set the return to Success */
-        res = STATUS_SUCCESS;
-
-        /* restrict the socket to only ipv6 if socket for ipv6 */
-        if(*ai_family == AF_INET6)
+        int fd = L->sockets_fds[i];
+        if(epoll_ctl(epoll_fd, EPOLL_CTL_DEL, fd, NULL) != 0)
         {
-            /* yes value */
-            int yes = 1;
+            log_error("[listener] pause_listening: error re-adding fd %d, %s", fd, strerror(errno));
+        }
+    }
+#ifdef DEBUG_MODE
+    log_info("[listener] pause_listening: listening paused");
+#endif /* DEBUG_MODE */
+}
 
-            /* Check if restriction successfully occurred */
-            if(setsockopt(*listener_socket_fd, IPPROTO_IPV6, IPV6_V6ONLY, &yes, sizeof(yes)) !=
-               STATUS_SUCCESS)
-            {
-                /* if restriction fails set return status to failure */
-                res = STATUS_FAILURE;
-                log_error("Socket ipv6 opts failed: %s\n", strerror(errno));
-            }
+static void resume_listening(listener_t *L, int epoll_fd)
+{
+    struct epoll_event ev = {.events = EPOLLIN};
+    for(int i = 0; i < L->active_sockets_no; ++i)
+    {
+        ev.data.fd = L->sockets_fds[i];
+        if(epoll_ctl(epoll_fd, EPOLL_CTL_ADD, L->sockets_fds[i], &ev) != 0)
+        {
+            log_error("[listener] resume_listening: error re-adding fd %d, %s", ev.data.fd,
+                      strerror(errno));
         }
     }
 
-    return res;
+#ifdef DEBUG_MODE
+    log_info("[listener] resume_listening: listening resumed");
+#endif /* DEBUG_MODE */
 }
 
 static void listener_close(listener_t **listener_ptr)
@@ -623,4 +697,29 @@ static void listener_shutdown(listener_t **listener_ptr)
 #endif /* DEBUG_MODE */
     listener_close(listener_ptr);
     free(*listener_ptr);
+}
+
+static int listener_accept_and_p_client_info(int listen_fd)
+{
+    struct sockaddr_storage client_addr;
+    socklen_t addrlen = sizeof(client_addr);
+
+    /* Accept a new client connection */
+    int client_fd = accept(listen_fd, (struct sockaddr *)&client_addr, &addrlen);
+
+    char ipstr[INET6_ADDRSTRLEN];
+    if(client_addr.ss_family == AF_INET)
+    {
+        struct sockaddr_in *s = (struct sockaddr_in *)&client_addr;
+        inet_ntop(AF_INET, &s->sin_addr, ipstr, sizeof(ipstr));
+        log_info("[listener] Accepted connection from %s:%d", ipstr, ntohs(s->sin_port));
+    }
+    else if(client_addr.ss_family == AF_INET6)
+    {
+        struct sockaddr_in6 *s = (struct sockaddr_in6 *)&client_addr;
+        inet_ntop(AF_INET6, &s->sin6_addr, ipstr, sizeof(ipstr));
+        log_info("[listener] Accepted connection from [%s]:%d", ipstr, ntohs(s->sin6_port));
+    }
+
+    return client_fd;
 }
