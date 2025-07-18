@@ -15,8 +15,9 @@ set -euo pipefail
 
 HOST="${1:-localhost}"
 PORT="${2:-3490}"
-MAX_ALLOWED=80
-SLEEP_BETWEEN=0.05   # seconds between launches so epoll can register
+MAX_ALLOWED=64
+# SLEEP_BETWEEN=0.05   # seconds between launches so epoll can register
+SLEEP_BETWEEN=0.001   # seconds between launches so epoll can register
 
 PIDS=()
 log() { printf "\e[36m[%s]\e[0m %s\n" "$(date +%T)" "$*"; }
@@ -40,7 +41,7 @@ log "Spawning $MAX_ALLOWED persistent connections…"
 for i in $(seq 1 "$MAX_ALLOWED"); do
   nc "$HOST" "$PORT" >/dev/null &
   PIDS+=("$!")
-  sleep "$SLEEP_BETWEEN"
+  # sleep "$SLEEP_BETWEEN"
   if ! ps -p "${PIDS[-1]}" &>/dev/null; then
     log "Early refusal at attempt $i (PID ${PIDS[-1]}). Test FAIL."
     exit 1

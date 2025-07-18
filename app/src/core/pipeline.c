@@ -9,6 +9,7 @@
 
 #include "logger.h"
 #include "socket_helper.h"
+#include "spsc_ring.h"
 
 /**
  * @file pipeline.c
@@ -101,7 +102,7 @@ int pipeline_init(pipeline_t **pipeline_ptr_ptr)
              */
             (*pipeline_ptr_ptr)->wakeup_fd = eventfd(0, EFD_SEMAPHORE | EFD_NONBLOCK);
 
-            /* Allocate memory for the ring */
+            /* Create ring object */
             (*pipeline_ptr_ptr)->ring_ptr = spsc_ring_init(SPSC_RING_CAPACITY);
 
             /* Check memory allocation */
@@ -112,8 +113,53 @@ int pipeline_init(pipeline_t **pipeline_ptr_ptr)
             else
             {
                 res = STATUS_SUCCESS;
+#ifdef DEBUG_MODE
+                log_info("[pipeline] started correctly");
+#endif
             }
         }
+    }
+
+    return res;
+}
+
+int pipeline_push_and_notify_worker(pipeline_t *pipeline_ptr, const int client_fd)
+{
+    /* Result variable */
+    int res = STATUS_FAILURE;
+
+    /* Check inputs */
+    if(pipeline_ptr == NULL || client_fd <= 0)
+    {
+        log_error("[pipeline]: push_and_notify_worker invalid input");
+    }
+
+    /* Check if ring has free space */
+    else if(!spsc_ring_is_full(pipeline_ptr->ring_ptr))
+    {
+        /* Check if push on ring successful */
+        if(spsc_ring_push(pipeline_ptr->ring_ptr, client_fd) != 0)
+        {
+            log_error("[pipeline]: spsc_ring_push failed for fd %d", client_fd);
+        }
+
+        /* Send a wake-up signal */
+        else
+        {
+            uint64_t inc = 1;
+            int w_ret = write(pipeline_ptr->wakeup_fd, &inc, sizeof(uint64_t));
+
+            /* Check if successfully written */
+            if(w_ret == sizeof(uint64_t))
+            {
+                /* Set return status */
+                res = STATUS_SUCCESS;
+            }
+        }
+    }
+    else
+    {
+        log_error("[listener] spsc_ring_is_full, fd %d refused and closed", client_fd);
     }
 
     return res;

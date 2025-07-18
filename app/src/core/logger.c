@@ -116,6 +116,7 @@ void log_error(const char *fmt, ...)
     va_end(args);
 }
 
+#ifdef DEBUG_MODE
 void log_addrinfo_list(const struct addrinfo *ai)
 {
     int index = 0;
@@ -172,6 +173,7 @@ void log_addrinfo_list(const struct addrinfo *ai)
             index, ipver, ip_str, ai->ai_socktype, protocol_name, ai->ai_flags);
     }
 }
+#endif
 
 /****************************************************************************
  * PRIVATE FUNCTIONS DEFINITIONS
