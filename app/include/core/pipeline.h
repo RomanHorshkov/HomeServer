@@ -55,4 +55,6 @@ typedef struct
 
 int pipeline_init(pipeline_t **pipeline_ptr_ptr);
 
+int pipeline_push_and_notify_worker(pipeline_t *pipeline_ptr, const int client_fd);
+
 #endif /* SERVER_PIPELINE_H */

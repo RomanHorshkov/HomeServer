@@ -110,6 +110,8 @@ struct worker
 
 static worker_status add_connections(worker_t *worker_ptr);
 
+static int worker_check_status(worker_t *worker_ptr, worker_status status);
+
 static int delete_connection(worker_t *worker_ptr, int fd);
 
 static int update_connection(worker_t *worker_ptr, int fd);
@@ -117,6 +119,8 @@ static int update_connection(worker_t *worker_ptr, int fd);
 static int worker_timer_init(timer_var_t *tv, int epfd);
 
 static int manage_time_event(worker_t *worker_ptr, int fd);
+
+static int manage_wakeup_event(worker_t *worker_ptr, int fd);
 
 static void worker_timer_update(worker_t *worker_ptr);
 
@@ -173,22 +177,6 @@ int worker_init(worker_t **worker_ptr, pipeline_t *pipeline_ptr)
             /* Initialize the worker's communication pipeline */
             (*worker_ptr)->pipeline = pipeline_ptr;
 
-            // /** Register the pipe for EPOLLOUT events add oneshot flag to avoid epoll wakeup at
-            // every
-            //  * cicle this is needed to avoid the worker thread being woken up every time the pipe
-            //  is
-            //  * ready to be written.
-            //  */
-            // struct epoll_event ev_pipe = {.events = EPOLLOUT | EPOLLONESHOT,
-            //                               .data.fd = pipeline_ptr->pipe_fds[1]};
-
-            // /* Add the pipe write side to monitored sockets */
-            // if(epoll_ctl((*worker_ptr)->epoll_vars.epoll_fd, EPOLL_CTL_ADD,
-            //                   (*worker_ptr)->pipeline->pipe_fds[1], &ev_pipe) == -1)
-            // {
-            //     log_error("[worker]: worker_run: epoll_ctl failed on pipe: %s", strerror(errno));
-            // }
-
             /* Register wakeup_fd into epoll */
             struct epoll_event ev_wakeup = {.events = EPOLLIN, .data.fd = pipeline_ptr->wakeup_fd};
             if(epoll_ctl((*worker_ptr)->epoll_fd, EPOLL_CTL_ADD, pipeline_ptr->wakeup_fd,
@@ -210,7 +198,6 @@ int worker_init(worker_t **worker_ptr, pipeline_t *pipeline_ptr)
                 /* Initialize the worker's status and update the listener */
                 worker_set_status_and_update_listener(*worker_ptr,
                                                       (worker_status)WORKER_STATUS_ACTIVE);
-                log_info("setting status %d", WORKER_STATUS_ACTIVE);
 
                 /* set return to success */
                 res = STATUS_SUCCESS;
@@ -233,11 +220,10 @@ void *worker_run(void *arg)
     /* make a local copy of the worker ptr */
     worker_t *worker_ptr = (worker_t *)arg;
 
-    worker_status worker_old_status = atomic_load(&worker_ptr->status);
-    worker_status worker_new_status = worker_old_status;
+    worker_status worker_status = atomic_load(&worker_ptr->status);
 
     /* Main worker thread loop */
-    while(worker_old_status == WORKER_STATUS_ACTIVE || worker_old_status == WORKER_STATUS_FULL)
+    while(worker_status == WORKER_STATUS_ACTIVE || worker_status == WORKER_STATUS_FULL)
     {
         struct epoll_event events[MAX_FAN_OUT_SOCKETS];
         /* Wait for events on the pipe or client sockets.
@@ -251,9 +237,6 @@ void *worker_run(void *arg)
             continue;
         }
 
-        /* Update the worker's new status */
-        worker_new_status = atomic_load(&worker_ptr->status);
-
         /* Process all ready events */
         for(int i = 0; i < nfds; i++)
         {
@@ -265,8 +248,6 @@ void *worker_run(void *arg)
             if(fd == worker_ptr->timer_vars.timer_fd)
             {
                 manage_time_event(worker_ptr, fd);
-                /* Prevent further processing of this fd */
-                continue;
             }
 
             /* Event on the write pipe */
@@ -275,91 +256,42 @@ void *worker_run(void *arg)
 #ifdef DEBUG_MODE
                 log_info("[worker] pipe read side is ready to write");
 #endif /* DEBUG_MODE */
-                continue;
             }
 
-            /* Event is on the wakeup_fd coming from the listener, stands for time to check the ring
-             * for new clients */
+            /* Event on wakeup_fd from listener, check the ring for new clients */
             else if(fd == worker_ptr->pipeline->wakeup_fd)
             {
-                /* Clean the wakeup_fd with read and proceed with ring reading */
-                uint64_t wakeup_count;
-                ssize_t s = read(fd, &wakeup_count, sizeof(wakeup_count));
-#ifdef DEBUG_MODE
-                log_info("[worker] Wakeup event received on fd %d, wakeup_count %ld, size %ld", fd,
-                         wakeup_count, s);
-#endif /* DEBUG_MODE */
+                manage_wakeup_event(worker_ptr, fd);
 
-                /* loop the ring and add new connections */
-                worker_new_status = add_connections(worker_ptr);
-
-                switch(worker_new_status)
-                {
-                    case WORKER_STATUS_ACTIVE:
-
-                        /* Do nothing, keep going */
-                        break;
-
-                    case WORKER_STATUS_FULL:
-
-                        /* Do nothing, keep going */
-                        break;
-
-                    case WORKER_STATUS_INACTIVE:
-                    case WORKER_STATUS_INVALID:
-                    default:
-
-                        log_error("[worker] Failed to read and add connection from ring (fd %d)",
-                                  fd);
-                        delete_connection(worker_ptr, fd);
-                        break;
-                }
-
-                continue;  // Prevent further processing of this fd
+                continue;
             }
 
             /* Otherwise, the event is on a client socket */
-
-            /* Handle error/hangup/peer close events */
-            else if(ev_conn & (EPOLLRDHUP | EPOLLHUP | EPOLLERR))
+            else
             {
-#ifdef DEBUG_MODE
-                log_info("[worker] epoll event: fd %d closed/hup/err (events=0x%x)", fd, ev_conn);
-#endif
-                delete_connection(worker_ptr, fd);
-                continue;
+                /* Handle error/hangup/peer close events */
+                if(ev_conn & (EPOLLRDHUP | EPOLLHUP | EPOLLERR))
+                {
+                    delete_connection(worker_ptr, fd);
+                }
+
+                /* Refresh connection's request_count and last_activity */
+                else if(update_connection(worker_ptr, fd) != STATUS_SUCCESS)
+                {
+                    log_error("[worker] update_connection failed for fd %d", fd);
+                    delete_connection(worker_ptr, fd);
+                }
+
+                /* Manage the client request through the browser */
+                else if(browser_manage_client_req(fd) != STATUS_SUCCESS)
+                {
+                    log_error("[worker]: browser failed fd %d, closing it.", fd);
+                    delete_connection(worker_ptr, fd);
+                }
             }
 
-            else if(browser_manage_client_req(fd) != STATUS_SUCCESS)
-            {
-#ifdef DEBUG_MODE
-                log_error("[worker]: browser failed fd %d, closing it.", fd);
-#endif /* DEBUG_MODE */
-                delete_connection(worker_ptr, fd);
-                continue;  // Prevent further processing of this fd
-            }
-
-            /* Refresh connection's request_count and last_activity */
-            else if(update_connection(worker_ptr, fd) != STATUS_SUCCESS)
-            {
-                log_error("[worker] update_connection failed for fd %d", fd);
-                delete_connection(worker_ptr, fd);
-                continue;  // Prevent further processing of this fd
-            }
-
-            /* Check if the worker's status had changed */
-            if(worker_old_status != worker_new_status)
-            {
-                worker_set_status_and_update_listener(worker_ptr, worker_new_status);
-                /* Update the old status */
-                worker_old_status = worker_new_status;
-            }
-
-            // else if (worker_ptr->active_connections_no < MAX_CLIENTS &&
-            //          worker_new_status != WORKER_STATUS_ACTIVE)
-            // {
-            //     worker_set_status_and_update_listener(worker_ptr, worker_new_status);
-            // }
+            /* Update always worker's status after a possible connection deletion */
+            worker_check_status(worker_ptr, WORKER_STATUS_ACTIVE);
         }
     } /* while(SERVER_STATUS_ACTIVE) */
 
@@ -409,7 +341,7 @@ int worker_set_status(worker_t *worker_ptr, worker_status status)
 static worker_status add_connections(worker_t *worker_ptr)
 {
     /* Return variable */
-    worker_status res = WORKER_STATUS_INVALID;
+    worker_status res = WORKER_STATUS_ERROR;
 
     /* Check input */
     if(worker_ptr == NULL || worker_ptr->pipeline == NULL || worker_ptr->pipeline->ring_ptr == NULL)
@@ -474,7 +406,7 @@ static worker_status add_connections(worker_t *worker_ptr)
                 /* set return to success */
                 res = WORKER_STATUS_ACTIVE;
 #ifdef DEBUG_MODE
-                log_info("[worker] add_connection: Registered client fd %d to epoll", client_fd);
+                // log_info("[worker] add_connection: Registered client fd %d to epoll", client_fd);
 #endif /* DEBUG_MODE */
             }
 
@@ -482,7 +414,7 @@ static worker_status add_connections(worker_t *worker_ptr)
             if(worker_ptr->active_connections_no >= MAX_CLIENTS)
             {
 #ifdef DEBUG_MODE
-                log_info("[worker] add_connection: Maximum number of connections reached: %d",
+                log_info("[worker] add_connection: Maximum number of connections reached 1: %d",
                          MAX_CLIENTS);
 #endif /* DEBUG_MODE */
                 res = WORKER_STATUS_FULL;
@@ -495,9 +427,79 @@ static worker_status add_connections(worker_t *worker_ptr)
     else
     {
 #ifdef DEBUG_MODE
-        log_info("[worker] add_connection: Maximum number of connections reached: %d", MAX_CLIENTS);
+        log_info("[worker] add_connection: Maximum number of connections reached 2: %d",
+                 MAX_CLIENTS);
 #endif /* DEBUG_MODE */
         res = WORKER_STATUS_FULL;
+    }
+
+    return res;
+}
+
+static int worker_check_status(worker_t *worker_ptr, worker_status status)
+{
+    /* Result variable */
+    int res = STATUS_FAILURE;
+
+    /* Static variable to hold the previous worker's status */
+    static worker_status worker_old_status = 1;
+
+    if(worker_old_status != status)
+    {
+#ifdef DEBUG_MODE
+        log_info("[worker] worker_check_status STATUS_CHANGE DETECTED new %d, old %d", status,
+                 worker_old_status);
+#endif
+
+        /* Update the old status */
+        worker_old_status = status;
+
+        /* Check the new status */
+        switch(status)
+        {
+            case WORKER_STATUS_ACTIVE:
+                if(worker_ptr->active_connections_no < MAX_CLIENTS &&
+                   worker_set_status_and_update_listener(worker_ptr, status) != STATUS_SUCCESS)
+                {
+                    log_error(
+                        "[worker] worker_check_status worker_set_status_and_update_listener "
+                        "failed");
+                }
+                else
+                {
+                    res = STATUS_SUCCESS;
+                }
+                break;
+
+            case WORKER_STATUS_FULL:
+
+                if(worker_ptr->active_connections_no >= MAX_CLIENTS &&
+                   worker_set_status_and_update_listener(worker_ptr, status) != STATUS_SUCCESS)
+                {
+                    log_error(
+                        "[worker] worker_check_status worker_set_status_and_update_listener "
+                        "failed");
+                }
+                else
+                {
+                    res = STATUS_SUCCESS;
+                }
+                break;
+
+            case WORKER_STATUS_ERROR:
+            case WORKER_STATUS_INACTIVE:
+            case WORKER_STATUS_INVALID:
+            default:
+
+                log_error("[worker] worker_check_status INVALID WORKER STATUS");
+                break;
+        }
+    }
+
+    /* No status change detected */
+    else
+    {
+        res = STATUS_SUCCESS;
     }
 
     return res;
@@ -574,7 +576,6 @@ static int update_connection(worker_t *worker_ptr, int fd)
 
 static int worker_timer_init(timer_var_t *tv, int epfd)
 {
-    log_info("Initializing worker_timer_init");
     /* Return variable */
     int res = STATUS_FAILURE;
 
@@ -629,7 +630,6 @@ static int worker_timer_init(timer_var_t *tv, int epfd)
         }
     }
 
-    log_info("Initialized worker_timer_init");
     return res;
 }
 
@@ -654,6 +654,39 @@ static int manage_time_event(worker_t *worker_ptr, int fd)
         /* Update the timer */
         worker_timer_update(worker_ptr);
 
+        res = STATUS_SUCCESS;
+    }
+
+    return res;
+}
+
+static int manage_wakeup_event(worker_t *worker_ptr, int fd)
+{
+    /* Result variable */
+    int res = STATUS_FAILURE;
+
+    /* Clean the wakeup_fd with read and proceed with ring reading */
+    uint64_t wakeup_count;
+    // ssize_t s = read(fd, &wakeup_count, sizeof(wakeup_count));
+    read(fd, &wakeup_count, sizeof(wakeup_count));
+
+#ifdef DEBUG_MODE
+    // log_info("[worker] Wakeup event received");
+    // log_info("[worker] Wakeup event received on fd %d, wakeup_count %ld, size %ld", fd,
+    //          wakeup_count, s);
+#endif /* DEBUG_MODE */
+
+    /* loop the ring and add new connections */
+    worker_status w_status = add_connections(worker_ptr);
+
+    /* Check if the worker's status changed */
+    if(worker_check_status(worker_ptr, w_status) != STATUS_SUCCESS)
+    {
+        log_error("[worker] worker_check_status FAILED ");
+    }
+
+    else
+    {
         res = STATUS_SUCCESS;
     }
 
@@ -721,6 +754,9 @@ static int send_status_to_listener(worker_t *worker_ptr, worker_status status)
     /* If everything went ok */
     else
     {
+#ifdef DEBUG_MODE
+        log_info("[worker] updated listener about state change %d", (int)status);
+#endif /* DEBUG_MODE */
         res = STATUS_SUCCESS;
     }
 
@@ -738,23 +774,20 @@ static int worker_set_status_and_update_listener(worker_t *worker_ptr, worker_st
         log_error("worker_set_status_and_update_listener: invalid worker pointer");
     }
 
-    else if(send_status_to_listener(worker_ptr, status) != STATUS_SUCCESS)
-    {
-        log_error("worker_set_status_and_update_listener: send_status_to_listener failed");
-    }
-
     else if(worker_set_status(worker_ptr, status) != STATUS_SUCCESS)
     {
         log_error("worker_set_status_and_update_listener: worker_set_status failed");
     }
 
+    /* writes the pipe after calling atomic_store(), If the listener thread pre‑empts between those
+     * calls, it can read a “new” status while status still holds the old value. */
+    else if(send_status_to_listener(worker_ptr, status) != STATUS_SUCCESS)
+    {
+        log_error("worker_set_status_and_update_listener: send_status_to_listener failed");
+    }
+
     else
     {
-#ifdef DEBUG_MODE
-        log_info("[worker] worker_set_status_and_update_listener: Worker status set to %d",
-                 (int)status);
-#endif /* DEBUG_MODE */
-
         res = STATUS_SUCCESS;
     }
 

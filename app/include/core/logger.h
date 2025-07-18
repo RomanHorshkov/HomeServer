@@ -69,6 +69,7 @@ void log_info(const char *fmt, ...);
  */
 void log_error(const char *fmt, ...);
 
+#ifdef DEBUG_MODE
 /**
  * @brief Log a list of socket addresses.
  *
@@ -78,5 +79,6 @@ void log_error(const char *fmt, ...);
  * @param ai Pointer to the first element of the `addrinfo` linked list
  */
 void log_addrinfo_list(const struct addrinfo *ai);
+#endif /* DEBUG_MODE */
 
 #endif /* SERVER_LOGGER_H */

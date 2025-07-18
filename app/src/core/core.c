@@ -135,35 +135,32 @@ int server_init(const char *port)
     system("ls -la");
 #endif /* DEBUG_MODE */
 
+    /* Initialize the logger */
+    logger_init("server.log");
+
     /* Initialize the pipeline between listener and worker */
     if(pipeline_init(&server.pipeline) != STATUS_SUCCESS)
     {
-        log_error("[CORE]: W <-> L communication_init failed.");
+        log_error("[CORE]: W <-> L pipeline communication_init failed.");
     }
 
+    /* Initialize the listener with port, pipe read end, wakeup_fd, and ring */
+    else if(listener_init(&server.listener, port, server.pipeline) != STATUS_SUCCESS)
+    {
+        log_error("[CORE] listener failed to init.", strerror(errno));
+    }
+
+    /* Initialize the worker */
+    else if(worker_init(&server.worker, server.pipeline) != STATUS_SUCCESS)
+    {
+        log_error("[CORE] worker failed to init.", strerror(errno));
+    }
+
+    /* Successful initialization */
     else
     {
-        /* Initialize the logger */
-        logger_init("server.log");
-
-        /* Initialize the listener with port, pipe read end, wakeup_fd, and ring */
-        if(listener_init(&server.listener, port, server.pipeline) != STATUS_SUCCESS)
-        {
-            log_error("[CORE] listener failed to init.", strerror(errno));
-        }
-
-        /* Initialize the worker */
-        else if(worker_init(&server.worker, server.pipeline) != STATUS_SUCCESS)
-        {
-            log_error("[CORE] worker failed to init.", strerror(errno));
-        }
-
-        /* Successful initialization */
-        else
-        {
-            log_info("🚀 C Server running on http://localhost:%s\n", port);
-            ret = STATUS_SUCCESS;
-        }
+        log_info("🚀 C Server running on http://localhost:%s\n", port);
+        ret = STATUS_SUCCESS;
     }
 
     return ret;
