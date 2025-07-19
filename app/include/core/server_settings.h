@@ -44,48 +44,39 @@ typedef enum
  ****************************************************************************
  */
 
-/*
- * SERVER PROPERTIES
- */
-
-/* Max listeners amount */
-#define MAX_LISTENERS 2
-
-/* Max clients amount */
-#define MAX_CLIENTS 64
+/** PIPELINE PROPERTIES */
 
 /* Capacity of the SPSC ring buffer for file descriptors */
-#define SPSC_RING_CAPACITY 8
+#define SPSC_RING_CAPACITY 8U
+
+/** LISTENER PROPERTIES */
+
+/* Max listening sockets amount */
+#define MAX_LISTENERS 2U
+
+/* Max pending connections on one listener socket */
+#define MAX_PENDING_CONNECTIONS 8U
+
+/** WORKER PROPERTIES */
+
+/* Max clients amount */
+#define MAX_CLIENTS 1024U
+
+/* Client short timeout [s] */
+#define CLIENT_TIMEOUT_S 5
+
+/* Client long timeout [s] */
+#define CLIENT_TIMEOUT_L 120
 
 /* Fan-Out: the number of independent endpoints that can become ready at the same time—e.g. how many
  * client sockets might have data waiting when you call epoll_wait().*/
-#define MAX_FAN_OUT_SOCKETS 8
+#define MAX_FAN_OUT_SOCKETS 8U
 
-/* Max pending connections on one listener socket */
-#define MAX_PENDING_CONNECTIONS 8
-
-/* Time measurement unit */
-#define _S 1UL
-#define _MS ((_S) * 1000)
-#define _US ((_MS) * 1000)
-#define _NS ((_US) * 1000)
+/** CORE PROPERTIES */
 
 /* Server timeout */
-#define SERVER_KEEPALIVE_TIMEOUT_ALONE (60UL * _S)
-#define SERVER_KEEPALIVE_TIMEOUT_NOT_ALONE (10UL * _S)
-
-/*
- * SOCKET PROPERTIES
- */
-
-/* Client short timeout [s] */
-#define CLIENT_MAX_TIMEOUT_S 5
-
-/* Client long timeout [s] */
-#define CLIENT_MAX_TIMEOUT_S_L 120
-
-/* Client short timeout [ms] */
-#define CLIENT_MAX_TIMEOUT_MS 0
+#define SERVER_KEEPALIVE_TIMEOUT_ALONE 60U
+#define SERVER_KEEPALIVE_TIMEOUT_NOT_ALONE 10U
 
 /*
  * HTTP PROPERTIES
@@ -102,11 +93,8 @@ typedef enum
 /*
  * WEBSITE SETTINGS
  */
+
 /* Home page URI */
-// #ifdef DEBUG_MODE
 #define WEBSITE_HOME_PAGE "views/index.html"
-// #else
-// #define WEBSITE_HOME_PAGE "views/index.html"
-// #endif /* DEBUG_MODE */
 
 #endif /* SERVER_SETTINGS_H */

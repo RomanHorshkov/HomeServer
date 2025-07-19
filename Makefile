@@ -9,7 +9,7 @@ LDLIBS          += -Lapp/external/llhttp -lllhttp \
 				   -Lapp/external/spsc_ring -lspsc_ring
 
 # Include directories (relative to app/)
-INCDIRS         := app/include app/include/core app/include/browser app/include/browser/handlers app/external/llhttp app/external/cjson app/external/spsc_ring
+INCDIRS         := app/include app/include/core app/include/browser app/include/utils app/include/browser/handlers app/external/llhttp app/external/cjson app/external/spsc_ring
 SRCDIRS         := app/src
 BUILDDIR        := build
 OBJDIR          := $(BUILDDIR)/obj
@@ -57,7 +57,7 @@ all: $(BINDIR)/$(TARGET)
 debug: all
 
 # Release build: optimized, no debug flags, no DEBUG_MODE
-release: export CFLAGS = -std=c11 -Wall -Werror -Wextra -pedantic -O2 -DNDEBUG_MODE -DFHS_RELEASE
+release: export CFLAGS = -std=c11 -Wall -Werror -Wextra -pedantic -O2 -DNDEBUG_MODE
 release: all
 
 all: $(BINDIR)/$(TARGET)

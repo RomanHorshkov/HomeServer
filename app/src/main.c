@@ -30,11 +30,7 @@
  * PRIVATE DEFINES
  ****************************************************************************
  */
-#ifndef FHS_RELEASE
-#    define CHDIR_PATH "var/www"  // DO NOT WRITE /var/www as global path
-#else
-#    define CHDIR_PATH "/srv/HomeServer/www"
-#endif /* FHS_RELEASE */
+#define CHDIR_PATH "var/www"  // DO NOT WRITE /var/www as global path
 
 /****************************************************************************
  * PUBLIC FUNCTIONS DEFINITIONS

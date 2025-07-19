@@ -24,17 +24,15 @@
 #define _GNU_SOURCE
 #include "worker.h" /* worker */
 
-#include <fcntl.h>       /* fcntl(), F_GETFL, F_SETFL, O_NONBLOCK */
-#include <netdb.h>       /* getaddrinfo(), addrinfo, gai_strerror() */
-#include <stdatomic.h>   /* atomic_int */
-#include <stdlib.h>      /* malloc(), calloc() etc */
-#include <sys/epoll.h>   /* epoll_create1(), epoll_ctl(), epoll_wait(), struct epoll_event */
-#include <sys/timerfd.h> /* timerfd_create(), struct itimerspec */
-#include <unistd.h>      /* fork(), close(), read(), write(), etc. */
+#include <fcntl.h> /* fcntl(), F_GETFL, F_SETFL, O_NONBLOCK */
+// #include <netdb.h>       /* getaddrinfo(), addrinfo, gai_strerror() */
+#include <stdatomic.h> /* atomic_int */
+#include <stdlib.h>    /* malloc(), calloc() etc */
+#include <unistd.h>    /* fork(), close(), read(), write(), etc. */
 
-#include "browser.h"         /* browser_manage_client_req */
-#include "logger.h"          /* logger */
-#include "server_settings.h" /* settings */
+#include "browser.h" /* browser_manage_client_req */
+#include "logger.h"  /* logger */
+#include "utils.h"   /* utils */
 
 /****************************************************************************
  * PRIVATE DEFINES
@@ -55,23 +53,12 @@ typedef struct
     int fd;
 
     /* last activity timestamp */
-    time_t last_activity;
+    int last_activity;
 
     /* number of requests handled */
     int request_count;
 
 } connection_t;
-
-/* This structure holds the timer file descriptor and the timer specifications. */
-typedef struct
-{
-    /* timer fd instance */
-    int timer_fd;
-
-    /* interval + initial expiry */
-    struct itimerspec spec;
-
-} timer_var_t;
 
 /* This structure holds the worker's data, including epoll and timer instances,
  * connections, active connections count, pipe read file descriptor, and status.
@@ -84,17 +71,17 @@ struct worker
     /* epoll instance */
     int epoll_fd;
 
+    /* timer instance */
+    int timer_fd;
+
     /* connections */
     connection_t connections[MAX_CLIENTS];
 
     /* active connections */
-    int active_connections_no;
+    uint active_connections_no;
 
     /* collaboration with listener structure */
     pipeline_t *pipeline;
-
-    /* timer instance */
-    timer_var_t timer_vars;
 };
 
 /****************************************************************************
@@ -116,17 +103,17 @@ static int delete_connection(worker_t *worker_ptr, int fd);
 
 static int update_connection(worker_t *worker_ptr, int fd);
 
-static int worker_timer_init(timer_var_t *tv, int epfd);
-
 static int manage_time_event(worker_t *worker_ptr, int fd);
 
 static int manage_wakeup_event(worker_t *worker_ptr, int fd);
 
-static void worker_timer_update(worker_t *worker_ptr);
-
 static int send_status_to_listener(worker_t *worker_ptr, worker_status status);
 
 static int worker_set_status_and_update_listener(worker_t *worker_ptr, worker_status status);
+
+static int worker_timer_init(int *timer_fd);
+
+static void worker_timer_update(worker_t *worker_ptr);
 
 /****************************************************************************
  * PUBLIC FUNCTIONS DEFINITIONS
@@ -148,59 +135,73 @@ int worker_init(worker_t **worker_ptr, pipeline_t *pipeline_ptr)
         /* Allocate memory for the worker */
         *worker_ptr = (worker_t *)calloc(1, sizeof(worker_t));
 
-        /* Create an epoll instance */
-        int epoll_fd = epoll_create1(0);
-
         /* Check memory allocation */
         if(*worker_ptr == NULL)
         {
             log_error("[worker]:worker_init: memory allocation failed: %s", strerror(errno));
         }
 
-        /* Check epoll instance */
-        else if(epoll_fd == -1)
-        {
-            log_error("[worker]: worker_init: epoll_create1 failed: %s", strerror(errno));
-        }
-
         else
         {
-            /* Initialize the worker's epoll instance */
-            (*worker_ptr)->epoll_fd = epoll_fd;
+            /* Create an epoll instance */
+            int epoll_fd = epoll_new();
 
-            /* Initialize the worker's connections(_t) */
-            memset((*worker_ptr)->connections, 0, MAX_CLIENTS * sizeof(connection_t));
-
-            /* Initialize the worker's active sockets number */
-            (*worker_ptr)->active_connections_no = 0;
-
-            /* Initialize the worker's communication pipeline */
-            (*worker_ptr)->pipeline = pipeline_ptr;
-
-            /* Register wakeup_fd into epoll */
-            struct epoll_event ev_wakeup = {.events = EPOLLIN, .data.fd = pipeline_ptr->wakeup_fd};
-            if(epoll_ctl((*worker_ptr)->epoll_fd, EPOLL_CTL_ADD, pipeline_ptr->wakeup_fd,
-                         &ev_wakeup) == -1)
+            /* Check epoll instance */
+            if(epoll_fd == -1)
             {
-                log_error("[worker]: worker_run: epoll_ctl failed on wakeup_fd: %s",
-                          strerror(errno));
-            }
-
-            /* init the timer */
-            else if(worker_timer_init(&(*worker_ptr)->timer_vars, (*worker_ptr)->epoll_fd) !=
-                    STATUS_SUCCESS)
-            {
-                log_error("[worker]: worker_init: timer_init failed: %s", strerror(errno));
+                log_error("[worker]: worker_init: epoll_create1 failed: %s", strerror(errno));
             }
 
             else
             {
-                /* Initialize the worker's status and update the listener */
-                worker_set_status_and_update_listener(*worker_ptr,
-                                                      (worker_status)WORKER_STATUS_ACTIVE);
+                /* Set the worker's epoll instance */
+                (*worker_ptr)->epoll_fd = epoll_fd;
 
-                /* set return to success */
-                res = STATUS_SUCCESS;
+                /* Initialize worker's timer */
+                if(worker_timer_init(&(*worker_ptr)->timer_fd) != STATUS_SUCCESS)
+                {
+                    log_error("[worker]: worker_init: timer_init failed: %s", strerror(errno));
+                }
+
+                /* Register timer_fd into epoll */
+                else if(epoll_add_in((*worker_ptr)->epoll_fd, (*worker_ptr)->timer_fd) == -1)
+                {
+                    log_error("[worker]: worker_init: epoll_add_in failed timer_fd: %s",
+                              strerror(errno));
+                }
+
+                /* Register wakeup_fd into epoll */
+                else if(epoll_add_in((*worker_ptr)->epoll_fd, pipeline_ptr->wakeup_fd) == -1)
+                {
+                    log_error("[worker]: worker_init: epoll_add_in failed wakeup_fd: %s",
+                              strerror(errno));
+                }
+                else
+                {
+                    /* Initialize the worker's connections(_t) */
+                    memset((*worker_ptr)->connections, 0, MAX_CLIENTS * sizeof(connection_t));
+
+                    /* Initialize the worker's active sockets number */
+                    (*worker_ptr)->active_connections_no = 0;
+
+                    /* Initialize the worker's communication pipeline */
+                    (*worker_ptr)->pipeline = pipeline_ptr;
+
+                    /* Initialize the worker's status and update the listener */
+                    if(worker_set_status_and_update_listener(
+                           *worker_ptr, (worker_status)WORKER_STATUS_ACTIVE) == STATUS_FAILURE)
+                    {
+                        log_error(
+                            "[worker]: worker_init: worker_set_status_and_update_listener failed "
+                            "%s",
+                            strerror(errno));
+                    }
+
+                    else
+                    {
+                        res = STATUS_SUCCESS;
+                    }
+                }
             }
         }
     }
@@ -225,10 +226,11 @@ void *worker_run(void *arg)
     /* Main worker thread loop */
     while(worker_status == WORKER_STATUS_ACTIVE || worker_status == WORKER_STATUS_FULL)
     {
-        struct epoll_event events[MAX_FAN_OUT_SOCKETS];
+        epoll_events_t evnts;
         /* Wait for events on the pipe or client sockets.
         Specifying a timeout of -1 causes epoll_wait() to block indefinitely */
-        int nfds = epoll_wait(worker_ptr->epoll_fd, events, MAX_FAN_OUT_SOCKETS, -1);
+        int nfds = epoll_listen_events(worker_ptr->epoll_fd, &evnts);
+        // int nfds = epoll_wait(worker_ptr->epoll_fd, events, MAX_FAN_OUT_SOCKETS, -1);
 
         /* Check for errors */
         if(nfds < 0)
@@ -240,12 +242,22 @@ void *worker_run(void *arg)
         /* Process all ready events */
         for(int i = 0; i < nfds; i++)
         {
+            /* Update always worker's status after a possible connection deletion */
+            worker_check_status(worker_ptr, WORKER_STATUS_ACTIVE);
+
             /* Get the kernel-returned fd saved at epoll ADD instance */
-            int fd = events[i].data.fd;
-            uint32_t ev_conn = events[i].events;
+            int fd = epoll_get_event_fd(&evnts, i);
+            uint32_t ev_conn = epoll_get_event_type(&evnts, i);
+
+            /* Handle error/hangup/peer close events */
+            if(epoll_check_if_to_close(ev_conn))
+            {
+                delete_connection(worker_ptr, fd);
+                continue;
+            }
 
             /* Event is on the timer handle logic */
-            if(fd == worker_ptr->timer_vars.timer_fd)
+            if(fd == worker_ptr->timer_fd)
             {
                 manage_time_event(worker_ptr, fd);
             }
@@ -262,21 +274,14 @@ void *worker_run(void *arg)
             else if(fd == worker_ptr->pipeline->wakeup_fd)
             {
                 manage_wakeup_event(worker_ptr, fd);
-
                 continue;
             }
 
             /* Otherwise, the event is on a client socket */
             else
             {
-                /* Handle error/hangup/peer close events */
-                if(ev_conn & (EPOLLRDHUP | EPOLLHUP | EPOLLERR))
-                {
-                    delete_connection(worker_ptr, fd);
-                }
-
                 /* Refresh connection's request_count and last_activity */
-                else if(update_connection(worker_ptr, fd) != STATUS_SUCCESS)
+                if(update_connection(worker_ptr, fd) != STATUS_SUCCESS)
                 {
                     log_error("[worker] update_connection failed for fd %d", fd);
                     delete_connection(worker_ptr, fd);
@@ -289,9 +294,6 @@ void *worker_run(void *arg)
                     delete_connection(worker_ptr, fd);
                 }
             }
-
-            /* Update always worker's status after a possible connection deletion */
-            worker_check_status(worker_ptr, WORKER_STATUS_ACTIVE);
         }
     } /* while(SERVER_STATUS_ACTIVE) */
 
@@ -360,7 +362,7 @@ static worker_status add_connections(worker_t *worker_ptr)
         {
             /* Find a free slot */
             int slot = -1;
-            for(int i = 0; i < MAX_CLIENTS; ++i)
+            for(uint i = 0; i < MAX_CLIENTS; ++i)
             {
                 if(worker_ptr->connections[i].fd == 0)
                 {
@@ -377,12 +379,8 @@ static worker_status add_connections(worker_t *worker_ptr)
                 break;
             }
 
-            /* Prepare epoll_event for the new client fd */
-            struct epoll_event cev = {.events = EPOLLIN | EPOLLRDHUP | EPOLLHUP | EPOLLERR,
-                                      .data.fd = client_fd};
-
             /* Add the new client fd to epoll */
-            if(epoll_ctl(worker_ptr->epoll_fd, EPOLL_CTL_ADD, client_fd, &cev) == -1)
+            if(epoll_add_in_client(worker_ptr->epoll_fd, client_fd) == -1)
             {
                 log_error("[worker] Failed to add client fd %d to epoll: %s", client_fd,
                           strerror(errno));
@@ -396,18 +394,18 @@ static worker_status add_connections(worker_t *worker_ptr)
 
                 /* set connection's client fd */
                 c->fd = client_fd;
+
                 /* set connection's last activity to now */
-                c->last_activity = time(NULL);
+                c->last_activity = timer_get_now();
+
                 /* set connection's request count to 0 */
                 c->request_count = 0;
 
+                /* Increment active connections no */
                 worker_ptr->active_connections_no++;
 
                 /* set return to success */
                 res = WORKER_STATUS_ACTIVE;
-#ifdef DEBUG_MODE
-                // log_info("[worker] add_connection: Registered client fd %d to epoll", client_fd);
-#endif /* DEBUG_MODE */
             }
 
             /* Check the worker's status about max connections allowed */
@@ -491,7 +489,7 @@ static int worker_check_status(worker_t *worker_ptr, worker_status status)
             case WORKER_STATUS_INVALID:
             default:
 
-                log_error("[worker] worker_check_status INVALID WORKER STATUS");
+                log_error("[worker] worker_check_status INVALID WORKER STATUS %d", (uint)status);
                 break;
         }
     }
@@ -514,15 +512,15 @@ static int delete_connection(worker_t *worker_ptr, int fd)
     }
     else
     {
-        for(int j = 0; j < MAX_CLIENTS; ++j)
+        for(uint j = 0; j < MAX_CLIENTS; ++j)
         {
             if(worker_ptr->connections[j].fd == fd)
             {
                 /* send FIN – graceful half-close */
-                shutdown(fd, SHUT_WR);
+                socket_shutdown(fd);
 
                 /* Remove from epoll */
-                epoll_ctl(worker_ptr->epoll_fd, EPOLL_CTL_DEL, fd, NULL);
+                epoll_del(worker_ptr->epoll_fd, fd);
 
                 /* Close the socket */
                 close(fd);
@@ -541,6 +539,7 @@ static int delete_connection(worker_t *worker_ptr, int fd)
             }
         }
     }
+
     return res;
 }
 
@@ -559,11 +558,11 @@ static int update_connection(worker_t *worker_ptr, int fd)
     {
         /* TO DO : HASH TABLE */
         /* Find the connection and update it */
-        for(int j = 0; j < MAX_CLIENTS; ++j)
+        for(uint j = 0; j < MAX_CLIENTS; ++j)
         {
             if(worker_ptr->connections[j].fd == fd)
             {
-                worker_ptr->connections[j].last_activity = time(NULL);
+                worker_ptr->connections[j].last_activity = timer_get_now();
                 worker_ptr->connections[j].request_count++;
                 res = STATUS_SUCCESS;
                 break;
@@ -574,59 +573,37 @@ static int update_connection(worker_t *worker_ptr, int fd)
     return res;
 }
 
-static int worker_timer_init(timer_var_t *tv, int epfd)
+static int worker_timer_init(int *timer_fd)
 {
     /* Return variable */
     int res = STATUS_FAILURE;
 
     /* Check input */
-    if(tv == NULL)
+    if(timer_fd == NULL)
     {
         log_error("[worker] worker_timer_init: invalid input");
     }
     else
     {
         /* Create a timer fd */
-        tv->timer_fd = timerfd_create(CLOCK_MONOTONIC, TFD_NONBLOCK | TFD_CLOEXEC);
-        if(tv->timer_fd == -1)
+        *timer_fd = timer_init();
+
+        if(*timer_fd == -1)
         {
             log_error("[worker] worker_timer_init: timerfd_create failed: %s", strerror(errno));
         }
+
+        /* Set the timer interval and initial expiry */
+        else if(timer_set(*timer_fd, SERVER_KEEPALIVE_TIMEOUT_NOT_ALONE, 0) == -1)
+        {
+            log_error("[worker] worker_timer_init: timer_set failed: %s, timer closed.",
+                      strerror(errno));
+            close(*timer_fd);
+        }
         else
         {
-            /* Set the timer interval and initial expiry */
-            tv->spec.it_value.tv_sec =
-                SERVER_KEEPALIVE_TIMEOUT_NOT_ALONE; /* Initial expiry in seconds */
-            tv->spec.it_value.tv_nsec = 0;
-            tv->spec.it_interval.tv_sec =
-                SERVER_KEEPALIVE_TIMEOUT_NOT_ALONE; /* Interval in seconds */
-            tv->spec.it_interval.tv_nsec = 0;
-
-            /* Set the timer */
-            if(timerfd_settime(tv->timer_fd, 0, &tv->spec, NULL) == -1)
-            {
-                log_error("[worker] worker_timer_init: timerfd_settime failed: %s",
-                          strerror(errno));
-                close(tv->timer_fd);
-            }
-            else
-            {
-                /* Prepare epoll_event for the timer fd */
-                struct epoll_event tev = {.events = EPOLLIN, .data.fd = tv->timer_fd};
-
-                /* Add the timer fd to epoll */
-                if(epoll_ctl(epfd, EPOLL_CTL_ADD, tv->timer_fd, &tev) == -1)
-                {
-                    log_error("[worker] worker_timer_init: epoll_ctl failed on timer fd: %s",
-                              strerror(errno));
-                    close(tv->timer_fd);
-                }
-                else
-                {
-                    /* Set return to success */
-                    res = STATUS_SUCCESS;
-                }
-            }
+            /* Set return to success */
+            res = STATUS_SUCCESS;
         }
     }
 
@@ -642,10 +619,7 @@ static int manage_time_event(worker_t *worker_ptr, int fd)
     log_info("[worker] Timer event received");
 #endif /* DEBUG_MODE */
 
-    /* Read expirations */
-    uint64_t expirations;
-    ssize_t s = read(fd, &expirations, sizeof(expirations));
-    if(s != sizeof(expirations))
+    if(socket_drain(fd) == -1)
     {
         log_error("[worker] Failed to read timerfd: %s", strerror(errno));
     }
@@ -666,14 +640,14 @@ static int manage_wakeup_event(worker_t *worker_ptr, int fd)
     int res = STATUS_FAILURE;
 
     /* Clean the wakeup_fd with read and proceed with ring reading */
-    uint64_t wakeup_count;
-    // ssize_t s = read(fd, &wakeup_count, sizeof(wakeup_count));
-    read(fd, &wakeup_count, sizeof(wakeup_count));
 
-#ifdef DEBUG_MODE
-    // log_info("[worker] Wakeup event received");
-    // log_info("[worker] Wakeup event received on fd %d, wakeup_count %ld, size %ld", fd,
-    //          wakeup_count, s);
+#ifndef DEBUG_MODE
+    uint64_t wakeup_count;
+    ssize_t s = read(fd, &wakeup_count, sizeof(wakeup_count));
+    log_info("[worker] Wakeup event received on fd %d, wakeup_count %ld, size %ld", fd,
+             wakeup_count, s);
+#else
+    socket_drain(fd);
 #endif /* DEBUG_MODE */
 
     /* loop the ring and add new connections */
@@ -697,14 +671,13 @@ static void worker_timer_update(worker_t *worker_ptr)
 {
     if(worker_ptr == NULL) return;
 
-    timer_var_t *tv = &worker_ptr->timer_vars;
+    /* TO DO
+    DO NOT SEND TIMER UPDATE AT EVERY TIMER WAKEUP */
 
-    /* Set timer interval based on active connections */
-    if(worker_ptr->active_connections_no == 0 &&
-       tv->spec.it_value.tv_sec != SERVER_KEEPALIVE_TIMEOUT_ALONE)
+    /* Set timer with no connections */
+    if(worker_ptr->active_connections_no == 0)
     {
-        tv->spec.it_value.tv_sec = SERVER_KEEPALIVE_TIMEOUT_ALONE;
-        tv->spec.it_interval.tv_sec = SERVER_KEEPALIVE_TIMEOUT_ALONE;
+        timer_set(worker_ptr->timer_fd, SERVER_KEEPALIVE_TIMEOUT_ALONE, 0);
 #ifdef DEBUG_MODE
         log_info(
             "[worker] worker_timer_update: Updated timer to SERVER_KEEPALIVE_TIMEOUT_ALONE (%lu "
@@ -712,25 +685,17 @@ static void worker_timer_update(worker_t *worker_ptr)
             SERVER_KEEPALIVE_TIMEOUT_ALONE);
 #endif /* DEBUG_MODE */
     }
-    else if(worker_ptr->active_connections_no > 0 &&
-            tv->spec.it_value.tv_sec != SERVER_KEEPALIVE_TIMEOUT_NOT_ALONE)
+
+    /* Set timer with connections */
+    else if(worker_ptr->active_connections_no > 0)
     {
-        tv->spec.it_value.tv_sec = SERVER_KEEPALIVE_TIMEOUT_NOT_ALONE;
-        tv->spec.it_interval.tv_sec = SERVER_KEEPALIVE_TIMEOUT_NOT_ALONE;
+        timer_set(worker_ptr->timer_fd, SERVER_KEEPALIVE_TIMEOUT_NOT_ALONE, 0);
 #ifdef DEBUG_MODE
         log_info(
             "[worker] worker_timer_update: Updated timer to SERVER_KEEPALIVE_TIMEOUT_NOT_ALONE "
             "(%lu seconds)",
             SERVER_KEEPALIVE_TIMEOUT_NOT_ALONE);
 #endif /* DEBUG_MODE */
-    }
-    // tv->spec.it_value.tv_nsec = 0;
-    // tv->spec.it_interval.tv_nsec = 0;
-
-    /* Update the timer */
-    if(timerfd_settime(tv->timer_fd, 0, &tv->spec, NULL) == -1)
-    {
-        log_error("[worker] worker_timer_update: timerfd_settime failed: %s", strerror(errno));
     }
 }
 
