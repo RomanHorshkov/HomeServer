@@ -147,8 +147,8 @@ Main thread (core)
 
    * Listener accepts on any ready listen FD.
    * Accepted FD is pushed into the ring buffer.
-   * Listener writes `1` to the eventfd.
-   * Worker’s epoll is woken, reads the eventfd (counter‑style), drains the ring, and registers the new client FDs.
+   * Listener writes `1` to the wakeup_fd.
+   * Worker’s epoll is woken, reads the wakeup_fd (counter‑style), drains the ring, and registers the new client FDs.
 
 2. **Back‑pressure**
 
@@ -162,7 +162,7 @@ Main thread (core)
 3. **Keep‑alive / idle timeout**
 
    * Single `timerfd` in the worker ticks every 10 s while at least one client is connected, or every 60 s when the worker is idle.
-   * On each tick the worker scans its `connections[]`; sockets idle longer than `CLIENT_MAX_TIMEOUT_S` are closed gracefully (`shutdown → epoll DEL → close`).
+   * On each tick the worker scans its `connections[]`; sockets idle longer than `CLIENT_TIMEOUT_S` are closed gracefully (`shutdown → epoll DEL → close`).
 
 ---
 

@@ -31,13 +31,9 @@
 /****************************************************************************
  * PRIVATE DEFINES
  ****************************************************************************/
-#ifdef DEBUG_MODE
-#    define EXP_ROOT "/home/roman/HomeServer/var/lib/expenses"
-#    define EXPENSES_SETTINGS_FILE "/home/roman/HomeServer/var/lib/expenses/settings.json"
-#else
-#    define EXP_ROOT "/var/lib/HomeServer/expenses"
-#    define EXPENSES_SETTINGS_FILE "/var/lib/HomeServer/expenses/settings.json"
-#endif /* DEBUG_MODE */
+
+#define EXP_ROOT "/home/roman/HomeServer/var/lib/expenses"
+#define EXPENSES_SETTINGS_FILE "/home/roman/HomeServer/var/lib/expenses/settings.json"
 
 #define MAX_MONTHS 256 /* max months to collect */
 
