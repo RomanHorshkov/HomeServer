@@ -41,6 +41,23 @@
 /* None */
 
 /****************************************************************************
+ * PRIVATE STRUCTURED VARIABLES
+ ****************************************************************************
+ */
+
+/**
+ * @brief Struct to keep track of actual llhttp parsing state
+ */
+typedef struct
+{
+    HttpRequest* req;
+    char current_field[HTTP_MAX_HEADER_NAME_LEN];
+    char current_value[HTTP_MAX_HEADER_VALUE_LEN];
+    int in_header_field;
+
+} LlhttpParserContext;
+
+/****************************************************************************
  * PRIVATE FUNCTIONS PROTOTYPES
  ****************************************************************************
  */
