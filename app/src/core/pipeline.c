@@ -129,37 +129,65 @@ int pipeline_push_and_notify_worker(pipeline_t *pipeline_ptr, const int client_f
     int res = STATUS_FAILURE;
 
     /* Check inputs */
-    if(pipeline_ptr == NULL || client_fd <= 0)
+    if(pipeline_ptr == NULL || pipeline_ptr->ring_ptr == NULL || client_fd < 0)
     {
         log_error("[pipeline]: push_and_notify_worker invalid input");
     }
 
     /* Check if ring has free space */
-    else if(!spsc_ring_is_full(pipeline_ptr->ring_ptr))
-    {
-        /* Check if push on ring successful */
-        if(spsc_ring_push(pipeline_ptr->ring_ptr, client_fd) != 0)
-        {
-            log_error("[pipeline]: spsc_ring_push failed for fd %d", client_fd);
-        }
-
-        /* Send a wake-up signal */
-        else
-        {
-            uint64_t inc = 1;
-            int w_ret = write(pipeline_ptr->wakeup_fd, &inc, sizeof(uint64_t));
-
-            /* Check if successfully written */
-            if(w_ret == sizeof(uint64_t))
-            {
-                /* Set return status */
-                res = STATUS_SUCCESS;
-            }
-        }
-    }
-    else
+    else if(spsc_ring_is_full(pipeline_ptr->ring_ptr))
     {
         log_error("[listener] spsc_ring_is_full, fd %d refused and closed", client_fd);
+    }
+
+    /* Check if push on ring successful */
+    else if(spsc_ring_push(pipeline_ptr->ring_ptr, client_fd) != 0)
+    {
+        log_error("[pipeline]: spsc_ring_push failed for fd %d", client_fd);
+    }
+
+    /* Send a wake-up signal */
+    else
+    {
+        /* Set wakeup counter */
+        uint64_t inc = 1;
+
+        /* Check if successfully written */
+        if(write(pipeline_ptr->wakeup_fd, &inc, sizeof(uint64_t)) == sizeof(uint64_t))
+        {
+            /* Set return status */
+            res = STATUS_SUCCESS;
+        }
+    }
+
+    return res;
+}
+
+int pipeline_notify_worker_status_change(pipeline_t *pipeline, worker_status status)
+{
+    /* Result variable */
+    int res = STATUS_FAILURE;
+
+    /* Check input */
+    if(pipeline == NULL)
+    {
+        log_error("[pipeline] pipeline_notify_worker_status_change: invalid input");
+    }
+
+    /* Send the status to the listener */
+    else if(write(pipeline->pipe_fds[1], &status, sizeof(uint32_t)) != sizeof(uint32_t))
+    {
+        log_error("[pipeline] pipeline_notify_worker_status_change: write failed: %s",
+                  strerror(errno));
+    }
+
+    /* If everything went ok */
+    else
+    {
+#ifdef DEBUG_MODE
+        log_info("[pipeline] updated listener about state change %d", (int)status);
+#endif /* DEBUG_MODE */
+        res = STATUS_SUCCESS;
     }
 
     return res;

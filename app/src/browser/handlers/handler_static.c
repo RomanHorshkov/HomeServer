@@ -72,7 +72,7 @@ int handler_static(const HttpRequest *request, HttpResponse *response)
         if(request->path[0] == '/' && request->path[1] == '\0')
         {
             /* Default home page in server settings */
-            rel_path = WEBSITE_HOME_PAGE;
+            rel_path = ROUTER_HOME_PAGE;
         }
 
         /* Strip leading '/' from other absolute paths */
@@ -114,9 +114,9 @@ int handler_static(const HttpRequest *request, HttpResponse *response)
 
                     /* Allocate buffer to hold file contents */
                     body = malloc((size_t)size);
-                    if(body &&
-                       /* Read the entire file into the buffer */
-                       fread(body, 1, (size_t)size, f) == (size_t)size)
+
+                    /* Read the entire file into the buffer */
+                    if(body && fread(body, 1, (size_t)size, f) == (size_t)size)
                     {
                         /* Populate the HttpResponse structure */
                         response->status_code = 200;

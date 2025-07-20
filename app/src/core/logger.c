@@ -85,7 +85,9 @@ void logger_init(const char *filename)
         else
         {
             /* log file opened successfully */
-            printf("Logger initialized: %s\n", filename);
+#ifdef DEBUG_MODE
+            log_info("Logger initialized: %s\n", filename);
+#endif
             fflush(log_file);
         }
     }

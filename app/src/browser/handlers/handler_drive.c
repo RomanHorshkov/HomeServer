@@ -15,9 +15,6 @@
  *   (c) 2025
  */
 
-#ifndef SERVER_HANDLER_DRIVE_H
-#define SERVER_HANDLER_DRIVE_H
-
 #define _GNU_SOURCE
 
 #include "handler_drive.h"
@@ -25,6 +22,7 @@
 #include <errno.h> /* errno                                                */
 
 #include "handler_utils.h"
+#include "route_register.h"
 
 /****************************************************************************
  * PRIVATE DEFINES
@@ -143,4 +141,4 @@ int handler_drive(const HttpRequest *req, HttpResponse *resp)
     return 0; /* success         */
 }
 
-#endif /* SERVER_HANDLER_DRIVE_H */
+REGISTER_ROUTE("/api/drive", handler_drive)

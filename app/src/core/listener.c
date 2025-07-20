@@ -135,18 +135,6 @@ static int init_epoll_instance(listener_t *listener_ptr);
 
 static int register_listener_sockets_to_epoll(listener_t *listener_ptr);
 
-/**
- * @brief Set recommended socket options in the addrinfo hints structure.
- *
- * Initializes the provided hints structure for getaddrinfo() with recommended
- * values for dual-stack TCP listening sockets.
- *
- * @param hints  Pointer to the addrinfo structure to initialize.
- * @retval  0  Success.
- * @retval -1 Failure (invalid pointer).
- */
-static int set_socket_hints(struct addrinfo *hints);
-
 static int read_worker_message(listener_t *listener_ptr);
 
 static int on_worker_status_change(listener_t *listener_ptr, worker_status worker_actual_status);
@@ -175,7 +163,9 @@ static int listener_accept_and_p_client_info(int listen_fd);
 
 int listener_init(listener_t **listener_ptr, const char *port, pipeline_t *pipeline_ptr)
 {
+#ifdef DEBUG_MODE
     log_info("[listener] listener_init");
+#endif /* DEBUG_MODE */
     /* return value */
     int res = STATUS_FAILURE;
 
@@ -374,7 +364,6 @@ void listener_set_status(listener_t *listener_ptr, int status)
         atomic_store(&listener_ptr->status, status);
 
 #ifdef DEBUG_MODE
-        /* Log the status change */
         log_info("[listener] status set to %d", status);
 #endif /* DEBUG_MODE */
     }
@@ -399,7 +388,9 @@ static int init_memory(listener_t **listener_ptr)
         if(*listener_ptr != NULL)
         {
             res = STATUS_SUCCESS;
+#ifdef DEBUG_MODE
             log_info("[listener] memory setted up correctly");
+#endif /* DEBUG_MODE */
         }
 
         else
@@ -451,7 +442,7 @@ static int init_listening_sockets(listener_t *listener_ptr, const char *port)
     listener_ptr->port[sizeof(listener_ptr->port) - 1] = '\0';  // null-terminate manually
 
     /* Set socket hints for getaddr */
-    if(set_socket_hints(&hints) != STATUS_SUCCESS)
+    if(socket_set_listener_hints(&hints) != STATUS_SUCCESS)
     {
         log_error("[listener] init_listening_sockets socket hints failed ", strerror(errno));
     }
@@ -625,32 +616,6 @@ static int register_listener_sockets_to_epoll(listener_t *listener_ptr)
             res = STATUS_FAILURE;
             break;
         }
-    }
-
-    return res;
-}
-
-static int set_socket_hints(struct addrinfo *hints)
-{
-    /* return value */
-    int res = STATUS_FAILURE;
-
-    if(hints)
-    {
-        /* make sure hints setted to 0 */
-        memset(hints, 0, sizeof(struct addrinfo));
-
-        /* AF_UNSPEC allows IPv4 or IPv6 */
-        hints->ai_family = AF_UNSPEC;
-
-        /* The sockettype will automatically set the ai_protocol to
-        IPPROTO_TCP 6 with SOCK_STREAM or IPPROTO_UDP 17 with SOCK_DGRAM */
-        hints->ai_socktype = SOCK_STREAM;  // TCP
-
-        /* Use my IP automatically */
-        hints->ai_flags = AI_PASSIVE;
-
-        res = STATUS_SUCCESS;
     }
 
     return res;

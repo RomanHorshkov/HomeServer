@@ -9,7 +9,10 @@ LDLIBS          += -Lapp/external/llhttp -lllhttp \
 				   -Lapp/external/spsc_ring -lspsc_ring
 
 # Include directories (relative to app/)
-INCDIRS         := app/include app/include/core app/include/browser app/include/utils app/include/browser/handlers app/external/llhttp app/external/cjson app/external/spsc_ring
+INCDIRS         := app/include app/include/core app/include/browser \
+					app/include/utils app/include/browser/handlers \
+					app/include/browser/router app/external/llhttp \
+					app/external/cjson app/external/spsc_ring
 SRCDIRS         := app/src
 BUILDDIR        := build
 OBJDIR          := $(BUILDDIR)/obj

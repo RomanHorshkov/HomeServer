@@ -112,7 +112,7 @@ int browser_manage_client_req(int fd)
     else
     {
 #ifdef DEBUG_MODE
-        log_info("[worker] Received from fd %d:\n%.*s", fd, (int)n, recv_buf);
+        // log_info("[worker] Received from fd %d:\n%.*s", fd, (int)n, recv_buf);
 #endif /* DEBUG_MODE */
 
         /* manage http request */
