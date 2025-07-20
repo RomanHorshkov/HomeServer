@@ -22,18 +22,6 @@
  */
 
 /**
- * @brief Supported HTTP methods.
- */
-typedef enum
-{
-    HTTP_METHOD_GET,    /* GET method */
-    HTTP_METHOD_PUT,    /* PUT method */
-    HTTP_METHOD_POST,   /* POST method */
-    HTTP_METHOD_DELETE, /* DELETE method */
-    HTTP_METHOD_UNKNOWN /* Unknown method */
-} http_method_t;
-
-/**
  * @brief Connection policy for HTTP/1.x.
  */
 typedef enum
@@ -74,17 +62,6 @@ typedef struct
     const char* body;
     size_t body_length;
 } HttpResponse;
-
-/**
- * @brief Struct to keep track of actual llhttp parsing state
- */
-typedef struct
-{
-    HttpRequest* req;
-    char current_field[HTTP_MAX_HEADER_NAME_LEN];
-    char current_value[HTTP_MAX_HEADER_VALUE_LEN];
-    int in_header_field;
-} LlhttpParserContext;
 
 /****************************************************************************
  * PUBLIC ENUMERATED VARIABLES

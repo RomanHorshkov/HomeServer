@@ -37,7 +37,7 @@ export async function loadExpenses(container) {
 
   try {
     // LOAD: fetch the list of months, then each month’s JSON
-    const months = await fetch('/api/expenses/')
+    const months = await fetch('/api/expenses')
       .then(r => { if (!r.ok) throw new Error('months list fetch failed'); return r.json(); });
 
     const perMonth = await Promise.all(

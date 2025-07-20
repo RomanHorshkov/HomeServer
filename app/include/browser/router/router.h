@@ -1,7 +1,11 @@
 #ifndef SERVER_ROUTER_H
 #define SERVER_ROUTER_H
 
-#include "http_manager.h"  // for HttpRequest and HttpResponse structs
+#include "http_manager.h" /* <- pulls in the typedefs; safe here,
+                               no circular dependency because this header
+                               contains *no* struct definitions */
+
+int router_init(void);
 
 /**
  * @brief Route an HTTP request to the appropriate handler.

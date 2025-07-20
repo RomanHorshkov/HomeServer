@@ -107,8 +107,6 @@ static int manage_time_event(worker_t *worker_ptr, int fd);
 
 static int manage_wakeup_event(worker_t *worker_ptr, int fd);
 
-static int send_status_to_listener(worker_t *worker_ptr, worker_status status);
-
 static int worker_set_status_and_update_listener(worker_t *worker_ptr, worker_status status);
 
 static int worker_timer_init(int *timer_fd);
@@ -516,14 +514,11 @@ static int delete_connection(worker_t *worker_ptr, int fd)
         {
             if(worker_ptr->connections[j].fd == fd)
             {
-                /* send FIN – graceful half-close */
-                socket_shutdown(fd);
-
                 /* Remove from epoll */
                 epoll_del(worker_ptr->epoll_fd, fd);
 
-                /* Close the socket */
-                close(fd);
+                /* send FIN – graceful half-close and close the socket */
+                socket_shutdown_and_close(fd);
 
                 /* Reset the connection slot */
                 worker_ptr->connections[j].fd = 0;
@@ -641,7 +636,7 @@ static int manage_wakeup_event(worker_t *worker_ptr, int fd)
 
     /* Clean the wakeup_fd with read and proceed with ring reading */
 
-#ifndef DEBUG_MODE
+#ifdef DEBUG_MODE
     uint64_t wakeup_count;
     ssize_t s = read(fd, &wakeup_count, sizeof(wakeup_count));
     log_info("[worker] Wakeup event received on fd %d, wakeup_count %ld, size %ld", fd,
@@ -699,35 +694,6 @@ static void worker_timer_update(worker_t *worker_ptr)
     }
 }
 
-static int send_status_to_listener(worker_t *worker_ptr, worker_status status)
-{
-    /* Result variable */
-    int res = STATUS_FAILURE;
-
-    /* Check input */
-    if(worker_ptr == NULL || worker_ptr->pipeline == NULL)
-    {
-        log_error("[worker] send_status_to_listener: invalid input");
-    }
-
-    /* Send the status to the listener */
-    else if(write(worker_ptr->pipeline->pipe_fds[1], &status, sizeof(uint32_t)) != sizeof(uint32_t))
-    {
-        log_error("[worker] send_status_to_listener: write failed: %s", strerror(errno));
-    }
-
-    /* If everything went ok */
-    else
-    {
-#ifdef DEBUG_MODE
-        log_info("[worker] updated listener about state change %d", (int)status);
-#endif /* DEBUG_MODE */
-        res = STATUS_SUCCESS;
-    }
-
-    return res;
-}
-
 static int worker_set_status_and_update_listener(worker_t *worker_ptr, worker_status status)
 {
     /* Result variable */
@@ -746,9 +712,10 @@ static int worker_set_status_and_update_listener(worker_t *worker_ptr, worker_st
 
     /* writes the pipe after calling atomic_store(), If the listener thread pre‑empts between those
      * calls, it can read a “new” status while status still holds the old value. */
-    else if(send_status_to_listener(worker_ptr, status) != STATUS_SUCCESS)
+    else if(pipeline_notify_worker_status_change(worker_ptr->pipeline, status) != STATUS_SUCCESS)
     {
-        log_error("worker_set_status_and_update_listener: send_status_to_listener failed");
+        log_error(
+            "worker_set_status_and_update_listener: pipeline_notify_worker_status_change failed");
     }
 
     else

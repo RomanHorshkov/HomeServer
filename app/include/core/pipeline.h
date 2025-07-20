@@ -57,4 +57,6 @@ int pipeline_init(pipeline_t **pipeline_ptr_ptr);
 
 int pipeline_push_and_notify_worker(pipeline_t *pipeline_ptr, const int client_fd);
 
+int pipeline_notify_worker_status_change(pipeline_t *pipeline, worker_status status);
+
 #endif /* SERVER_PIPELINE_H */
