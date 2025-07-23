@@ -301,11 +301,11 @@ void *listener_run(void *arg)
                                 client_socket_init(&client_fd);
 
                                 /* Push to ring and notify worker */
-                                if(pipeline_push_and_notify_worker(listener_ptr->pipeline,
-                                                                   client_fd) != STATUS_SUCCESS)
+                                if(pipeline_push(listener_ptr->pipeline, client_fd) !=
+                                   STATUS_SUCCESS)
                                 {
                                     close(client_fd);
-                                    log_error("[listener] pipeline_push_and_notify_worker FAILED");
+                                    log_error("[listener] pipeline_push FAILED");
                                 }
                             }
                             else
