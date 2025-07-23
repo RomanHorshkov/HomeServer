@@ -3,6 +3,7 @@
 #include "pipeline.h"
 
 #include <errno.h>       /* errno, EAGAIN, etc. */
+#include <stdatomic.h>   /* atomic_int */
 #include <stdlib.h>      /* malloc(), calloc(), etc */
 #include <sys/eventfd.h> /* eventfd(),  */
 #include <unistd.h> /* fork(), close(), pipe(), read(), write(), getlogin(), getcwd(), system() etc. */
@@ -34,7 +35,24 @@
  * PRIVATE STUCTURED VARIABLES
  ****************************************************************************
  */
-/* None */
+struct pipeline
+{
+    /* W -> L control pipe */
+    int pipe_fds[2];
+
+    /* L -> W wakeup eventfd */
+    int wakeup_fd;
+
+    /** SPSC ring for L <-> W communication:
+     *   - This is a single-producer, single-consumer ring buffer.
+     *   - It is used to pass file descriptors (FDs) from the listener to the worker thread.
+     *   - The ring buffer is initialized with a capacity defined by `SPSC_RING_CAPACITY`, which is
+     * set in `server_settings.h`.
+     *   - The worker thread will read FDs from this ring buffer and process them as they arrive.
+     *   - The listener thread will push new client FDs into this ring buffer as they are accepted.
+     */
+    spsc_ring_t *ring_ptr;
+};
 
 /****************************************************************************
  * PRIVATE VARIABLES
@@ -67,21 +85,21 @@ int pipeline_init(pipeline_t **pipeline_ptr_ptr)
     else
     {
         /* Allocate memory for pipeline_t structure */
-        *pipeline_ptr_ptr = (pipeline_t *)calloc(1, sizeof(pipeline_t));
+        pipeline_t *new_pipeline_ptr = (pipeline_t *)calloc(1, sizeof(pipeline_t));
 
-        if(*pipeline_ptr_ptr == NULL)
+        if(new_pipeline_ptr == NULL)
         {
             log_error("[CORE] communication_init: failed to allocate memory for pipeline_t");
         }
 
         /* Initialize the pipe between listener and worker */
-        else if(pipe((*pipeline_ptr_ptr)->pipe_fds) == -1)
+        else if(pipe(new_pipeline_ptr->pipe_fds) == -1)
         {
             log_error("[CORE] pipe failed to create: %s", strerror(errno));
         }
 
         /* Set the pipe file descriptors to non-blocking */
-        else if(pipe_socket_init((*pipeline_ptr_ptr)->pipe_fds) != STATUS_SUCCESS)
+        else if(pipe_socket_init(new_pipeline_ptr->pipe_fds) != STATUS_SUCCESS)
         {
             log_error("[CORE] pipe_socket_init failed.");
         }
@@ -100,18 +118,21 @@ int pipeline_init(pipeline_t **pipeline_ptr_ptr)
              * write() fails with -1 and errno = EAGAIN if counter would overflow (very rare in
              * practice)
              */
-            (*pipeline_ptr_ptr)->wakeup_fd = eventfd(0, EFD_SEMAPHORE | EFD_NONBLOCK);
+            new_pipeline_ptr->wakeup_fd = eventfd(0, EFD_SEMAPHORE | EFD_NONBLOCK);
 
             /* Create ring object */
-            (*pipeline_ptr_ptr)->ring_ptr = spsc_ring_init(SPSC_RING_CAPACITY);
+            spsc_ring_t *ring_ptr = spsc_ring_init(SPSC_RING_CAPACITY);
 
             /* Check memory allocation */
-            if((*pipeline_ptr_ptr)->ring_ptr == NULL)
+            if(new_pipeline_ptr->ring_ptr == NULL)
             {
                 log_error("[CORE] communication_init: failed to create SPSC ring buffer");
             }
             else
             {
+                new_pipeline_ptr->ring_ptr = ring_ptr;
+                *pipeline_ptr_ptr = new_pipeline_ptr;
+
                 res = STATUS_SUCCESS;
 #ifdef DEBUG_MODE
                 log_info("[pipeline] started correctly");
@@ -123,7 +144,7 @@ int pipeline_init(pipeline_t **pipeline_ptr_ptr)
     return res;
 }
 
-int pipeline_push_and_notify_worker(pipeline_t *pipeline_ptr, const int client_fd)
+int pipeline_push(pipeline_t *pipeline_ptr, const int client_fd)
 {
     /* Result variable */
     int res = STATUS_FAILURE;
@@ -131,19 +152,20 @@ int pipeline_push_and_notify_worker(pipeline_t *pipeline_ptr, const int client_f
     /* Check inputs */
     if(pipeline_ptr == NULL || pipeline_ptr->ring_ptr == NULL || client_fd < 0)
     {
-        log_error("[pipeline]: push_and_notify_worker invalid input");
+        log_error("[pipeline]: pipeline_push invalid input");
     }
 
     /* Check if ring has free space */
     else if(spsc_ring_is_full(pipeline_ptr->ring_ptr))
     {
-        log_error("[listener] spsc_ring_is_full, fd %d refused and closed", client_fd);
+        log_error("[pipeline]: pipeline_push spsc_ring_is_full, fd %d refused and closed",
+                  client_fd);
     }
 
     /* Check if push on ring successful */
     else if(spsc_ring_push(pipeline_ptr->ring_ptr, client_fd) != 0)
     {
-        log_error("[pipeline]: spsc_ring_push failed for fd %d", client_fd);
+        log_error("[pipeline]: pipeline_push spsc_ring_push failed for fd %d", client_fd);
     }
 
     /* Send a wake-up signal */
@@ -158,6 +180,32 @@ int pipeline_push_and_notify_worker(pipeline_t *pipeline_ptr, const int client_f
             /* Set return status */
             res = STATUS_SUCCESS;
         }
+    }
+
+    return res;
+}
+
+int pipeline_pop(pipeline_t *pipeline_ptr)
+{
+    /* Result variable */
+    int res = STATUS_FAILURE;
+
+    /* Check inputs */
+    if(pipeline_ptr == NULL || pipeline_ptr->ring_ptr == NULL)
+    {
+        log_error("[pipeline]: pipeline_pop invalid input");
+    }
+
+    /* Check if ring has free space */
+    else if(spsc_ring_is_empty(pipeline_ptr->ring_ptr))
+    {
+        log_error("[listener] pipeline_pop, spsc_ring_is_empty");
+    }
+
+    /* Check if push on ring successful */
+    else if(spsc_ring_pop(pipeline_ptr->ring_ptr, &res) != 0)
+    {
+        log_error("[pipeline]: pipeline_pop, spsc_ring_pop failed");
     }
 
     return res;
@@ -191,6 +239,18 @@ int pipeline_notify_worker_status_change(pipeline_t *pipeline, worker_status sta
     }
 
     return res;
+}
+
+int pipeline_get_wakeup_fd(pipeline_t *pipeline_ptr)
+{
+    if(pipeline_ptr)
+    {
+        return pipeline_ptr->wakeup_fd;
+    }
+    else
+    {
+        return -1;
+    }
 }
 
 /****************************************************************************
