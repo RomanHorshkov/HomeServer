@@ -31,7 +31,7 @@ typedef struct reactor reactor_t;
  * PUBLIC FUNCTIONS DECLARATIONS
  ****************************************************************************/
 
-typedef int (*reactor_callback)(int fd, uint32_t events, void *ctx);
+typedef int (*reactor_callback)(int fd, void *ctx);
 
 /**
  * @brief Initialize a reactor structure.

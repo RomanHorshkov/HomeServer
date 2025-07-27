@@ -33,7 +33,9 @@
 #include "client_manager.h"
 #include "logger.h" /* logger */
 #include "reactor.h"
-#include "utils.h" /* utils */
+#include "server_settings.h"
+#include "socket_helper.h"
+#include "time_helper.h"
 
 /****************************************************************************
  * PRIVATE DEFINES
@@ -84,17 +86,17 @@ static worker_status add_connections(worker_t *worker_ptr);
 
 static int delete_connection(worker_t *worker_ptr, int fd);
 
-static int manage_time_event(worker_t *worker_ptr, int fd);
+static int manage_time_event(int fd, void *worker);
 
-static int manage_wakeup_event(worker_t *worker_ptr, int fd);
+static int manage_wakeup_event(int fd, void *worker);
 
-static int manage_client_event(int fd, uint32_t ev, void *ctx);
+static int manage_client_event(int fd, void *worker);
 
 static int worker_check_status_change(worker_t *worker_ptr, worker_status status);
 
 static int worker_set_status_and_update_listener(worker_t *worker_ptr, worker_status status);
 
-static int timer_init(reactor_t *reactor, int *timer_fd);
+static int timer_init(worker_t *worker_ptr, int *timer_fd);
 
 static void timer_update(worker_t *worker_ptr);
 
@@ -127,25 +129,25 @@ int worker_init(worker_t **worker_ptr_ptr, pipeline_t *pipeline_ptr)
         }
 
         /* Create reactor */
-        else if(reactor_init(new_worker->reactor_ptr) != STATUS_SUCCESS)
+        else if(reactor_init(&new_worker->reactor_ptr) != STATUS_SUCCESS)
         {
             log_error("[worker]:worker_init: reactor_init failed: %s", strerror(errno));
         }
 
         /* Initialize worker's timer and register to reactor */
-        else if(timer_init(new_worker->reactor_ptr, &new_worker->timer_fd) != STATUS_SUCCESS)
+        else if(timer_init(new_worker, &new_worker->timer_fd) != STATUS_SUCCESS)
         {
             log_error("[worker]: worker_init: timer_init failed: %s", strerror(errno));
         }
 
         /* Get wakeup fd from pipeline */
-        else if((wakeup_fd = pipeline_get_wakeup_fd(new_worker->pipeline_ptr)) < 0)
+        else if((wakeup_fd = pipeline_get_wakeup_fd(pipeline_ptr)) < 0)
         {
-            log_error("[worker]: worker_init: pipeline_get_wakeup_fd failed: %s", strerror(errno));
+            log_error("[worker]: worker_init: pipeline_get_wakeup_fd failed: %s, wakeup_fd %d", strerror(errno), wakeup_fd);
         }
 
         /* Register wakeup_fd to reactor */
-        else if(reactor_add_in(new_worker->reactor_ptr, wakeup_fd, manage_wakeup_event, NULL) == -1)
+        else if(reactor_add_in(new_worker->reactor_ptr, wakeup_fd, manage_wakeup_event, (void*)new_worker) == -1)
         {
             log_error("[worker]: worker_init: epoll_add_in failed wakeup_fd: %s", strerror(errno));
         }
@@ -206,8 +208,16 @@ void *worker_run(void *arg)
         int out_fd = -1;
         if(reactor_run(worker_ptr->reactor_ptr, &out_fd) != STATUS_SUCCESS)
         {
-            /* If the reactor did not run successfully, a socket has to be closed */
-            delete_connection(worker_ptr, out_fd);
+            /* If the reactor did not run successfully, check if a socket has to be closed */
+            if(out_fd != -1)
+            {
+                delete_connection(worker_ptr, out_fd);
+                out_fd = -1;
+            }
+            else
+            {
+                log_error("[worker] reactor_run failed: %s", strerror(errno));
+            }
         }
     }
 
@@ -278,6 +288,8 @@ static worker_status add_connections(worker_t *worker_ptr)
         {
             /**
              * Add client to client manager */
+            log_info("[worker] pipeline popped %d", client_fd);
+
             if(client_manager_add_connection(worker_ptr->client_manager_ptr, client_fd) !=
                STATUS_SUCCESS)
             {
@@ -294,7 +306,7 @@ static worker_status add_connections(worker_t *worker_ptr)
             /**
              * Add client fd to reactor */
             else if(reactor_add_in_client(worker_ptr->reactor_ptr, client_fd, manage_client_event,
-                                          NULL) != STATUS_SUCCESS)
+                                          worker_ptr) != STATUS_SUCCESS)
             {
                 /* Delete from client_manager */
                 client_manager_remove_connection(worker_ptr->client_manager_ptr, client_fd);
@@ -331,7 +343,7 @@ static int delete_connection(worker_t *worker_ptr, int fd)
         log_error("[worker] delete_connection: invalid input");
     }
 
-    else if (client_manager_remove_connection(worker_ptr->client_manager_ptr, fd))
+    else if(client_manager_remove_connection(worker_ptr->client_manager_ptr, fd))
     {
         log_error("[worker] delete_connection: client_manager_remove_connection failed fd %d", fd);
     }
@@ -340,7 +352,7 @@ static int delete_connection(worker_t *worker_ptr, int fd)
     {
         log_error("[worker] delete_connection: reactor_del failed fd %d", fd);
     }
-    
+
     else
     {
         res = STATUS_SUCCESS;
@@ -352,13 +364,17 @@ static int delete_connection(worker_t *worker_ptr, int fd)
     return res;
 }
 
-static int manage_time_event(worker_t *worker_ptr, int fd)
+static int manage_time_event(int fd, void *worker)
 {
 #ifdef DEBUG_MODE
     log_info("[worker] IN manage_time_event");
 #endif /* DEBUG_MODE */
+
     /* Result variable */
     int res = STATUS_FAILURE;
+
+    /* worker variable */
+    worker_t *worker_ptr = (worker_t *)worker;
 
     if(socket_drain(fd) == -1)
     {
@@ -372,16 +388,22 @@ static int manage_time_event(worker_t *worker_ptr, int fd)
         res = STATUS_SUCCESS;
     }
 
+    log_info("[worker] in manage_time_event, status: %d", (int)atomic_load(&worker_ptr->status));
+
     return res;
 }
 
-static int manage_wakeup_event(worker_t *worker_ptr, int fd)
+static int manage_wakeup_event(int fd, void *worker)
 {
 #ifdef DEBUG_MODE
     log_info("[worker] IN manage_wakeup_event");
 #endif /* DEBUG_MODE */
+
     /* Result variable */
     int res = STATUS_FAILURE;
+
+    /* worker variable */
+    worker_t *worker_ptr = (worker_t *)worker;
 
     /* Clean the wakeup_fd with read and proceed with ring reading */
 #ifdef DEBUG_MODE
@@ -410,14 +432,15 @@ static int manage_wakeup_event(worker_t *worker_ptr, int fd)
     return res;
 }
 
-static int manage_client_event(int fd, uint32_t ev, void *ctx)
+static int manage_client_event(int fd, void *worker)
 {
 #ifdef DEBUG_MODE
     log_info("[worker] IN manage_client_event");
 #endif /* DEBUG_MODE */
-    /* Result variable */
 
-    return client_manager_manage_client(((worker_t *)ctx)->client_manager_ptr, fd);
+    /* worker variable */
+    worker_t *worker_ptr = (worker_t *)worker;
+    return client_manager_manage_client(worker_ptr->client_manager_ptr, fd);
 }
 
 static int worker_check_status_change(worker_t *worker_ptr, worker_status status)
@@ -488,10 +511,13 @@ static int worker_check_status_change(worker_t *worker_ptr, worker_status status
     return res;
 }
 
-static int timer_init(reactor_t *reactor, int *timer_fd)
+static int timer_init(worker_t *worker_ptr, int *timer_fd)
 {
     /* Return variable */
     int res = STATUS_FAILURE;
+
+    /* reactor instance */
+    reactor_t *reactor = worker_ptr->reactor_ptr;
 
     /* Check input */
     if(timer_fd == NULL)
@@ -517,7 +543,7 @@ static int timer_init(reactor_t *reactor, int *timer_fd)
         }
 
         /* Register timer_fd into epoll */
-        else if(reactor_add_in(reactor, timer_fd, manage_time_event, NULL) == -1)
+        else if(reactor_add_in(reactor, *timer_fd, manage_time_event, worker_ptr) == -1)
         {
             log_error("[worker]: worker_init: reactor_add_in failed timer_fd: %s", strerror(errno));
         }
@@ -534,13 +560,16 @@ static int timer_init(reactor_t *reactor, int *timer_fd)
 
 static void timer_update(worker_t *worker_ptr)
 {
-    if(worker_ptr == NULL) return;
+    if(worker_ptr == NULL)
+    {
+        log_error("[worker] timer_update: invalid input");
+    }
 
     /* TO DO
     DO NOT SEND TIMER UPDATE AT EVERY TIMER WAKEUP */
 
     /* Set timer with no connections */
-    if(client_manager_get_active_connections(worker_ptr->client_manager_ptr) <= 0)
+    else if(client_manager_get_active_connections(worker_ptr->client_manager_ptr) <= 0)
     {
         time_helper_set(worker_ptr->timer_fd, SERVER_KEEPALIVE_TIMEOUT_ALONE, 0);
 #ifdef DEBUG_MODE
