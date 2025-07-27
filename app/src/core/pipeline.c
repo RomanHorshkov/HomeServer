@@ -79,7 +79,7 @@ int pipeline_init(pipeline_t **pipeline_ptr_ptr)
     /* Check input */
     if(pipeline_ptr_ptr == NULL)
     {
-        log_error("[CORE] communication_init: invalid input");
+        log_error("[pipeline] communication_init: invalid input");
     }
 
     else
@@ -89,19 +89,19 @@ int pipeline_init(pipeline_t **pipeline_ptr_ptr)
 
         if(new_pipeline_ptr == NULL)
         {
-            log_error("[CORE] communication_init: failed to allocate memory for pipeline_t");
+            log_error("[pipeline] communication_init: failed to allocate memory for pipeline_t");
         }
 
         /* Initialize the pipe between listener and worker */
         else if(pipe(new_pipeline_ptr->pipe_fds) == -1)
         {
-            log_error("[CORE] pipe failed to create: %s", strerror(errno));
+            log_error("[pipeline] pipe failed to create: %s", strerror(errno));
         }
 
         /* Set the pipe file descriptors to non-blocking */
         else if(pipe_socket_init(new_pipeline_ptr->pipe_fds) != STATUS_SUCCESS)
         {
-            log_error("[CORE] pipe_socket_init failed.");
+            log_error("[pipeline] pipe_socket_init failed.");
         }
 
         else
@@ -124,9 +124,9 @@ int pipeline_init(pipeline_t **pipeline_ptr_ptr)
             spsc_ring_t *ring_ptr = spsc_ring_init(SPSC_RING_CAPACITY);
 
             /* Check memory allocation */
-            if(new_pipeline_ptr->ring_ptr == NULL)
+            if(ring_ptr == NULL)
             {
-                log_error("[CORE] communication_init: failed to create SPSC ring buffer");
+                log_error("[pipeline] communication_init: failed to create SPSC ring buffer");
             }
             else
             {
@@ -199,7 +199,7 @@ int pipeline_pop(pipeline_t *pipeline_ptr)
     /* Check if ring has free space */
     else if(spsc_ring_is_empty(pipeline_ptr->ring_ptr))
     {
-        log_error("[listener] pipeline_pop, spsc_ring_is_empty");
+        log_error("[pipeline] pipeline_pop, spsc_ring_is_empty");
     }
 
     /* Check if push on ring successful */
@@ -250,6 +250,18 @@ int pipeline_get_wakeup_fd(pipeline_t *pipeline_ptr)
     else
     {
         return -1;
+    }
+}
+
+int pipeline_get_pipe_end_fd(pipeline_t *pipeline_ptr, int end)
+{
+    if(!pipeline_ptr || end < 0 || end > 1)
+    {
+        return -1;
+    }
+    else
+    {
+        return pipeline_ptr->pipe_fds[end];
     }
 }
 

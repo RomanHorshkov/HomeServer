@@ -13,6 +13,7 @@
 #include <stdlib.h>
 
 #include "browser.h" /* browser_manage_client_req */
+#include "logger.h"
 #include "server_settings.h"
 #include "time_helper.h"
 
@@ -39,7 +40,7 @@ struct client_manager
     /* NEED AN EXPANDABLE LIST */
     connection_t connections[MAX_CLIENTS];
 
-    int active_connections;
+    uint active_connections;
 };
 
 /****************************************************************************
@@ -92,7 +93,7 @@ int client_manager_init(client_manager_t **client_manager_ptr_ptr)
         }
     }
 
-    return 0;
+    return res;
 }
 
 int client_manager_add_connection(client_manager_t *client_manager_ptr, int fd)
@@ -119,7 +120,7 @@ int client_manager_add_connection(client_manager_t *client_manager_ptr, int fd)
         log_info("[client_manager] _add_connection: added fd %d", fd);
 #endif
         /* Find a free slot */
-        size_t idx = find_fd_idx(client_manager_ptr, 0);
+        ssize_t idx = find_fd_idx(client_manager_ptr, 0);
         if(idx < 0)
         {
             log_error("[client_manager] _add_connection: fd %d not found", 0);
@@ -247,7 +248,7 @@ int client_manager_manage_client(client_manager_t *client_manager_ptr, int fd)
 
 int client_manager_get_active_connections(client_manager_t *client_manager_ptr)
 {
-    return client_manager_ptr ? client_manager_ptr->active_connections : -1;
+    return client_manager_ptr ? (int)client_manager_ptr->active_connections : -1;
 }
 
 int client_manager_shutdown(client_manager_t *client_manager_ptr)
