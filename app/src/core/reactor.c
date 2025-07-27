@@ -33,7 +33,7 @@
 #include <string.h>
 #include <sys/epoll.h>
 
-#include "epoll_helper.h"
+#include "epoller.h"
 #include "logger.h"
 
 /****************************************************************************
@@ -51,15 +51,22 @@
 
 struct register_t
 {
+    /* file descriptor */
     int fd;
+
+    /* mask */
     uint32_t mask;
-    reactor_callback cb;
+
+    /* callback */
+    reactor_callback callback;
+
+    /* context */
     void *ctx;
 };
 
 struct reactor
 {
-    /* epoll instance */
+    /* reactor's epoll instance */
     int epoll_fd;
 
     /* epoll events for wait loop */
@@ -69,7 +76,7 @@ struct reactor
     struct register_t registers[MAX_CLIENTS + PIPELINE_MAX_SOCKETS];
 
     /* number of registers */
-    int active_registers;
+    uint active_registers;
     /* TO DO: a hashmap from fd→(ctx, event_cb) */
 };
 
@@ -123,16 +130,17 @@ int reactor_init(reactor_t **reactor)
         else
         {
             /* Initialize reactor's epoll instance */
-            new_reactor->epoll_fd = epoll_new();
+            new_reactor->epoll_fd = epoller_new();
 
             if(new_reactor->epoll_fd < 0)
             {
-                log_error("[reactor] epoll_new() failed");
+                log_error("[reactor] epoll_new() failed %s", strerror(errno));
                 free(new_reactor);
             }
 
             else
             {
+                new_reactor->active_registers = 0;
                 *reactor = new_reactor;
                 res = STATUS_SUCCESS;
             }
@@ -144,8 +152,8 @@ int reactor_init(reactor_t **reactor)
 
 int reactor_add_in(reactor_t *reactor, int fd, reactor_callback cb, void *ctx)
 {
-    /* Result variable */
     int res = STATUS_FAILURE;
+    /* Result variable */
 
     if(!reactor || fd < 0 || !cb || reactor->active_registers >= MAX_FAN_OUT_SOCKETS)
     {
@@ -155,6 +163,7 @@ int reactor_add_in(reactor_t *reactor, int fd, reactor_callback cb, void *ctx)
     else
     {
         res = reactor_manage_fd(reactor, fd, EPOLL_CTL_ADD, EPOLLIN, cb, ctx);
+        log_info("[reactor] _add_in executed with status %d", res);
     }
 
     return res;
@@ -217,38 +226,38 @@ int reactor_del(reactor_t *reactor, int fd)
     return reactor_manage_fd(reactor, fd, EPOLL_CTL_DEL, 0, NULL, NULL);
 }
 
-int reactor_run(reactor_t *reactor, int *out_fd)
+int reactor_run(reactor_t *reactor_ptr, int *out_fd)
 {
     /* Result variable */
     int res = STATUS_FAILURE;
 
     /* Check input */
-    if(!reactor)
+    if(!reactor_ptr)
     {
-        log_error("[reactor] reactor_init wrong input");
+        log_error("[reactor] _run wrong input");
     }
     else
     {
         /* Wait until some event comes */
-        int n = epoll_listen_events(reactor->epoll_fd, &reactor->epoll_events);
+        int n = epoller_listen_events(reactor_ptr->epoll_fd, reactor_ptr->epoll_events);
         if(n < 0)
         {
-            // if(errno == EINTR) continue;
-            log_error("[reactor] reactor_run: epoll_listen_events error: %s", strerror(errno));
+            log_error("[reactor] _run epoller_listen_events error %s", strerror(errno));
         }
-
         else
         {
             /* Check each event */
             for(int i = 0; i < n; i++)
             {
                 /* Get the kernel-returned fd saved at epoll ADD instance */
-                int fd = reactor->epoll_events[i].data.fd;
-                uint32_t ev = reactor->epoll_events->events;
+                int fd = reactor_ptr->epoll_events[i].data.fd;
+                uint32_t ev = reactor_ptr->epoll_events[i].events;
 
                 /* Handle error/hangup/peer close events */
-                if(epoll_check_if_to_close(reactor->epoll_events[i].events))
+                if(epoller_check_if_to_close(ev))
                 {
+                    /* signal the fd to close */
+                    *out_fd = fd;
 #ifdef DEBUG_MODE
                     log_info("[reactor] reactor_run: epoll fd %d to close, break.", fd);
 #endif
@@ -257,14 +266,16 @@ int reactor_run(reactor_t *reactor, int *out_fd)
                 }
 
                 /* Check if any fd matches with table */
-                int idx = find_register(reactor, fd);
+                int idx = find_register(reactor_ptr, fd);
                 if(idx >= 0)
                 {
 #ifdef DEBUG_MODE
-                    log_info("[reactor] reactor_run: dispatching event on fd=%d, idx %d", fd, idx);
+                    log_info("[reactor] reactor_run: calling callback on fd=%d, idx %d", fd, idx);
 #endif
-                    res = reactor->registers[idx].cb(fd, ev, reactor->registers[idx].ctx);
+                    /* call the callback */
+                    res = reactor_ptr->registers[idx].callback(fd, reactor_ptr->registers[idx].ctx);
                 }
+
                 else
                 {
 #ifdef DEBUG_MODE
@@ -285,7 +296,7 @@ int reactor_run(reactor_t *reactor, int *out_fd)
 
 static int find_register(reactor_t *reactor, int fd)
 {
-    for(int i = 0; i < reactor->active_registers; i++)
+    for(uint i = 0; i < reactor->active_registers; i++)
     {
         if(reactor->registers[i].fd == fd) return i;
     }
@@ -293,74 +304,103 @@ static int find_register(reactor_t *reactor, int fd)
 }
 
 static int reactor_manage_fd(reactor_t *reactor, int watch_fd, int operation, uint32_t events,
-                             reactor_callback cb, void *ctx)
+                             reactor_callback callback, void *ctx)
 {
+    /* Result variable */
+    int res = STATUS_FAILURE;
+
     if(!reactor || watch_fd < 0)
     {
         log_error("[reactor] manage_fd: bad args");
-        return STATUS_FAILURE;
     }
 
     /* 1. Let the kernel work first – if this fails we don’t mutate state. */
-    if(epoll_manage_fd(reactor->epoll_fd, watch_fd, operation, events) < 0)
+    else if(epoller_manage_fd(reactor->epoll_fd, watch_fd, operation, events) < 0)
     {
         log_error("[reactor] manage_fd: epoll_manage_fd failed (%s)", strerror(errno));
-        return STATUS_FAILURE;
     }
 
-    /* 2. User‑space book‑keeping. */
-    int idx = find_register(reactor, watch_fd);
-
-    switch(operation)
+    else
     {
-        case EPOLL_CTL_ADD:
-            if(idx >= 0)
-            {
-                log_error("[reactor] manage_fd: fd %d already registered", watch_fd);
-                return STATUS_FAILURE;
-            }
-            if(reactor->active_registers >= MAX_FAN_OUT_SOCKETS)
-            {
-                log_error("[reactor] manage_fd: register table full");
-                return STATUS_FAILURE;
-            }
+        /* 2. User‑space book‑keeping. */
+        int idx = find_register(reactor, watch_fd);
+    
+        log_info("[reactor] found index in reactor_manage_fd %d", idx);
+    
+        switch(operation)
+        {
+            case EPOLL_CTL_ADD:
+                if(idx >= 0)
+                {
+                    log_error("[reactor] manage_fd: fd %d already registered", watch_fd);
+                }
 
-            idx = reactor->active_registers++;
-            reactor->registers[idx].fd = watch_fd;
-            reactor->registers[idx].mask = events;
-            reactor->registers[idx].cb = cb;
-            reactor->registers[idx].ctx = ctx;
-            break;
+                else if(reactor->active_registers >= MAX_FAN_OUT_SOCKETS)
+                {
+                    log_error("[reactor] manage_fd: register table full");
+                }
+                
+                else
+                {
+                    
+                    idx = reactor->active_registers++;
+                    reactor->registers[idx].fd = watch_fd;
+                    reactor->registers[idx].mask = events;
+                    reactor->registers[idx].callback = callback;
+                    reactor->registers[idx].ctx = ctx;
 
-        case EPOLL_CTL_MOD:
-            if(idx < 0)
-            {
-                log_error("[reactor] manage_fd: fd %d not found for MOD", watch_fd);
-                return STATUS_FAILURE;
-            }
+                    res = STATUS_SUCCESS;
 
-            reactor->registers[idx].mask = events;
-            reactor->registers[idx].cb = cb;
-            reactor->registers[idx].ctx = ctx;
-            break;
+                    log_info("[reactor] manage_fd: CTL_ADD fd %d → events=0x%x, slot=%d (total=%d)",
+                            watch_fd, events, idx, reactor->active_registers);
 
-        case EPOLL_CTL_DEL:
-            if(idx < 0)
-            {
-                log_error("[reactor] manage_fd: fd %d not found for DEL", watch_fd);
-                return STATUS_FAILURE;
-            }
+                }
+                break;
+    
+            case EPOLL_CTL_MOD:
+                if(idx < 0)
+                {
+                    log_error("[reactor] manage_fd: fd %d not found for MOD", watch_fd);
+                }
+                else
+                {
+                    reactor->registers[idx].mask = events;
+                    reactor->registers[idx].callback = callback;
+                    reactor->registers[idx].ctx = ctx;
+                    
+                    res = STATUS_SUCCESS;
 
-            /* Compact the array by swapping the last entry in. */
-            int last = --reactor->active_registers;
-            reactor->registers[idx] = reactor->registers[last];
-            memset(&reactor->registers[last], 0, sizeof(struct register_t));
-            break;
+                    log_info("[reactor] manage_fd: CTL_MOD fd %d → events=0x%x, slot=%d (total=%d)",
+                            watch_fd, events, idx, reactor->active_registers);
+                }
+                
+                break;
+    
+            case EPOLL_CTL_DEL:
+                if(idx < 0)
+                {
+                    log_error("[reactor] manage_fd: fd %d not found for DEL", watch_fd);
+                }
+                else
+                {
+                    /* Compact the array by swapping the last entry in. */
+                    int last = --reactor->active_registers;
+                    reactor->registers[idx] = reactor->registers[last];
+                    memset(&reactor->registers[last], 0, sizeof(struct register_t));
 
-        default:
-            log_error("[reactor] manage_fd: unknown op %d", operation);
-            return STATUS_FAILURE;
+                    res = STATUS_SUCCESS;
+
+                    
+                    log_info("[reactor] manage_fd: CTL_ADD fd %d → events=0x%x, slot=%d (total=%d)",
+                            watch_fd, events, idx, reactor->active_registers);
+                }
+                break;
+    
+            default:
+                log_error("[reactor] manage_fd: unknown op %d", operation);
+                break;
+        }
     }
 
-    return STATUS_SUCCESS;
+    return res;
 }
