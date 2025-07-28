@@ -82,11 +82,11 @@ struct worker
  ****************************************************************************
  */
 
-static worker_status add_connections(worker_t *worker_ptr);
+static worker_status add_new_connections(worker_t *worker_ptr);
 
 static int delete_connection(worker_t *worker_ptr, int fd);
 
-static int manage_time_event(int fd, void *worker);
+static int on_timer_event(int fd, void *worker);
 
 static int manage_wakeup_event(int fd, void *worker);
 
@@ -162,9 +162,9 @@ int worker_init(worker_t **worker_ptr_ptr, pipeline_t *pipeline_ptr)
             new_worker->pipeline_ptr = pipeline_ptr;
 
             /* Initialize the worker's status and update the listener */
-            // if(worker_set_status_and_update_listener(
-            //         new_worker, (worker_status)WORKER_STATUS_ACTIVE) != STATUS_SUCCESS)
-            if(worker_set_status(new_worker, (worker_status)WORKER_STATUS_ACTIVE) != STATUS_SUCCESS)
+            if(worker_set_status_and_update_listener(
+                    new_worker, (worker_status)WORKER_STATUS_ACTIVE) != STATUS_SUCCESS)
+            // if(worker_set_status(new_worker, (worker_status)WORKER_STATUS_ACTIVE) != STATUS_SUCCESS)
             {
                 log_error(
                     "[worker]: worker_init: worker_set_status failed "
@@ -200,6 +200,8 @@ void *worker_run(void *arg)
     /* Main worker thread loop */
     while(worker_status == WORKER_STATUS_ACTIVE || worker_status == WORKER_STATUS_FULL)
     {
+
+        // client_manager_run()
         /** Let the reactor react to events:
          * waits on epoll for any event
          * checks error/hangup/peer close events
@@ -237,12 +239,12 @@ int worker_set_status(worker_t *worker_ptr, worker_status status)
 
     if(worker_ptr == NULL)
     {
-        log_error("[worker] worker_set_status: invalid listener pointer");
+        log_error("[worker] _set_status: invalid listener pointer");
     }
 
     else if(status >= WORKER_STATUS_INVALID)
     {
-        log_error("[worker] worker_set_status: invalid status value %d", status);
+        log_error("[worker] _set_status: invalid status value %d", status);
     }
 
     else
@@ -254,7 +256,7 @@ int worker_set_status(worker_t *worker_ptr, worker_status status)
 
 #ifdef DEBUG_MODE
         /* Log the status change */
-        log_info("[worker] worker_set_status: status set to %d", status);
+        log_info("[worker] _set_status: status set to %d", status);
 #endif /* DEBUG_MODE */
     }
 
@@ -266,7 +268,7 @@ int worker_set_status(worker_t *worker_ptr, worker_status status)
  ****************************************************************************
  */
 
-static worker_status add_connections(worker_t *worker_ptr)
+static worker_status add_new_connections(worker_t *worker_ptr)
 {
     /* Return variable */
     worker_status res = WORKER_STATUS_INVALID;
@@ -295,7 +297,7 @@ static worker_status add_connections(worker_t *worker_ptr)
             {
                 res = WORKER_STATUS_FULL;
                 log_error(
-                    "[worker] add_connections: client_manager_add_connection: failed, break, "
+                    "[worker] add_new_connections: client_manager_add_connection: failed, break, "
                     "RETURN FULL");
 
                 /* This might set the worker to FULL status, break without trying to add other
@@ -363,7 +365,7 @@ static int delete_connection(worker_t *worker_ptr, int fd)
     return res;
 }
 
-static int manage_time_event(int fd, void *worker)
+static int on_timer_event(int fd, void *worker)
 {
 #ifdef DEBUG_MODE
     log_info("[worker] IN manage_time_event");
@@ -396,10 +398,6 @@ static int manage_time_event(int fd, void *worker)
 
 static int manage_wakeup_event(int fd, void *worker)
 {
-#ifdef DEBUG_MODE
-    log_info("[worker] IN manage_wakeup_event");
-#endif /* DEBUG_MODE */
-
     /* Result variable */
     int res = STATUS_FAILURE;
 
@@ -407,22 +405,15 @@ static int manage_wakeup_event(int fd, void *worker)
     worker_t *worker_ptr = (worker_t *)worker;
 
     /* Clean the wakeup_fd with read and proceed with ring reading */
-#ifdef DEBUG_MODE
-    uint64_t wakeup_count;
-    ssize_t s = read(fd, &wakeup_count, sizeof(wakeup_count));
-    log_info("[worker] Wakeup event received on fd %d, wakeup_count %ld, size %ld", fd,
-             wakeup_count, s);
-#else
     socket_drain(fd);
-#endif /* DEBUG_MODE */
 
     /* loop the ring and add new connections */
-    worker_status w_status = add_connections(worker_ptr);
+    worker_status w_status = add_new_connections(worker_ptr);
 
     /* Check if the worker's status changed */
     if(worker_check_status_change(worker_ptr, w_status) != STATUS_SUCCESS)
     {
-        log_error("[worker] worker_check_status_change FAILED ");
+        log_error("[worker] manage_wakeup_event worker_check_status_change FAILED ");
     }
 
     else
@@ -486,7 +477,6 @@ static int worker_check_status_change(worker_t *worker_ptr, worker_status status
                 }
                 break;
 
-            case WORKER_STATUS_ERROR:
             case WORKER_STATUS_INACTIVE:
             case WORKER_STATUS_INVALID:
             default:
@@ -538,7 +528,7 @@ static int timer_init(worker_t *worker_ptr, int *timer_fd)
         }
 
         /* Register timer_fd into epoll */
-        else if(reactor_add_in(reactor, *timer_fd, manage_time_event, worker_ptr) == -1)
+        else if(reactor_add_in(reactor, *timer_fd, on_timer_event, worker_ptr) == -1)
         {
             log_error("[worker]: worker_init: reactor_add_in failed timer_fd: %s", strerror(errno));
         }
@@ -596,12 +586,12 @@ static int worker_set_status_and_update_listener(worker_t *worker_ptr, worker_st
     /* Check input */
     if(worker_ptr == NULL)
     {
-        log_error("worker_set_status_and_update_listener: invalid worker pointer");
+        log_error("[worker] _set_status_and_update_listener: invalid worker pointer");
     }
 
     else if(worker_set_status(worker_ptr, status) != STATUS_SUCCESS)
     {
-        log_error("worker_set_status_and_update_listener: worker_set_status failed");
+        log_error("[worker] _set_status_and_update_listener: worker_set_status failed");
     }
 
     /* writes the pipe */
@@ -609,7 +599,7 @@ static int worker_set_status_and_update_listener(worker_t *worker_ptr, worker_st
             STATUS_SUCCESS)
     {
         log_error(
-            "worker_set_status_and_update_listener: pipeline_notify_worker_status_change failed");
+            "[worker] _set_status_and_update_listener: pipeline_notify_worker_status_change failed");
     }
 
     else

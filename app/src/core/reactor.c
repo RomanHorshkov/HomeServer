@@ -155,11 +155,16 @@ int reactor_add_in(reactor_t *reactor, int fd, reactor_callback cb, void *ctx)
     int res = STATUS_FAILURE;
     /* Result variable */
 
-    if(!reactor || fd < 0 || !cb || reactor->active_registers >= MAX_FAN_OUT_SOCKETS)
+    if(!reactor || fd < 0 || !cb)
     {
-        log_error("[reactor] reactor_manage_fd: invalid input");
+        log_error("[reactor] _add_in: invalid input");
     }
 
+    else if (reactor->active_registers >= MAX_FAN_OUT_SOCKETS)
+    {
+        log_error("[reactor] _add_in: active_registers >= MAX_FAN_OUT_SOCKETS");
+    }
+    
     else
     {
         res = reactor_manage_fd(reactor, fd, EPOLL_CTL_ADD, EPOLLIN, cb, ctx);
@@ -169,16 +174,47 @@ int reactor_add_in(reactor_t *reactor, int fd, reactor_callback cb, void *ctx)
     return res;
 }
 
+// int reactor_add_ptr(reactor_t *reactor, int fd, reactor_callback cb, void *ptr, uint32_t events)
+// {
+//     int res = STATUS_FAILURE;
+//     /* Result variable */
+
+//     if(!reactor || fd < 0 || !cb)
+//     {
+//         log_error("[reactor] _add_in: invalid input");
+//     }
+
+//     else
+//     {
+//         struct epoll_event e = { .events = ev, .data.ptr = ptr };
+//         epoll_ctl(r->epoll_fd, EPOLL_CTL_ADD, fd, &e);
+
+//         struct register_t *slot = &r->registers[r->active_registers++];
+//         slot->kind   = REG_FD_PTR;
+//         slot->u.conn = ptr;          /* or u.ptr if you prefer a generic name */
+//         slot->mask   = ev;
+//         slot->cb     = cb;
+//         return STATUS_SUCCESS;
+//     }
+
+//     return res;
+// }
+
 int reactor_add_in_client(reactor_t *reactor, int fd, reactor_callback cb, void *ctx)
 {
     /* Result variable */
     int res = STATUS_FAILURE;
 
-    if(!reactor || fd < 0 || !cb || reactor->active_registers >= MAX_FAN_OUT_SOCKETS)
+    if(!reactor || fd < 0 || !cb)
     {
-        log_error("[reactor] reactor_manage_fd: invalid input");
+        log_error("[reactor] _add_in_client: invalid input");
     }
 
+    else if (reactor->active_registers >= MAX_FAN_OUT_SOCKETS)
+    {
+        log_error("[reactor] _add_in_client: active_registers >= MAX_FAN_OUT_SOCKETS");
+    }
+    
     else
     {
         res = reactor_manage_fd(reactor, fd, EPOLL_CTL_ADD,
@@ -314,7 +350,7 @@ static int reactor_manage_fd(reactor_t *reactor, int watch_fd, int operation, ui
         log_error("[reactor] manage_fd: bad args");
     }
 
-    /* 1. Let the kernel work first – if this fails we don’t mutate state. */
+    /* 1. Let the kernel work first – if this fails don’t mutate state. */
     else if(epoller_manage_fd(reactor->epoll_fd, watch_fd, operation, events) < 0)
     {
         log_error("[reactor] manage_fd: epoll_manage_fd failed (%s)", strerror(errno));
@@ -332,12 +368,12 @@ static int reactor_manage_fd(reactor_t *reactor, int watch_fd, int operation, ui
             case EPOLL_CTL_ADD:
                 if(idx >= 0)
                 {
-                    log_error("[reactor] manage_fd: fd %d already registered", watch_fd);
+                    log_error("[reactor] _manage_fd: fd %d already registered", watch_fd);
                 }
 
                 else if(reactor->active_registers >= MAX_FAN_OUT_SOCKETS)
                 {
-                    log_error("[reactor] manage_fd: register table full");
+                    log_error("[reactor] _manage_fd: register table full >= MAX_FAN_OUT_SOCKETS");
                 }
                 
                 else

@@ -47,6 +47,8 @@ int reactor_init(reactor_t **reactor);
 
 int reactor_add_in(reactor_t *reactor, int fd, reactor_callback cb, void *ctx);
 
+int reactor_add_ptr(reactor_t *reactor, int fd, reactor_callback cb, void *ptr, uint32_t events);
+
 int reactor_add_in_client(reactor_t *reactor, int fd, reactor_callback cb, void *ctx);
 
 int reactor_add_out(reactor_t *reactor, int fd, reactor_callback cb, void *ctx);
