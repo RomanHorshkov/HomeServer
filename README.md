@@ -3,145 +3,104 @@
 A compact yet fully‑featured teaching project that demonstrates how to write a **modular, multithreaded TCP + HTTP/1.1 server** in pure C11/POSIX.
 It now serves **dynamic JSON APIs**, **rich client‑side pages**, a **build-notes viewer**, and a **directory‑driven file browser**, with:
 
-* non‑blocking *listener* sockets (epoll-based)
-* event-driven *worker* thread managing all client sockets
-* graceful admission control (max‑connections cap)
-* structured logging (to `server.log`)
-* production‑grade **HTTP/1.1 parsing** via the 🏎️ **[llhttp](https://github.com/nodejs/llhttp)** state‑machine library (static‑linked)
-* full request‑header capture (e.g. *User‑Agent*, *Accept*, …)
-* proper **Connection: keep‑alive / close** negotiation and persistent sockets (120 s idle timeout)
-* serving real **static pages** (`index.html`, `style.css`, **header component**, images, …) from `var/www/`
-* a **JSON API** endpoint (`/api/whoami`) providing request metadata
-* a **Drive API** endpoint (`/api/drive?path=/subdir`) that returns JSON directory listings
-* a **Build Notes viewer** (`/build_notes`) that turns Markdown + PlantUML source into live docs
-* matching HTML front‑ends: **Who Am I** (`whoami.html`), **Drive** (`drive.html`) and **Build Notes** (`build_notes/index.html`)
-* an optional **rich animation** demo (`dynamic.html`) with CSS/JS effects
-* log‑controlled terminal shutdown (`q`)
+| Capability | Implementation notes |
+|------------|----------------------|
+| 🧵 **True multithreading** | Dedicated *Listener*, *Worker* and optional *Ctrl* threads; hand‑off via an SPSC ring so **no mutexes needed**. |
+| ⚡ **Edge‑triggered `epoll` everywhere** | One sys‑call per wake‑up, thousands of concurrent sockets, no busy‑polling. |
+| 🎛 **Graceful admission control** | Hard cap (`MAX_CLIENTS`); worker flips to **FULL**, listener pauses all `accept4()` calls in real time. |
+| 🔄 **Lock‑free SPSC ring + `eventfd`** | Zero‑copy FD transfer from listener → worker; one 8‑byte signal wakes the consumer. |
+| 📜 **HTTP/1.1 spec‑grade parsing** | Static‑linked 🏎 **[llhttp]** state‑machine (zero allocations, ~3 kB hot path). |
+| 📦 **JSON encoding/decoding** | Static‑linked **[cJSON]** (MIT licence) for REST endpoints and on‑disk manifests. |
+| 🗂 **Static & dynamic content** | Static files from `var/www/`, JSON APIs (`whoami`, `drive`), and an embedded Build‑Notes viewer. |
+| 📝 **Structured logging** | Single‑writer, line‑buffered `var/www/server.log`; ready for `tail -f` or ELK shipping. |
+| 🔒 **Robust request sanitation** | Path traversal defence, header/value length limits, body RAM‑cap, optional chroot/uid‑drop. |
+| 🛠 **One‑shot GNU Make** | `make debug` / `make release` → static binary in `build/bin/server` (`-Wall -Wextra -Werror -pedantic`). |
+| 🐳 **Docker‑ready** | Minimal scratch‑based image + optional nginx front for HTTPS termination. |
 
-Everything builds with **`gcc -std=c11 -Wall -Wextra -Werror -pedantic`** and only the POSIX libc + the bundled **`libllhttp.a`** and **`libcjson.a`**—no external runtime deps.
+[llhttp]: https://github.com/nodejs/llhttp  
+[cJSON]:  https://github.com/DaveGamble/cJSON
+
 
 ---
 
 ## Table of Contents
 
 1. [Quick start](#quick-start)
-2. [Directory layout](#directory-layout)
-3. [Utils](#utils)
-4. [Top-level data-flow](#top-level-data-flow)
-5. [Sockets & threading model](#sockets--threading-model)
-6. [Timeouts & limits](#timeouts--limits)
-7. [HTTP capabilities & dynamic features](#http-capabilities--dynamic-features)
-8. [Router paths](#router-paths)
-9. [Build details](#build-details)
-10. [Logging semantics](#logging-semantics)
-11. [Testing matrix](#testing-matrix)
-12. [Security Concerns](#security-concerns)
-13. [Future work](#future-work)
+2. [Top-level data-flow](#top-level-data-flow)
+3. [Sockets & threading model](#sockets--threading-model)
+4. [Timeouts & limits](#timeouts--limits)
+5. [HTTP capabilities](#http-capabilities)
+6. [Build details](#build-details)
+7. [Logging semantics](#logging-semantics)
+8. [Testing matrix](#testing-matrix)
+9. [Security Concerns](#security-concerns)
+10. [Future work](#future-work)
+11. [Static Architecture](#static-architecture)
+12. [Dynamic Architecture](#dynamic-architecture)
 
 ---
 
 ## Quick start
 
 ```bash
-$ make all            # or `make debug` / `make release`
-$ make run            # runs on :3490
+make all            # or `make debug` / `make release`
+make run            # runs on :3490
 ```
-
-*Press* **`q`** *+ ENTER* in the same terminal to shut down cleanly.
-
-## Directory layout
-
-```text
-.
-├── Doxyfile
-├── Makefile
-├── README.md              ← this file
-├── TODO.md                # to do file
-├── app/                   # all source, include, and external files
-│   ├── external/
-│   │   ├── cjson/
-│   │   └── llhttp/
-│   ├── include/
-│   │   ├── browser/
-│   │   │   ├── handlers/
-│   │   └── core/
-│   └── src/
-│       ├── browser/
-│       │   ├── handlers/
-│       ├── core/
-│       └── main.c
-├── utils/
-│   ├── MemoryTests/
-│   │   └── memcheck_short.sh
-│   └── NetworkUtils/
-│       ├── connect_11_times.sh
-│       ├── connect_11_with_msg.sh
-│       └── watch_port.sh
-└── var
-    ├── lib
-    │   └── expenses
-    │       ├── 2024
-    │       ├── 2025
-    │       └── settings.json
-    └── www
-        ├── assets/
-        ├── build_notes/        # static “Build Notes” viewer
-        ├── favicon.ico
-        ├── images/
-        ├── views/
-        └── server.log
-```
-
-> **.gitignore** (not shown) skips `var/www/images/` binaries, generated docs, IDE folders and the compilation database.
 
 ---
 
-## Utils
-
-Under **utils/** you’ll find:
-
-| Path                                  | What it does                                  |
-| ------------------------------------- | --------------------------------------------- |
-| `MemoryTests/memcheck_short.sh`       | Runs Valgrind with ASan‑like flags            |
-| `NetworkUtils/connect_11_times.sh`    | Opens 11 parallel sockets to test max‑clients |
-| `NetworkUtils/connect_11_with_msg.sh` | Same but sends a small HTTP request           |
-| `NetworkUtils/watch_port.sh`          | `lsof`‑style live view of the listener port   |
-
----
-
-## Top‑level data‑flow
+## Top-level data-flow
 
 ```text
 Main thread (core)
 │
-├─ Initializes logger, listener, worker, and control subsystems
+├─ Initializes logger, pipeline, listener, and worker subsystems
+│    • pipeline_t (SPSC ring, eventfd, pipe)
+│    • listener_t (reactor, listen sockets)
+│    • worker_t   (reactor, client_manager, timerfd, wakeupfd)
 ├─ Starts three threads:
 │    ├─ Listener thread
-│    │    • Accepts new TCP connections (epoll, non‑blocking)
-│    │    • Pushes client FDs into an SPSC ring buffer
-│    │    • Signals the worker with eventfd “wakeup”
+│    │    • reactor_run() on listen sockets + pipe[0]
+│    │    • On EPOLLIN: accept4(), client_socket_init()
+│    │    • pipeline_push() + eventfd write → wake worker
+│    │    • Reads worker state from pipe[0] to pause/resume accepts
 │    ├─ Worker thread
-│    │    • Epoll‑driven loop over timerfd, wakeup eventfd, pipe, and client sockets
-│    │    • Drains the ring buffer, handles all HTTP I/O
-│    │    • Feeds back its load state to the listener via a pipe
+│    │    • reactor_run() on wakeupfd, timerfd, client FDs
+│    │    • On wakeupfd: pipeline_pop() → new client FDs
+│    │    • Registers clients via reactor_add_in_client()
+│    │    • Handles I/O callbacks → browser layer
+│    │    • Signals backpressure (FULL/ACTIVE) via pipe[1]
 │    └─ Control thread (debug‑only, interactive menu)
 └─ Waits for all threads to finish (shutdown or fatal error)
+
 ```
 
 ---
 
-## Sockets & threading model
+Simplified Connection Sequence: This overview shows how the core boots the system, how the listener hands off new connections through the pipeline, and how the worker picks them up via its reactor, finally delegating to the browser layer.
 
-| Channel / component          | Non‑blocking | Purpose & behaviour                                                                                   |
-| ---------------------------- | ------------ | ----------------------------------------------------------------------------------------------------- |
-| **Listener sockets**         | **Yes**      | Epoll‑based `accept` loop (dual IPv4/IPv6)                                                            |
-| **Ring buffer (L → W)**      |  N/A         | Lock‑free SPSC queue (*single‑producer / single‑consumer*) that stores accepted client FDs            |
-| **eventfd “wakeup” (L → W)** | **Yes**      | 1‑increment semaphore; notifies the worker that new FDs are waiting in the ring                       |
-| **Pipe (W → L)**             | **Yes**      | Worker writes its load status (`ACTIVE`, `FULL`, …); listener reacts by (un)pausing accepts via epoll |
-| **Client sockets**           | **Yes**      | Epoll‑multiplexed, HTTP/1.1 persistent, graceful FIN handshake                                        |
-| **timerfd (idle reap)**      | **Yes**      | 10 s cadence while clients ≥ 1, falls back to 60 s when idle                                          |
+```mermaid
+sequenceDiagram
+  participant Core      as 🧩 Core
+  participant Listener  as 📡 Listener
+  participant Pipeline  as 🔁 Pipeline
+  participant Worker    as ⚙️ Worker
+  participant Reactor   as 🚦 Reactor
+  participant Browser   as 🌐 Browser
 
-\### How the listener and worker cooperate
+  Core      ->> Listener: listener_run()
+  Core      ->> Worker: worker_run()
+
+  Note over Listener: Waiting on listen_fd
+  Listener  ->> Listener: accept4() → client_fd
+  Listener  ->> Pipeline: spsc_ring_push(client_fd)
+  Listener  ->> Pipeline: write(wakeup_fd)
+
+  Note over Worker: reactor_run() sees wakeupfd
+  Worker    ->> Pipeline: pipeline_pop() → client_fd
+  Worker    ->> Reactor: reactor_add_in_client(client_fd)
+  Reactor   ->> Browser: callback(client_fd) → handle HTTP
+```
 
 1. **Accept → enqueue → wake‑up**
 
@@ -164,46 +123,28 @@ Main thread (core)
    * Single `timerfd` in the worker ticks every 10 s while at least one client is connected, or every 60 s when the worker is idle.
    * On each tick the worker scans its `connections[]`; sockets idle longer than `CLIENT_TIMEOUT_S` are closed gracefully (`shutdown → epoll DEL → close`).
 
----
+### Why this matters
 
-\### Listener socket setup and management
+* **Zero‑copy hand‑off** – Passing raw file descriptors avoids payload copying.
+* **Lock‑free** – SPSC ring buffer and eventfd allow wait-free signaling on uncontended paths.
+* **Back‑pressure** – Pipe-driven feedback mechanism lets the listener defer accepts, keeping the system responsive.
+* **Fully edge‑triggered** – No busy-polling, minimal epoll wake-ups.
+* **One timer per worker** – Compact memory usage, constant overhead.
 
-* **SO\_REUSEADDR / SO\_REUSEPORT** – fast restarts.
-* **SO\_LINGER {0,0}** – no half‑open leftovers.
-* **O\_NONBLOCK** – never stalls the epoll loop.
-* **IPV6\_V6ONLY** – explicit dual‑stack control.
-* **TCP\_NODELAY** – low‑latency on accepted client sockets.
-* Epoll mask: `EPOLLIN | EPOLLRDHUP | EPOLLHUP | EPOLLERR`.
-
-Lifecycle:
-
-1. `getaddrinfo()` (dual‑stack hints) → create socket → apply options.
-2. `bind()` + `listen()` with configurable backlog.
-3. Add each listen FD to epoll.
-4. On `EPOLLIN`: `accept4(..., SOCK_NONBLOCK)` → push FD to ring → **eventfd write(1)** to wake the worker.
+This design enables a tiny, epoll-only micro‑HTTP server to comfortably scale to thousands of concurrent connections while remaining simple, efficient, and restartable without lingering socket issues.
 
 ---
 
-\### Why this matters
+## Sockets & threading model
 
-* **Zero‑copy hand‑off** – passing raw FDs avoids memcpy of payloads.
-* **Lock‑free** – SPSC ring & eventfd are wait‑free on uncontended paths.
-* **Back‑pressure** – pipe‑based feedback lets the listener shed load early instead of queueing.
-* **Fully edge‑triggered** – no busy‑polling, minimal wake‑ups.
-* **One timer per worker** – constant, tiny memory footprint.
-
-This tiny, epoll‑only micro‑HTTP server comfortably scales to thousands of concurrent connections while remaining simple and predictable.
-
-
-**Lifecycle:**
-
-1. The listener thread calls `getaddrinfo()` with dual-stack hints to obtain suitable addresses.
-2. For each address, it creates a socket and applies the above options.
-3. Each socket is bound and set to listen with a configurable backlog.
-4. All sockets are added to an epoll instance.
-5. When a connection arrives, the listener accepts it with `accept4()` (using `SOCK_NONBLOCK`), disables Nagle's algorithm (`TCP_NODELAY`) on the client socket, and forwards the new client file descriptor to the worker thread via a pipe.
-
-This setup ensures that the server can handle many simultaneous incoming connections efficiently and can be restarted without waiting for old sockets to time out.
+| Channel / Component      | Non‑blocking | Purpose & Behaviour                                                                                                                                                      |                                                                                                                |
+| ------------------------ | ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------- |
+| Listener sockets         | **Yes**      | Bound TCP sockets (IPv4/IPv6) set with Nagle's algorithm disabled `TCP_NODELAY`, `SO_REUSEADDR`, `SO_LINGER{0}`, `O_NONBLOCK`, and `IPV6_V6ONLY` (for v6). Monitored via epoll for `EPOLLIN` to drive `accept4()`. |                                                                                                                |
+| Ring buffer (L → W)      | N/A          | Lock‑free SPSC queue (`spsc_ring_t`) holding accepted client FDs. Single‑producer (listener), single‑consumer (worker).                                                  |                                                                                                                |
+| Eventfd “wakeup” (L → W) | **Yes**      | `eventfd(0, EFD_SEMAPHORE or EFD_NONBLOCK)`. Each write increments a 1‑count semaphore. Worker drains it via `socket_drain()` or `read()`. |
+| Pipe (W → L)             | **Yes**      | Unix pipe (`pipe_fds[2]`) with both ends set non‑blocking (`pipe_socket_init`). Worker writes 32‑bit `worker_status` to notify listener.                                 |                                                                                                                |
+| Client sockets           | **Yes**      | Each accepted FD is made non‑blocking (`O_NONBLOCK`), `TCP_NODELAY` disables Nagle, optional linger‑off. Monitored via epoll for HTTP I/O.                               |                                                                                                                |
+| Timerfd (idle reap)      | **Yes**      | `timerfd_create()` + `timerfd_settime()` via `time_helper`. Fires every 10 s when clients ≥ 1, else every 60 s. Monitored via epoll.                                     |                                                                                                                |
 
 ---
 
@@ -214,13 +155,13 @@ This setup ensures that the server can handle many simultaneous incoming connect
 | Symbol                    | Meaning                           | Default   |
 | ------------------------- | --------------------------------- | --------- |
 | `MAX_LISTENERS`           | Listening sockets (IPv4 + IPv6)   | **2**     |
-| `MAX_CLIENTS`             | Simultaneous clients (epoll)      | **100**   |
-| `MAX_PENDING_CONNECTIONS` | `listen()` backlog                | **10**    |
-| `SERVER_LOOP_SLEEP_USEC`  | Main loop pause between polls     | **50 ms** |
+| `MAX_CLIENTS`             | Simultaneous clients (epoll)      | **1024**  |
+| `MAX_PENDING_CONNECTIONS` | `listen()` backlog                | **8**     |
+| `SERVER_LOOP_SLEEP_USEC`  | Main loop pause between polls     | **10 s**  |
 
 ---
 
-## HTTP capabilities & dynamic features
+## HTTP capabilities
 
 * **HTTP/1.1 parsing** via **llhttp** in `app/src/browser/http_manager.c`.
   Callbacks (`on_url`, `on_method`, `on_header_field`, `on_header_value`) build an `HttpRequest` struct.
@@ -228,22 +169,6 @@ This setup ensures that the server can handle many simultaneous incoming connect
 * **Request orchestration** in `app/src/browser/browser.c` → `browser_manage_client_req()`.
   Parses → routes → `send_response()` (headers + binary‑safe body).
 * **Static file serving** in `app/src/browser/handlers/handler_static.c` – binary‑safe buffer returned to caller (**must free**).
-* **JSON APIs** in `app/src/browser/handlers/handlers.c`:
-
-  * **`/api/whoami`**: echos request metadata + server UTC timestamp.
-  * **`/api/drive?path=/subdir`**: JSON array of directory entries under `var/www/`.
-* **Router paths** (defined in `app/src/browser/router.c`):
-
-  | Path / Prefix    | Handler                                       |
-  | ---------------- | --------------------------------------------- |
-  | `/`, `/home`     | `pages/index.html` (static)                   |
-  | `/assets/…`      | Shared HTML/JS/CSS under `var/www/assets/`    |
-  | `/pages/…`       | HTML pages under `var/www/pages/`             |
-  | `/images/…`      | Binary files under `var/www/images/`          |
-  | `/build_notes/…` | Static files under `var/www/build_notes/`     |
-  | `/api/whoami`    | `handler_whoami()` (JSON API)                 |
-  | `/api/drive`     | `handler_drive()` (directory listing)         |
-  | *anything else*  | `404 Not Found`                               |
 
 ---
 
@@ -421,3 +346,332 @@ For each item you will find **the underlying cause**, **the practical impact/a
 * Fuzz tests with libFuzzer
 
 Pull requests & ideas welcome — **happy coding!**
+
+---
+
+## Static Architecture
+
+### Core
+
+```mermaid
+flowchart TD
+  server_struct[[server_t]]
+  main["main()"] --> server_struct["server"]
+
+  subgraph Threads
+    listener_thread["Listener Thread"]
+    worker_thread["Worker Thread"]
+  end
+
+  subgraph Components
+    listener["listener"]
+    worker["worker"]
+    pipeline
+  end
+
+  server_struct --> listener_thread
+  server_struct --> worker_thread
+  server_struct --> listener["listener"]
+  server_struct --> worker["worker"]
+  server_struct --> pipeline
+```
+
+---
+
+### Listener
+
+**Owns:**
+
+* `reactor_t` instance (listener-side epoll)
+* `listen_fd`s bounded array
+* `pipeline_t` shared pointer
+
+**Responsibilities:**
+
+* Waits on epoll for `EPOLLIN` on listen sockets
+* Accepts new clients using `accept4()`
+* Initializes sockets (`client_socket_init`)
+* Pushes new client FDs into `pipeline_t`
+* Reads worker load status updates from `pipe[0]`
+* Pauses accepting if worker is full
+
+```mermaid
+flowchart TD
+  listener["Listener"]
+  subgraph Components
+    status["listener_status_t"]
+    reactor_ptr["reactor_t"]
+    pipeline_ptr["pipeline_t"]
+    port["char *port"]
+    sockets["int *sockets_fds"]
+    count["uint active_sockets_no"]
+    worker_status["worker_status_t last_worker_status"]
+  end
+  listener --> status
+  listener --> reactor_ptr
+  listener --> pipeline_ptr
+  listener --> port
+  listener --> sockets
+  listener --> count
+  listener --> worker_status
+
+```
+
+---
+
+### Worker
+
+**Owns:**
+
+* Its own `reactor_t` instance (worker*side epoll)
+* `client_manager_t` for tracking active connections
+* Timerfd for keep*alives and idle cleanup
+* Wakeup `eventfd` (shared via `pipeline_t`)
+* Shared `pipeline_t` pointer
+
+**Responsibilities:**
+
+* Monitors for readiness events on client sockets
+* On `eventfd` wakeup, drains the SPSC ring buffer
+* Registers new FDs in epoll via `reactor_add_in_client`
+* Manages read/write/error events via callbacks
+* Parses requests and routes them via the browser layer
+* Monitors active connections to dynamically update timer intervals
+* Signals backpressure to the listener via `pipe[1]` when at capacity
+
+```mermaid
+flowchart TD
+  worker["Worker"]
+  subgraph Components
+      status["status (atomic)"]
+      reactor["reactor_t"]
+      timer_fd["timerfd"]
+      client_manager["client_manager_t"]
+      pipeline_ptr["pipeline_t"]
+  end
+  worker --> status
+  worker --> reactor
+  worker --> timer_fd
+  worker --> client_manager
+  worker --> pipeline_ptr
+
+```
+
+---
+
+### Pipeline
+
+**Owns (internally):**
+
+* `int pipe_fds[2]` for unidirectional signaling (worker → listener)
+* `eventfd` for wakeup signaling (listener → worker)
+* SPSC ring buffer (`spsc_ring_t*`) for passing accepted client FDs
+
+**Responsibilities:**
+
+* Acts as the bridge between listener and worker
+* Transports accepted FDs from listener to worker
+* Wakes up the worker via `eventfd`
+* Receives worker status updates on `pipe[0]` and delivers them to the listener
+
+```mermaid
+flowchart TD
+  pipeline_struct[[pipeline_t]]
+  pipeline_struct --> pipe_fds["int pipe_fds[2]"]
+  pipeline_struct --> wakeup_fd["int wakeup_fd"]
+  pipeline_struct --> ring_ptr["spsc_ring_t *ring_ptr"]
+
+```
+
+---
+
+### Client Manager
+
+**Owns:**
+
+* A table of active client connection entries (`connection_t[]`)
+* FD-to-connection index mapping logic
+
+**Responsibilities:**
+
+* Tracks metadata for each client (FD, last activity, request count)
+* Handles socket cleanup and eviction
+* Supports load-state checking for backpressure signaling
+
+```mermaid
+flowchart TD
+    cm[[client_manager]]
+
+    cm --> connections["connection_t connections[MAX_CLIENTS]"]
+    cm --> count["size_t active_connections"]
+
+    subgraph Connection
+        fd["int fd"]
+        activity["int last_activity"]
+        requests["int request_count"]
+    end
+
+    connections --> fd
+    connections --> activity
+    connections --> requests
+```
+
+---
+
+### Reactor
+
+**Owns:**
+
+* A single epoll instance
+* FD registration table with associated masks, callbacks, and context pointers
+
+**Responsibilities:**
+
+* Only component directly interacting with epoll
+* Monitors for readiness events (`EPOLLIN`, `EPOLLOUT`, etc.)
+* Dispatches triggered events to their registered callbacks
+
+```mermaid
+flowchart TD
+    reactor_struct[[reactor]]
+
+    reactor_struct --> epoll_fd["int epoll_fd"]
+    reactor_struct --> events["epoll_event *epoll_events"]
+    reactor_struct --> registers["register_t registers[MAX_CLIENTS + PIPELINE_MAX_SOCKETS]"]
+    reactor_struct --> register_count["uint active_registers"]
+
+    subgraph RegisterEntry
+        reg_fd["int fd"]
+        mask["uint32_t mask"]
+        cb["reactor_callback callback"]
+        ctx["void *ctx"]
+    end
+
+    registers --> reg_fd
+    registers --> mask
+    registers --> cb
+    registers --> ctx
+```
+
+---
+
+### Epoller
+
+This module is stateless and never retains context or state between calls
+
+```mermaid
+flowchart TD
+    epoller_module[[epoller]]
+
+    epoller_module --> epoll_create["epoller_new() → epoll_create1"]
+    epoller_module --> manage_fd["epoller_manage_fd() → epoll_ctl"]
+    epoller_module --> wait_events["epoller_listen_events() → epoll_wait"]
+    epoller_module --> check_close["epoller_check_if_to_close()
+→ EPOLLHUP | EPOLLRDHUP | EPOLLERR"]
+```
+
+---
+
+## Dynamic Architecture
+
+### Listener → Worker Accept Path
+
+```mermaid
+sequenceDiagram
+  participant Listener as Listener Thread
+  participant Reactor as Reactor
+  participant EPOLL as Epoller
+  participant Pipeline
+  participant Socket_helper
+
+  Note left of Listener: listener_run() loop
+  Listener->>Reactor: reactor_run()
+
+  Reactor->>EPOLL: epoller_manage_fd()
+  EPOLL-->>Reactor: EPOLLIN on listen_fd
+  Reactor->>Reactor: find_register()
+  Reactor-->>Listener: callback (listen_fd)
+
+  alt Worker is ACTIVE
+    Listener->> Listener: accept():client_fd
+    Listener->>Socket_helper: client_socket_init(client_fd) 
+
+    Listener->>Pipeline: pipeline_push(client_fd)
+    Pipeline->>Pipeline: spsc_ring_push(client_fd)
+    Pipeline->>Pipeline: write(wakeup_fd)
+
+  else Worker is FULL
+    Listener->>Listener: skip accept<br>listener remains paused
+  end
+```
+
+---
+
+### Worker Accept Loop
+
+```mermaid
+sequenceDiagram
+  participant Worker as Worker Thread
+  participant Reactor as Reactor
+  participant EPOLL as Epoller
+  participant Pipeline as Pipeline
+  participant ClientMgr as Client Manager
+  participant Socket_helper
+
+  Note left of Worker: worker_run() loop
+  Worker->>Reactor: reactor_run()
+
+  Reactor->>EPOLL: epoll_wait()
+  EPOLL-->>Reactor: EPOLLIN on wakeup_fd
+  Reactor->>Reactor: find_register()
+  Reactor-->>Worker: callback(wakeup_fd)
+
+  Worker->>Socket_helper: socket_drain(wakeup_fd)
+
+  loop while !spsc_ring_empty
+    Worker->>Pipeline: pipeline_pop()
+    Pipeline-->>Worker: client_fd
+
+    Worker->>ClientMgr: client_manager_add_connection(client_fd)
+    alt add OK
+      Worker->>Reactor: reactor_add_in_client(client_fd)
+    else add FAIL
+      Worker->>ClientMgr: client_manager_remove_connection()
+    end
+  end
+
+  Worker->>Worker: check if status changed
+  alt Status changed
+    Worker->>Pipeline: pipeline_notify_worker_status_change()
+  end
+
+```
+
+### Listener ↔ Worker Load FSM
+
+```mermaid
+stateDiagram-v2
+    direction LR
+    ACTIVE: ACTIVE\naccept allowed
+    FULL:   FULL\naccept paused
+
+    ACTIVE --> FULL : worker > MAX_CLIENTS
+    FULL --> ACTIVE : worker <= MAX_CLIENTS-1
+```
+
+---
+
+#### Browser Layer
+
+**Owns:**
+
+* No persistent state; acts as a request interpreter
+
+**Responsibilities:**
+
+* Parses HTTP/1.1 using `llhttp`
+* Dispatches requests based on method + path via a route table
+* Handles static content, dynamic APIs, and frontend routing
+* Returns JSON, HTML, or file responses depending on endpoint
+
+---
