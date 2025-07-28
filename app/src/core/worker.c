@@ -269,7 +269,7 @@ int worker_set_status(worker_t *worker_ptr, worker_status status)
 static worker_status add_connections(worker_t *worker_ptr)
 {
     /* Return variable */
-    worker_status res = WORKER_STATUS_ERROR;
+    worker_status res = WORKER_STATUS_INVALID;
 
     /* Check input */
     if(worker_ptr == NULL || worker_ptr->pipeline_ptr == NULL ||
@@ -303,8 +303,7 @@ static worker_status add_connections(worker_t *worker_ptr)
                 break;
             }
 
-            /**
-             * Add client fd to reactor */
+            /* Add client fd to reactor */
             else if(reactor_add_in_client(worker_ptr->reactor_ptr, client_fd, manage_client_event,
                                           worker_ptr) != STATUS_SUCCESS)
             {
@@ -376,13 +375,15 @@ static int manage_time_event(int fd, void *worker)
     /* worker variable */
     worker_t *worker_ptr = (worker_t *)worker;
 
+    /* Drain the socket to shutdownn epoll wait */
     if(socket_drain(fd) == -1)
     {
         log_error("[worker] Failed to read timerfd: %s", strerror(errno));
     }
+
+    /* Update the timer */
     else
     {
-        /* Update the timer */
         timer_update(worker_ptr);
 
         res = STATUS_SUCCESS;
@@ -434,13 +435,7 @@ static int manage_wakeup_event(int fd, void *worker)
 
 static int manage_client_event(int fd, void *worker)
 {
-#ifdef DEBUG_MODE
-    log_info("[worker] IN manage_client_event");
-#endif /* DEBUG_MODE */
-
-    /* worker variable */
-    worker_t *worker_ptr = (worker_t *)worker;
-    return client_manager_manage_client(worker_ptr->client_manager_ptr, fd);
+    return client_manager_manage_client(((worker_t *)worker)->client_manager_ptr, fd);
 }
 
 static int worker_check_status_change(worker_t *worker_ptr, worker_status status)
