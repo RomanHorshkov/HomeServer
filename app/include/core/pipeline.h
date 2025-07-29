@@ -46,4 +46,6 @@ int pipeline_get_wakeup_fd(pipeline_t *pipeline_ptr);
 
 int pipeline_get_pipe_end_fd(pipeline_t *pipeline_ptr, int end);
 
+void pipeline_destroy(pipeline_t **pipeline_ptr_ptr);
+
 #endif /* SERVER_PIPELINE_H */

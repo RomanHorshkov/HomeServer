@@ -265,6 +265,14 @@ int pipeline_get_pipe_end_fd(pipeline_t *pipeline_ptr, int end)
     }
 }
 
+void pipeline_destroy(pipeline_t **pipeline_ptr_ptr)
+{
+    spsc_ring_destroy(&(*pipeline_ptr_ptr)->ring_ptr);
+    socket_shutdown_and_close((*pipeline_ptr_ptr)->pipe_fds[0]);
+    socket_shutdown_and_close((*pipeline_ptr_ptr)->pipe_fds[1]);
+    socket_shutdown_and_close((*pipeline_ptr_ptr)->wakeup_fd);
+}
+
 /****************************************************************************
  * PRIVATE FUNCTIONS DEFINITIONS
  ****************************************************************************
