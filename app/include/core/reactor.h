@@ -19,7 +19,28 @@
  * PUBLIC ENUMERATED VARIABLES
  ****************************************************************************
  */
-/* None */
+// typedef enum {
+//     FD_TYPE_NONE = 0,
+//     FD_TYPE_LISTENER,
+//     FD_TYPE_CLIENT,
+//     FD_TYPE_PIPE,
+//     FD_TYPE_EVENTFD,
+//     FD_TYPE_TIMER,
+//     FD_TYPE_TLS_WRAPPER,
+// } fd_type_e;
+
+typedef struct fd_ctx_s fd_ctx_t;
+
+typedef int (*fd_callback_fn)(int fd, fd_ctx_t *ctx);
+
+struct fd_ctx_s
+{
+    int fd;
+    // fd_type_e type;
+    void *owner;            /* listener_t*, worker_t*, connection_t* */
+    fd_callback_fn handler; /* function to call on event */
+    uint32_t events;        /* current mask */
+};
 
 /****************************************************************************
  * PUBLIC STRUCTURED VARIABLES DEFINITIONS
@@ -31,27 +52,23 @@ typedef struct reactor reactor_t;
  * PUBLIC FUNCTIONS DECLARATIONS
  ****************************************************************************/
 
-typedef int (*reactor_callback)(int fd, void *ctx);
-
 /**
  * @brief Initialize a reactor structure.
  *
  * Sets up the internal epoll instance and prepares the reactor
  * to handle file descriptor event registration.
  *
- * @param r  Pointer to an allocated reactor_t structure.
+ * @param reactor_ptr  Pointer to an allocated reactor_t structure.
  * @retval  0  Success.
  * @retval -1  Failure to initialize (e.g., epoll_create failure).
  */
-int reactor_init(reactor_t **reactor);
+int reactor_init(reactor_t **reactor_ptr_ptr);
 
-int reactor_add_in(reactor_t *reactor, int fd, reactor_callback cb, void *ctx);
+int reactor_add_in(const reactor_t *reactor_ptr, int fd, fd_ctx_t *ctx);
 
-int reactor_add_ptr(reactor_t *reactor, int fd, reactor_callback cb, void *ptr, uint32_t events);
+int reactor_add_in_client(const reactor_t *reactor_ptr, int fd, fd_ctx_t *ctx);
 
-int reactor_add_in_client(reactor_t *reactor, int fd, reactor_callback cb, void *ctx);
-
-int reactor_add_out(reactor_t *reactor, int fd, reactor_callback cb, void *ctx);
+int reactor_add_out(const reactor_t *reactor_ptr, int fd, fd_ctx_t *ctx);
 
 /**
  * @brief Modify the event mask and/or callback for a registered file descriptor.
@@ -61,27 +78,26 @@ int reactor_add_out(reactor_t *reactor, int fd, reactor_callback cb, void *ctx);
  *
  * @note The file descriptor must have been added previously via reactor_add().
  *
- * @param r       Pointer to the reactor instance.
+ * @param reactor_ptr       Pointer to the reactor instance.
  * @param fd      File descriptor to modify.
  * @param ctx     Updated user-defined context (or same as before).
- * @param cb      Updated callback function.
  * @param events  New event mask.
  * @retval  0     Success.
  * @retval -1    Failure (e.g., fd not found).
  */
-int reactor_mod(reactor_t *reactor, int fd, uint32_t events, reactor_callback cb, void *ctx);
+int reactor_mod(const reactor_t *reactor_ptr, int fd, uint32_t events, fd_ctx_t *ctx);
 
 /**
  * @brief Remove a file descriptor from the reactor.
  *
  * Stops monitoring the specified descriptor and removes its callback and context.
  *
- * @param r   Pointer to the reactor instance.
+ * @param reactor_ptr   Pointer to the reactor instance.
  * @param fd  File descriptor to remove.
  * @retval  0  Success.
  * @retval -1  Failure (e.g., fd not found).
  */
-int reactor_del(reactor_t *reactor, int fd);
+int reactor_del(const reactor_t *reactor_ptr, int fd);
 
 /**
  * @brief Start the reactor event loop.
@@ -90,8 +106,21 @@ int reactor_del(reactor_t *reactor, int fd);
  * the appropriate registered callbacks. Runs indefinitely until
  * externally stopped or interrupted.
  *
- * @param r  Pointer to the initialized reactor instance.
+ * @param reactor_ptr  Pointer to the initialized reactor instance.
  */
-int reactor_run(reactor_t *reactor, int *out_fd);
+int reactor_run(reactor_t *reactor_ptr, int *out_fd);
+
+/**
+ * @brief Clean up and deallocate a reactor instance.
+ *
+ * Closes the internal epoll file descriptor and frees the event buffer and
+ * reactor structure itself.
+ *
+ * @param reactor_ptr_ptr Pointer to the reactor instance pointer (double pointer).
+ *                        After shutdown, *reactor_ptr_ptr will be set to NULL.
+ * @retval 0  Success.
+ * @retval -1 Failure (invalid input).
+ */
+int reactor_shutdown(reactor_t **reactor_ptr_ptr);
 
 #endif /* SERVER_REACTOR_H */

@@ -51,6 +51,7 @@
 /* Define a handy alias for the enum listener_status in atomic version */
 typedef _Atomic listener_status listener_status_t;
 
+/* Listener internal state */
 struct listener
 {
     /* Listener status variable */
@@ -60,7 +61,7 @@ struct listener
     reactor_t *reactor_ptr;
 
     /* Port */
-    char port[20];
+    char port[6];
 
     /* Listening sockets file descriptors */
     int sockets_fds[MAX_LISTENERS];
@@ -86,11 +87,31 @@ struct listener
  ****************************************************************************
  */
 
-static int register_listener_sockets_to_reactor(listener_t *listener_ptr);
+/**
+ * @brief Allocate and initialize memory for a new listener instance.
+ *
+ * Frees any existing listener instance pointed to by @p listener_ptr, then
+ * allocates and zero-initializes a new listener structure.
+ *
+ * @param listener_ptr  Address of a pointer to the listener instance.
+ * @retval  0  Success.
+ * @retval -1 Failure (memory allocation failed).
+ */
+static int init_memory(listener_t **listener_ptr);
 
-static int manage_worker_event(int fd, void *listener);
-
-static int manage_new_connection_event(int fd, void *listener);
+/**
+ * @brief Initialize the communication pipeline for the listener.
+ *
+ * Assigns the provided pipeline structure to the listener instance. This links
+ * the listener to the inter-thread communication mechanism used to transfer
+ * client sockets to the worker(s).
+ *
+ * @param listener_ptr   Pointer to the listener instance.
+ * @param pipeline_ptr   Pointer to the pre-initialized pipeline structure.
+ * @retval  0  Success.
+ * @retval -1 Failure (invalid input parameters).
+ */
+static int init_pipeline(listener_t *listener_ptr, pipeline_t *pipeline_ptr);
 
 /**
  * @brief Create and bind all listening sockets for the server.
@@ -105,6 +126,24 @@ static int manage_new_connection_event(int fd, void *listener);
  * @retval -1 Failure (no sockets created; see log for details).
  */
 static int init_listening_sockets(listener_t *listener_ptr, const char *port);
+
+static int register_listening_sockets(listener_t *listener_ptr);
+
+static int on_worker_status_change(listener_t *listener_ptr, worker_status worker_actual_status);
+
+static int handle_worker_event(int fd, fd_ctx_t *ctx);
+
+static int handle_listen_event(int fd, fd_ctx_t *ctx);
+
+/**
+ * @brief Shutdown the listener and release all associated resources.
+ *
+ * Closes all sockets and frees the listener structure. Should be called when
+ * the listener thread is exiting.
+ *
+ * @param listener_ptr  Pointer to the listener instance.
+ */
+static void listener_shutdown(listener_t *listener_ptr);
 
 /**
  * @brief Close all active listening sockets and reset the listener state.
@@ -123,32 +162,6 @@ static int resume_listening(listener_t *listener_ptr);
 
 #endif
 
-/**
- * @brief Allocate and initialize memory for a new listener instance.
- *
- * Frees any existing listener instance pointed to by @p listener_ptr, then
- * allocates and zero-initializes a new listener structure.
- *
- * @param listener_ptr  Address of a pointer to the listener instance.
- * @retval  0  Success.
- * @retval -1 Failure (memory allocation failed).
- */
-static int init_memory(listener_t **listener_ptr);
-
-static int init_pipeline(listener_t *listener_ptr, pipeline_t *pipeline_ptr);
-
-static int on_worker_status_change(listener_t *listener_ptr, worker_status worker_actual_status);
-
-/**
- * @brief Shutdown the listener and release all associated resources.
- *
- * Closes all sockets and frees the listener structure. Should be called when
- * the listener thread is exiting.
- *
- * @param listener_ptr  Pointer to the listener instance.
- */
-static void listener_shutdown(listener_t *listener_ptr);
-
 #ifdef DEBUG_MODE
 /**
  * @brief
@@ -163,9 +176,6 @@ static int listener_accept_and_p_client_info(int listen_fd);
 
 int listener_init(listener_t **listener_ptr, const char *port, pipeline_t *pipeline_ptr)
 {
-#ifdef DEBUG_MODE
-    log_info("[listener] _init");
-#endif /* DEBUG_MODE */
     /* return value */
     int res = STATUS_FAILURE;
 
@@ -200,32 +210,40 @@ int listener_init(listener_t **listener_ptr, const char *port, pipeline_t *pipel
     }
 
     /* Add pipeline read socket to reactor */
-    else if(reactor_add_in((*listener_ptr)->reactor_ptr,
-                           pipeline_get_pipe_end_fd((*listener_ptr)->pipeline, 0),
-                           manage_worker_event, (void *)listener_ptr))
-    {
-        log_error("[listener]: _init: reactor_add_in failed pipe read: %s", strerror(errno));
-    }
-
-    /* Register all listening sockets to reactor */
-    else if(register_listener_sockets_to_reactor(*listener_ptr) != STATUS_SUCCESS)
-    {
-        log_error("[listener]: _init register_listener_sockets_to_reactor failed", strerror(errno));
-    }
-
-    /* If everything succceded */
     else
     {
-        /* Set the pipeline collaboration structure */
-        (*listener_ptr)->pipeline = pipeline_ptr;
+        int pipe_fd = pipeline_get_pipe_end_fd((*listener_ptr)->pipeline, 0);
 
-        /* Set the listener status to on */
-        listener_set_status(*listener_ptr, LISTENER_STATUS_ACTIVE);
+        fd_ctx_t *ctx = calloc(1, sizeof(fd_ctx_t));
+        ctx->fd = pipe_fd;
+        ctx->owner = listener_ptr;
+        ctx->handler = handle_worker_event;
 
-        /* Set the worker status to on */
-        (*listener_ptr)->status_worker = WORKER_STATUS_ACTIVE;
+        if(reactor_add_in((*listener_ptr)->reactor_ptr, pipe_fd, ctx) != STATUS_SUCCESS)
+        {
+            log_error("[listener]: _init: reactor_add_in failed pipe read: %s", strerror(errno));
+        }
 
-        res = STATUS_SUCCESS;
+        /* Register all listening sockets to reactor */
+        else if(register_listening_sockets(*listener_ptr) != STATUS_SUCCESS)
+        {
+            log_error("[listener]: _init register_listening_sockets failed", strerror(errno));
+        }
+
+        /* If everything succceded */
+        else
+        {
+            /* Set the pipeline collaboration structure */
+            (*listener_ptr)->pipeline = pipeline_ptr;
+
+            /* Set the listener status to on */
+            listener_set_status(*listener_ptr, LISTENER_STATUS_ACTIVE);
+
+            /* Set the worker status to on */
+            (*listener_ptr)->status_worker = WORKER_STATUS_ACTIVE;
+
+            res = STATUS_SUCCESS;
+        }
     }
     return res;
 }
@@ -295,12 +313,14 @@ static int init_memory(listener_t **listener_ptr)
 
     if(listener_ptr != NULL)
     {
+        listener_t *new_listener;
         /* allocate memory for the listener */
-        *listener_ptr = (listener_t *)calloc(1, sizeof(listener_t));
+        new_listener = (listener_t *)calloc(1, sizeof(listener_t));
 
         /* Check memory allocation */
-        if(*listener_ptr != NULL)
+        if(new_listener != NULL)
         {
+            *listener_ptr = new_listener;
             res = STATUS_SUCCESS;
 #ifdef DEBUG_MODE
             log_info("[listener] memory setted up correctly");
@@ -358,13 +378,13 @@ static int init_listening_sockets(listener_t *listener_ptr, const char *port)
     /* Set socket hints for getaddr */
     if(socket_set_listener_hints(&hints) != STATUS_SUCCESS)
     {
-        log_error("[listener] init_listening_sockets socket hints failed ", strerror(errno));
+        log_error("[listener] init_listening_sockets socket hints failed: %s", strerror(errno));
     }
 
     /* get connectable sockets with hints */
     else if(getaddrinfo(NULL, port, &hints, &server_info_out) != 0)
     {
-        log_error("[listener] init_listening_sockets getaddrinfo failed ", strerror(errno));
+        log_error("[listener] init_listening_sockets getaddrinfo failed: %s", strerror(errno));
     }
 
     else
@@ -451,7 +471,7 @@ static int init_listening_sockets(listener_t *listener_ptr, const char *port)
     return res;
 }
 
-static int register_listener_sockets_to_reactor(listener_t *listener_ptr)
+static int register_listening_sockets(listener_t *listener_ptr)
 {
     /* Result value */
     int res = STATUS_FAILURE;
@@ -460,8 +480,15 @@ static int register_listener_sockets_to_reactor(listener_t *listener_ptr)
     {
         if(listener_ptr->sockets_fds[i] >= 0)
         {
-            if(reactor_add_in(listener_ptr->reactor_ptr, listener_ptr->sockets_fds[i],
-                              manage_new_connection_event, (void *)listener_ptr) != STATUS_SUCCESS)
+            int fd = listener_ptr->sockets_fds[i];
+
+            fd_ctx_t *ctx = calloc(1, sizeof(fd_ctx_t));
+            ctx->fd = fd;
+            ctx->owner = listener_ptr;
+            ctx->handler = handle_listen_event;
+
+            if(reactor_add_in(listener_ptr->reactor_ptr, listener_ptr->sockets_fds[i], ctx) !=
+               STATUS_SUCCESS)
             {
                 log_error("[listener] reactor_add_in failed to add listener fd %d to reactor, %s",
                           listener_ptr->sockets_fds[i], strerror(errno));
@@ -482,7 +509,40 @@ static int register_listener_sockets_to_reactor(listener_t *listener_ptr)
     return res;
 }
 
-static int manage_worker_event(int fd, void *listener)
+static int on_worker_status_change(listener_t *listener_ptr, worker_status worker_actual_status)
+{
+    /* return value */
+    int res = STATUS_FAILURE;
+
+    switch(worker_actual_status)
+    {
+        case WORKER_STATUS_ACTIVE:
+            log_info("[listener] on worket status change, WORKER_STATUS_ACTIVE");
+            // resume_listening(listener_ptr);
+            init_listening_sockets(listener_ptr, listener_ptr->port);
+            // register_listener_sockets_to_epoll(listener_ptr);
+
+            res = STATUS_SUCCESS;
+            break;
+
+        case WORKER_STATUS_FULL:
+
+            log_info("[listener] on worket status change, WORKER_STATUS_FULL");
+            // pause_listening(listener_ptr);
+            stop_listener(listener_ptr);
+
+            res = STATUS_SUCCESS;
+            break;
+
+        default:
+            log_error("[listener] Unknown worker_status: %s", strerror(errno));
+            break;
+    }
+
+    return res;
+}
+
+static int handle_worker_event(int fd, fd_ctx_t *ctx)
 {
     /* Result variable */
     worker_status res = WORKER_STATUS_INVALID;
@@ -490,12 +550,12 @@ static int manage_worker_event(int fd, void *listener)
     /* Read the pipe to clear it */
     uint32_t worker_msg;
 
-    /* listener variable */
-    listener_t *listener_ptr = (listener_t *)listener;
+    /* listener ptr */
+    listener_t *listener_ptr = (listener_t *)ctx->owner;
 
     if(read(fd, &worker_msg, sizeof(uint32_t)) != sizeof(uint32_t))
     {
-        log_error("[listener] manage_worker_event Failed to read from pipe: %s", strerror(errno));
+        log_error("[listener] handle_worker_event Failed to read from pipe: %s", strerror(errno));
     }
 
     /* Check if a status change occurred */
@@ -510,7 +570,7 @@ static int manage_worker_event(int fd, void *listener)
         /* Check if change notification occurred */
         if(on_worker_status_change(listener_ptr, (worker_status)worker_msg) != STATUS_SUCCESS)
         {
-            log_error("[listener] manage_worker_event status change detected but action faled");
+            log_error("[listener] handle_worker_event status change detected but action faled");
         }
 
         /* Update the old status */
@@ -533,10 +593,10 @@ static int manage_worker_event(int fd, void *listener)
     return res;
 }
 
-static int manage_new_connection_event(int fd, void *listener)
+static int handle_listen_event(int fd, fd_ctx_t *ctx)
 {
 #ifdef DEBUG_MODE
-    log_info("[listener] manage_new_connection_eventfd: %d", fd);
+    log_info("[listener] handle_listen_eventfd: %d", fd);
 #endif /* DEBUG_MODE */
     /* Result variable */
     int res = STATUS_FAILURE;
@@ -544,10 +604,8 @@ static int manage_new_connection_event(int fd, void *listener)
     /* New client file descriptor */
     int client_fd = -1;
 
-    /* listener variable */
-    listener_t *listener_ptr = (listener_t *)listener;
-
-    log_info("[listener] manage_new_connection_eventfd, worker_status: %d", listener_ptr->status_worker);
+    /* listener ptr */
+    listener_t *listener_ptr = (listener_t *)ctx->owner;
 
     switch(listener_ptr->status_worker)
     {
@@ -603,39 +661,6 @@ static int manage_new_connection_event(int fd, void *listener)
 #ifdef DEBUG_MODE
             log_info("[listener] worker status UNKNOWN %d", listener_ptr->status_worker);
 #endif /* DEBUG_MODE */
-            break;
-    }
-
-    return res;
-}
-
-static int on_worker_status_change(listener_t *listener_ptr, worker_status worker_actual_status)
-{
-    /* return value */
-    int res = STATUS_FAILURE;
-
-    switch(worker_actual_status)
-    {
-        case WORKER_STATUS_ACTIVE:
-            log_info("[listener] on worket status change, WORKER_STATUS_ACTIVE");
-            // resume_listening(listener_ptr);
-            init_listening_sockets(listener_ptr, listener_ptr->port);
-            // register_listener_sockets_to_epoll(listener_ptr);
-
-            res = STATUS_SUCCESS;
-            break;
-
-        case WORKER_STATUS_FULL:
-
-            log_info("[listener] on worket status change, WORKER_STATUS_FULL");
-            // pause_listening(listener_ptr);
-            stop_listener(listener_ptr);
-
-            res = STATUS_SUCCESS;
-            break;
-
-        default:
-            log_error("[listener] Unknown worker_status: %s", strerror(errno));
             break;
     }
 
@@ -775,8 +800,9 @@ static void listener_shutdown(listener_t *listener_ptr)
     /* Close listener's listener sockets */
     stop_listener(listener_ptr);
 
-    // /* Close listener's epoll instance */
-    // (void)epoll_shutdown(listener_ptr->epoll_fd);
+    /* Shutdown and free listener's reactor */
+    reactor_shutdown(&listener_ptr->reactor_ptr);
+    free(listener_ptr->reactor_ptr);
 
     /* Free the ptr */
     free(listener_ptr);

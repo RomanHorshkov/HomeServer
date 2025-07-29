@@ -45,13 +45,13 @@ typedef struct worker worker_t;
  * @ref worker_run(). On failure, all resources are cleaned up and it is
  * safe for the caller to terminate.
  *
- * @param worker_ptr     Address of a pointer to a worker_t; will be allocated.
- * @param pipeline_ptr   Pointer to the communication pipeline with listener.
+ * @param worker_ptr_ptr    Address of a pointer to a worker_t; will be allocated.
+ * @param pipeline_ptr      Pointer to the communication pipeline with listener.
  *
  * @retval  0  Success.
  * @retval -1  Failure (see log for details).
  */
-int worker_init(worker_t **worker_ptr, pipeline_t *pipeline_ptr);
+int worker_init(worker_t **worker_ptr_ptr, pipeline_t *pipeline_ptr);
 
 /**
  * @brief Main worker thread function: manages all active client sockets.

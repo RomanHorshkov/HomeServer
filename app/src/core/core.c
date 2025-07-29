@@ -188,6 +188,8 @@ void server_run(void)
 #ifdef DEBUG_MODE
     pthread_join(server.control_thread, NULL);
 #endif /* DEBUG_MODE */
+
+    pipeline_destroy(&server.pipeline);
 }
 
 /****************************************************************************

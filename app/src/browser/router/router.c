@@ -414,7 +414,7 @@ static int router_load_routes_json(void)
     }
 
     /* ---- APIs ---- */
-    cJSON *apis = cJSON_GetObjectItem(root, "apis");
+    const cJSON *apis = cJSON_GetObjectItem(root, "apis");
     api_count = (size_t)cJSON_GetArraySize(apis);
     api_paths = calloc(api_count, sizeof(*api_paths));
     if(!api_paths)
@@ -441,7 +441,7 @@ static int router_load_routes_json(void)
     }
 
     /* ---- Views ---- */
-    cJSON *views = cJSON_GetObjectItem(root, "views");
+    const cJSON *views = cJSON_GetObjectItem(root, "views");
     view_count = (size_t)cJSON_GetArraySize(views);
     view_paths = calloc(view_count, sizeof(*view_paths));
     if(!view_paths)

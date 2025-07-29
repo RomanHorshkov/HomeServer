@@ -19,7 +19,7 @@ typedef struct
 } route_t;
 
 /* ---------- 2.4  Functions exposed to router.c ---------- */
-void router_register(const char *p, route_handler_t h);
+void router_register(const char *path, route_handler_t h);
 
 const route_t *router_get_table(size_t *out_count);
 
