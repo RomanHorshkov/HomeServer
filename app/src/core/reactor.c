@@ -145,6 +145,59 @@ int reactor_init(reactor_t **reactor_ptr_ptr)
     return res;
 }
 
+/* VINCENZO S EXAMPLE */
+
+// int reactor_init2(reactor_t **reactor_ptr_ptr)
+// {
+//     /* Result variable */
+//     int res = STATUS_FAILURE;
+
+//     /* Check input */
+//     if(!reactor_ptr_ptr)
+//     {
+//         log_error("[reactor] reactor_init wrong input");
+//         goto exit;
+//     }
+
+//     /* Allocate memory for new reactor */
+//     reactor_t *new_reactor = calloc(1, sizeof(reactor_t));
+//     if(!new_reactor)
+//     {
+//         log_error("[reactor] reactor_init calloc failed");
+//         goto exit;
+//     }
+
+//     /* Initialize reactor's epoll instance */
+//     new_reactor->epoll_fd = epoller_new();
+
+//     if(new_reactor->epoll_fd < 0)
+//     {
+//         log_error("[reactor] epoll_new() failed %s", strerror(errno));
+//         goto clean_reactor;    
+//     }
+
+//     /* Allocate the events buffer (one slot per possible registration) */
+//     new_reactor->events = calloc(MAX_FAN_OUT_SOCKETS, sizeof(struct epoll_event));
+
+//     if(new_reactor->events == NULL)
+//     {
+//         log_error("[reactor] calloc() events failed %s", strerror(errno));
+//         goto clean_events;
+//     }
+
+//     *reactor_ptr_ptr = new_reactor;
+//     res = STATUS_SUCCESS;
+    
+//     return res;
+    
+// clean_events:
+//     free(new_reactor->events);
+// clean_reactor:
+//     free(new_reactor);
+// exit:
+//     return res;
+// }
+
 int reactor_add_in(const reactor_t *reactor_ptr, int fd, fd_ctx_t *ctx)
 {
     int res = STATUS_FAILURE;
