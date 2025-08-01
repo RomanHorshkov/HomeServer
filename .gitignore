@@ -6,7 +6,7 @@
 #ignore vs code files
 .vscode/
 # Ignore for now utilities directory
-utils/
+/utils
 #Ignore build files
 build/
 # Ignore log files
