@@ -3,16 +3,16 @@ set -euo pipefail
 IFS=$'\n\t'
 
 # === CONFIG ===
-REMOTE_HOST="home-server"
+REMOTE_HOST="fonta"
 
 # Local source dirs (relative to script or absolute)
 PUBLIC_SRC="../../var/www"
 PRIVATE_SRC="../../var/lib"
 
 # Remote target dirs
-APPNAME="HomeServer"
-REMOTE_PUBLIC="/srv/${APPNAME}/public"
-REMOTE_PRIVATE="/var/lib/${APPNAME}"
+APPNAME="home_server"
+REMOTE_PUBLIC="/srv/${APPNAME}/pub"
+REMOTE_PRIVATE="/srv/${APPNAME}/prv"
 
 # --- 1) Ensure local sources exist ---
 [[ -d "${PUBLIC_SRC}" ]]  || { echo "❌ Public source '${PUBLIC_SRC}' not found.";  exit 1; }
@@ -40,4 +40,3 @@ ssh -t "${REMOTE_HOST}" \
 
 echo "✅ Public content deployed to ${REMOTE_HOST}:${REMOTE_PUBLIC}"
 echo "✅ Private data deployed to ${REMOTE_HOST}:${REMOTE_PRIVATE}"
-
