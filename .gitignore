@@ -17,6 +17,10 @@ server.log
 compile_commands.json
 #Ignore icon file
 var/www/favicon.ico
+#Ignore frontend files
+frontend/dist
+frontend/node_modules
+
 
 var/www/map.json
 
