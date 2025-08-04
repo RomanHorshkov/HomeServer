@@ -1,4 +1,0 @@
-{
-  "apis":   ["/api/expenses", "/api/drive"],
-  "views":  ["/home", "/expenses", "/drive"]
-}
