@@ -1,56 +1,37 @@
-
 import { createContext, useContext, useEffect, useMemo, useState } from 'react';
 import { apiGet } from '../api/client';
 
-const ContractCtx = createContext(null);
+const ContractCtx = createContext({ loading: true, error: null, apis: [] });
+export const useContract = () => useContext(ContractCtx);
 
-export function useContract() {
-  return useContext(ContractCtx);
-}
-
-const SUPPORTED_VIEWS = new Set(['/home', '/expenses', '/drive']);
-
-async function loadContract() {
-  // Try backend contract first → /routes.json; fallback to example for local dev
+async function fetchApis() {
+  // First try your real contract, fall back to the example file
   try {
-    return await apiGet('/routes.json');
-  } catch (_) {
-    return await apiGet('/routes.json.example');
+    const { apis } = await apiGet('/routes.json');
+    return Array.isArray(apis) ? apis : [];
+  } catch {
+    const { apis } = await apiGet('/routes.json.example');
+    return Array.isArray(apis) ? apis : [];
   }
 }
 
 export function ContractProvider({ children }) {
-  const [contract, setContract] = useState(null);
-  const [error, setError] = useState('');
+  const [apis, setApis] = useState(null);
+  const [error, setError] = useState(null);
 
   useEffect(() => {
-    let dead = false;
-    loadContract()
-      .then(json => {
-        if (dead) return;
-        // Basic shape validation
-        const apis = Array.isArray(json?.apis) ? json.apis : [];
-        const views = Array.isArray(json?.views) ? json.views : [];
-        if (!views.length) throw new Error('Contract missing views');
-        setContract({ apis, views });
-      })
-      .catch(e => !dead && setError(String(e?.message || e)));
-    return () => { dead = true; };
+    let alive = true;
+    fetchApis()
+      .then(list => alive && setApis(list))
+      .catch(err => alive && setError(err.message));
+    return () => { alive = false };
   }, []);
 
-  const value = useMemo(() => {
-    if (!contract) return { loading: true };
-
-    // expose only views we actually implement (order preserved)
-    const allowedViews = contract.views.filter(v => SUPPORTED_VIEWS.has(v));
-
-    return {
-      loading: false,
-      error,
-      apis: contract.apis,
-      views: allowedViews
-    };
-  }, [contract, error]);
+  const value = useMemo(() => ({
+    loading: apis === null && !error,
+    error,
+    apis: apis || []
+  }), [apis, error]);
 
   return (
     <ContractCtx.Provider value={value}>
