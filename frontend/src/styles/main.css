@@ -5,14 +5,14 @@
 
 :root {
   --font-base: system-ui, -apple-system, Segoe UI, Roboto, Inter, sans-serif;
-  --bg: #111; --surface:#1c1c1c; --border:#333; --accent:#0cf; --accent-hover:#0ae; --magenta:#f0f; --text:#eee; --muted:#999;
+  --bg: #000; --surface:#1c1c1c; --border:#333; --accent:#0cf; --accent-hover:#0ae; --magenta:#f0f; --text:#eee; --muted:#999;
   --radius: 8px; --shadow: 0 4px 8px rgba(0,0,0,.45);
   --page-padding: clamp(0px, 4vw, 40px);
   --page-padding-h: clamp(0px, 4vw, 40px);
   --page-padding-v: clamp(0px, 1.2vw, 12px);
 }
 :root[data-theme="evil"]{
-  --bg:#111; --surface:#1c1c1c; --border:#333; --accent:#0cf; --accent-hover:#0ae; --magenta:#f0f; --text:#eee; --muted:#999;
+  --bg:#000; --surface:#1c1c1c; --border:#333; --accent:#0cf; --accent-hover:#0ae; --magenta:#f0f; --text:#eee; --muted:#999;
 }
 :root[data-theme="angel"]{
   --bg:#fff; --surface:#f9f9f9; --border:#ccc; --accent:#06c; --accent-hover:#048; --magenta:#c0f; --text:#111; --muted:#666;
@@ -62,3 +62,11 @@ button:active{ transform: translateY(0); }
 
 /* monospace blocks (like your .post-body) */
 .pretty-json { white-space: pre-wrap; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size:.95em; color:#ddd; }
+
+/* Better focus, keyboard & low-motion defaults */
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 6px; }
+@media (prefers-reduced-motion: reduce) {
+  * { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
+}
+code, pre { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace; }
+pre { background: rgba(255,255,255,0.02); }
