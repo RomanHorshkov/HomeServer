@@ -6,6 +6,7 @@ import './index.css';
 import { initTheme } from './theme';
 import { ContractProvider, useContract } from './contract/ContractContext.jsx';
 
+// Lazy route components (code-splitting like old dynamic import)
 const Home = lazy(() => import('./routes/Home.jsx'));
 const Expenses = lazy(() => import('./routes/Expenses.jsx'));
 const Drive = lazy(() => import('./routes/Drive.jsx'));
