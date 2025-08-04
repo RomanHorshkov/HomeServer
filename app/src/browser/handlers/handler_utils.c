@@ -128,14 +128,14 @@ void send_404(HttpResponse *response)
     response->body_length = strlen(response->body);
 }
 
-// void send_405(HttpResponse *response)
-// {
-//     response->status_code = 405;
-//     response->status_text = "Method Not Allowed";
-//     response->content_type = "text/html";
-//     response->body = "<html><body><h1>405 Method Not Allowed</h1></body></html>";
-//     response->body_length = strlen(response->body);
-// }
+void send_405(HttpResponse *response)
+{
+    response->status_code = 405;
+    response->status_text = "Method Not Allowed";
+    response->content_type = "text/html";
+    response->body = "<html><body><h1>405 Method Not Allowed</h1></body></html>";
+    response->body_length = strlen(response->body);
+}
 
 const char *guess_mime_type(const char *path)
 {
