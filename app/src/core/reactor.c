@@ -37,11 +37,6 @@
 #include "epoller.h"
 #include "logger.h"
 
-/* We use the same MAX_FAN_OUT_SOCKETS from server_settings.h to size our buffer */
-#ifndef MAX_FAN_OUT_SOCKETS
-#    error "server_settings.h must define MAX_FAN_OUT_SOCKETS"
-#endif
-
 /****************************************************************************
  * PRIVATE STRUCTURED VARIABLES
  ****************************************************************************

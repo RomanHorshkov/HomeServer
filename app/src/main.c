@@ -22,7 +22,7 @@
 #endif                 /* DEBUG_MODE */
 
 #include <unistd.h> /* chdir */
-
+#include <server_settings.h>
 #include "core.h" /* server_init / run / shutdown */
 // #include "logger.h" /* loginfo / log_error / logger_init */
 
@@ -30,7 +30,6 @@
  * PRIVATE DEFINES
  ****************************************************************************
  */
-#define CHDIR_PATH "var/www"  // DO NOT WRITE /var/www as global path
 
 /****************************************************************************
  * PUBLIC FUNCTIONS DEFINITIONS

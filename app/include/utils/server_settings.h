@@ -76,6 +76,9 @@ typedef enum
 
 /** CORE PROPERTIES */
 
+
+#define CHDIR_PATH "pri/"  // DO NOT WRITE /var/www as global path
+
 /* Server timeout */
 #define SERVER_KEEPALIVE_TIMEOUT_ALONE 60U
 #define SERVER_KEEPALIVE_TIMEOUT_NOT_ALONE 10U
