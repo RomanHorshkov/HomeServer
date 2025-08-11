@@ -72,7 +72,7 @@ int handler_static(const HttpRequest *request, HttpResponse *response)
         if(request->path[0] == '/' && request->path[1] == '\0')
         {
             /* Default home page in server settings */
-            rel_path = ROUTER_HOME_PAGE;
+            rel_path = HOME_PAGE;
         }
 
         /* Strip leading '/' from other absolute paths */
@@ -133,10 +133,15 @@ int handler_static(const HttpRequest *request, HttpResponse *response)
             else
             {
 #ifdef DEBUG_MODE
-                /* Log error if file could not be opened */
                 log_error("[handler static]: Failed to open file", requested_file_path);
 #endif /* DEBUG_MODE */
             }
+        }
+        else
+        {
+#ifdef DEBUG_MODE
+            log_error("[handler static]: requested path length does not fit into buffer");
+#endif /* DEBUG_MODE */
         }
     }
 
@@ -150,7 +155,6 @@ int handler_static(const HttpRequest *request, HttpResponse *response)
         send_404(response);
     }
 
-    /* Single exit point */
     return res;
 }
 

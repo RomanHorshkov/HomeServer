@@ -139,14 +139,8 @@ int server_init(const char *port)
     /* Initialize the logger */
     logger_init("server.log");
 
-    /* Initialize the router */
-    if(router_init() != STATUS_SUCCESS)
-    {
-        log_error("[CORE]: Router initialization failed.");
-    }
-
     /* Initialize the pipeline between listener and worker */
-    else if(pipeline_init(&server.pipeline) != STATUS_SUCCESS)
+    if(pipeline_init(&server.pipeline) != STATUS_SUCCESS)
     {
         log_error("[CORE]: W <-> L pipeline communication_init failed.");
     }

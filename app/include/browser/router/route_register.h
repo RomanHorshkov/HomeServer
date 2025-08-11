@@ -7,10 +7,10 @@
                                no circular dependency because this header
                                contains *no* struct definitions */
 
-/* ---------- 2.2  Handler signature ---------- */
+/* ---------- Handler signature ---------- */
 typedef int (*route_handler_t)(const HttpRequest *, HttpResponse *);
 
-/* ---------- 2.3  The metadata struct stored in the vector ---------- */
+/* ---------- metadata struct ---------- */
 typedef struct
 {
     const char *path; /* string literal, never freed      */
@@ -18,7 +18,7 @@ typedef struct
     route_handler_t handler;
 } route_t;
 
-/* ---------- 2.4  Functions exposed to router.c ---------- */
+/* ---------- Functions exposed to router.c ---------- */
 void router_register(const char *path, route_handler_t h);
 
 const route_t *router_get_table(size_t *out_count);

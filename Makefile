@@ -120,27 +120,27 @@ IMAGE_APP      ?= homeserver-app
 IMAGE_TAG      ?= $(shell git rev-parse --short HEAD)
 COMPOSE        ?= docker compose
 
-.PHONY: docker-build docker-push docker-up docker-down docker-clean
+# .PHONY: docker-build docker-push docker-up docker-down docker-clean
 
-docker-build:             ## Build multi‑arch images via compose
-	$(COMPOSE) build
+# docker-build:             ## Build multi‑arch images via compose
+# 	$(COMPOSE) build
 
-docker-push:              ## Push images set in compose to registry
-	$(COMPOSE) push
+# docker-push:              ## Push images set in compose to registry
+# 	$(COMPOSE) push
 
-docker-up:                ## Start (or upgrade) the stack in detached mode
-	$(COMPOSE) up -d
+# docker-up:                ## Start (or upgrade) the stack in detached mode
+# 	$(COMPOSE) up -d
 
-docker-down:              ## Stop & remove containers but keep the volume
-	$(COMPOSE) down
+# docker-down:              ## Stop & remove containers but keep the volume
+# 	$(COMPOSE) down
 
-docker-clean:             ## Remove dangling layers & old images
-	docker image prune -f
+# docker-clean:             ## Remove dangling layers & old images
+# 	docker image prune -f
 
 # ─── Clean up ─────────────────────────────────────────────
 clean:
 	rm -rf $(BUILDDIR)
-	rm var/www/server.log var/www/map.json 
+	rm -f var/www/server.log var/www/map.json 
 
 # Auto‑generated dependency files -----------------------------------------
 -include $(DEPS)

@@ -5,8 +5,6 @@
                                no circular dependency because this header
                                contains *no* struct definitions */
 
-int router_init(void);
-
 /**
  * @brief Route an HTTP request to the appropriate handler.
  *
