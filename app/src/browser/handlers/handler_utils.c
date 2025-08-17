@@ -19,6 +19,8 @@
 /* Public interface */
 #include "handler_utils.h"
 
+#include "cJSON.h"
+
 /****************************************************************************
  * PRIVATE DEFINES
  ****************************************************************************
@@ -57,7 +59,7 @@ const struct
  * PRIVATE FUNCTIONS PROTOTYPES
  ****************************************************************************
  */
-/* None */
+static int json_has_key_of_type(const cJSON *obj, const char *k, int type);
 
 /****************************************************************************
  * PUBLIC FUNCTIONS DEFINITIONS
@@ -137,6 +139,15 @@ void send_405(HttpResponse *response)
     response->body_length = strlen(response->body);
 }
 
+void send_500(HttpResponse *response)
+{
+    response->status_code = 500;
+    response->status_text = "Internal Server Error";
+    response->content_type = "text/html";
+    response->body = "<html><body><h1>500 Internal Server Error</h1></body></html>";
+    response->body_length = strlen(response->body);
+}
+
 const char *guess_mime_type(const char *path)
 {
     const char *ext = strrchr(path, '.');
@@ -152,4 +163,41 @@ const char *guess_mime_type(const char *path)
         }
     }
     return "application/octet-stream";
+}
+
+/* Call this right before cJSON_PrintUnformatted(root); */
+int validate_whoami_shape(const cJSON *root)
+{
+    if(!cJSON_IsObject(root)) return -1;
+    if(!json_has_key_of_type(root, "server_time", cJSON_String)) return -1;
+    if(!json_has_key_of_type(root, "method", cJSON_String)) return -1;
+    if(!json_has_key_of_type(root, "path", cJSON_String)) return -1;
+    if(!json_has_key_of_type(root, "headers", cJSON_Object)) return -1;
+    if(!json_has_key_of_type(root, "contract_version", cJSON_String)) return -1;
+
+    const cJSON *server_time = cJSON_GetObjectItemCaseSensitive(root, "server_time");
+    const cJSON *method = cJSON_GetObjectItemCaseSensitive(root, "method");
+    const cJSON *path = cJSON_GetObjectItemCaseSensitive(root, "path");
+    const cJSON *headers = cJSON_GetObjectItemCaseSensitive(root, "headers");
+    const cJSON *version = cJSON_GetObjectItemCaseSensitive(root, "contract_version");
+
+    if(!cJSON_IsString(server_time) || !server_time->valuestring) return -1;
+    if(!cJSON_IsString(method) || !method->valuestring) return -1;
+    if(!cJSON_IsString(path) || !path->valuestring) return -1;
+    if(!cJSON_IsObject(headers)) return -1;
+    if(!cJSON_IsString(version) || !version->valuestring) return -1;
+    if(strcmp(path->valuestring, "/api/whoami") != 0) return -1;
+
+    return 0;
+}
+
+/****************************************************************************
+ * PRIVATE FUNCTION DEFINITIONS
+ ***************************************************************************
+ */
+
+static int json_has_key_of_type(const cJSON *obj, const char *k, int type)
+{
+    cJSON *v = cJSON_GetObjectItemCaseSensitive(obj, k);
+    return (v && (v->type & 0xFF) == type);
 }

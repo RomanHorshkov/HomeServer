@@ -540,13 +540,13 @@ static void timer_update(const worker_t *worker_ptr)
     }
 
     /* Set timer with connections */
-    else if(worker_ptr->active_clients > 0 && last_timer_update != SERVER_KEEPALIVE_TIMEOUT_NOT_ALONE)
+    else if(worker_ptr->active_clients > 0 &&
+            last_timer_update != SERVER_KEEPALIVE_TIMEOUT_NOT_ALONE)
     {
         last_timer_update = SERVER_KEEPALIVE_TIMEOUT_NOT_ALONE;
         time_helper_set(worker_ptr->timer_fd, last_timer_update, 0);
 #ifdef DEBUG_MODE
-        log_info(
-            "[worker] timer_update: Updated timer (%lu seconds)", last_timer_update);
+        log_info("[worker] timer_update: Updated timer (%lu seconds)", last_timer_update);
 #endif /* DEBUG_MODE */
     }
 
@@ -556,8 +556,7 @@ static void timer_update(const worker_t *worker_ptr)
         last_timer_update = SERVER_KEEPALIVE_TIMEOUT_ALONE;
         time_helper_set(worker_ptr->timer_fd, last_timer_update, 0);
 #ifdef DEBUG_MODE
-        log_info(
-            "[worker] timer_update: Updated timer to (%lu seconds)", last_timer_update);
+        log_info("[worker] timer_update: Updated timer to (%lu seconds)", last_timer_update);
 #endif /* DEBUG_MODE */
     }
 

@@ -17,3 +17,14 @@ export async function apiPut(path, body, opts = {}) {
   if (!res.ok) throw new Error(`${path} → HTTP ${res.status}`);
   return res.json().catch(() => ({}));
 }
+
+// whoami api registration
+export async function whoAmI() {
+  const res = await fetch('/api/whoami', {
+    method: 'GET',
+    headers: { 'Accept': 'application/json' },
+    credentials: 'same-origin'
+  });
+  if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
+  return res.json();
+}

@@ -1,0 +1,10 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "id": "urn:roman:contract:manifest",
+  "name": "HomeServer API Contract",
+  "version": "2025-08-14.1",
+  "endpoints": [
+    { "id": "whoami", "path": "/api/whoami", "method": "GET", "responseSchema": "schemas/whoami.response.json" }
+  ]
+}
+

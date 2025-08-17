@@ -105,7 +105,7 @@ int router_handle_request(const HttpRequest *request, HttpResponse *response)
         *copy_req = *request;  // shallow copy all fields
         strncpy(copy_req->path, "/", sizeof(copy_req->path));
         res = handler_static(copy_req, response);
-        
+
         free(copy_req);
 
         /* free the respose mallocated body */
@@ -125,25 +125,41 @@ static int call_api_handler(const HttpRequest *request, HttpResponse *response)
     /* Return variable */
     int res = STATUS_FAILURE;
 
-    size_t count;
+    size_t count = -1;
     const route_t *table = router_get_table(&count);
 
-    for(size_t i = 0; i < count; ++i)
+    /* Check if any api have been registered */
+    if(count <= 0)
     {
-#ifdef DEBUG_MODE
-        log_info("[router] api path %s, table path %s", request->path, table[i].path);
-#endif
-        if(strncmp(request->path, table[i].path, table[i].path_len) == 0)
+        log_error("[router] no entries in api table");
+    }
+
+    else
+    {
+        /* Compare each table entry to request */
+        for(size_t i = 0; i < count; ++i)
         {
 #ifdef DEBUG_MODE
-            log_info("[router] YES, calling handler");
+            log_info("[router] api path %s, table path %s", request->path, table[i].path);
 #endif
-            res = table[i].handler(request, response);
-            break;
+            /* Check if any table entry corresponds to request */
+            if(strncmp(request->path, table[i].path, table[i].path_len) == 0)
+            {
+                const char next = request->path[table[i].path_len];
+                /* Check if next char is a / or \0, to avoid /api/whoami123 as ok */
+                if(next == '\0' || next == '/')
+                {
+                    res = table[i].handler(request, response);
+                }
+
+                else
+                {
+                    log_error("[router] wrong api request");
+                }
+
+                break;
+            }
         }
-#ifdef DEBUG_MODE
-        log_info("[router] NO");
-#endif
     }
 
     return res;

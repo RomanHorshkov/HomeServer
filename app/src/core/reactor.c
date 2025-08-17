@@ -168,7 +168,7 @@ int reactor_init(reactor_t **reactor_ptr_ptr)
 //     if(new_reactor->epoll_fd < 0)
 //     {
 //         log_error("[reactor] epoll_new() failed %s", strerror(errno));
-//         goto clean_reactor;    
+//         goto clean_reactor;
 //     }
 
 //     /* Allocate the events buffer (one slot per possible registration) */
@@ -182,9 +182,9 @@ int reactor_init(reactor_t **reactor_ptr_ptr)
 
 //     *reactor_ptr_ptr = new_reactor;
 //     res = STATUS_SUCCESS;
-    
+
 //     return res;
-    
+
 // clean_events:
 //     free(new_reactor->events);
 // clean_reactor:

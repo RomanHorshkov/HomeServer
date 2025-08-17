@@ -26,6 +26,7 @@
 #include <string.h>
 #include <sys/stat.h>
 
+#include "cJSON.h"
 #include "handler_utils.h"
 #include "route_register.h"
 
@@ -504,4 +505,4 @@ static int serve_static_json(const char *filename, HttpResponse *resp)
     return res; /* Return success */
 }
 
-REGISTER_ROUTE("/api/expenses", handler_expenses)
+// REGISTER_ROUTE("/api/expenses", handler_expenses)

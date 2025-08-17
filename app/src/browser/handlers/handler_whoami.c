@@ -23,7 +23,10 @@
 #include <sys/time.h> /* gettimeofday() */
 #include <time.h>     /* gmtime_r(), strftime() */
 
+#include "cJSON.h"
+#include "contract_version.h" /* CONTRACT_VERSION */
 #include "handler_utils.h"
+#include "route_register.h"
 
 /****************************************************************************
  * PRIVATE DEFINES
@@ -62,16 +65,16 @@ int handler_whoami(const HttpRequest *req, HttpResponse *res)
      *      format as “YYYY‑MM‑DDThh:mm:ss.mmmZ“.                            *
      *---------------------------------------------------------------------*/
 
+    static struct tm tm;      /* broken‑down UTC    */
+    static char timestr[32];  /*  “YYYY-MM-DDThh:mm:ss” */
     static struct timeval tv; /* wall‑clock with µs */
-    gettimeofday(&tv, NULL);  /* POSIX; never fails */
 
-    static struct tm tm;       /* broken‑down UTC    */
     gmtime_r(&tv.tv_sec, &tm); /* thread‑safe gmtime */
-
-    static char timestr[32]; /*  “YYYY‑MM‑DDThh:mm:ss” */
-    strftime(timestr, sizeof timestr, "%Y-%m-%dT%H:%M:%S", &tm); /* format up to seconds */
+    gettimeofday(&tv, NULL);   /* POSIX; never fails */
+    strftime(timestr, sizeof timestr, "%Y-%m-%dT%H:%M:%S", &tm);
 
     char iso_time[32]; /* final “…mmmZ” string */
+
     int len =
         snprintf(iso_time, sizeof iso_time, "%s.%03ldZ", timestr, tv.tv_usec / 1000L); /* µs → ms */
 
@@ -86,19 +89,40 @@ int handler_whoami(const HttpRequest *req, HttpResponse *res)
     /*-----------------------------------------------------------------------
      * (2)  Build the JSON structure using cJSON.                           *
      *---------------------------------------------------------------------*/
-    cJSON *root = cJSON_CreateObject();                     /* { }                       */
-    cJSON_AddStringToObject(root, "server_time", iso_time); /* "server_time": "…"        */
-    cJSON_AddStringToObject(root, "method",
-                            http_method_to_string(req->method)); /* "method": "GET"           */
-    cJSON_AddStringToObject(root, "path", req->path);            /* "path":   "/api/whoami"   */
+    cJSON *root = cJSON_CreateObject();
 
-    cJSON *hdrs = cJSON_AddObjectToObject(root, "headers"); /* nested object            */
-    for(int i = 0; i < req->header_count; ++i)              /* copy every header        */
+    /* "path":   "/api/whoami" */
+    cJSON_AddStringToObject(root, "path", req->path);
+
+    /* API contrct version */
+    cJSON_AddStringToObject(root, "contract_version", CONTRACT_VERSION);
+
+    /* server time */
+    cJSON_AddStringToObject(root, "server_time", iso_time);
+
+    /* "method": "GET" */
+    cJSON_AddStringToObject(root, "method", http_method_to_string(req->method));
+
+    /* nested object */
+    cJSON *hdrs = cJSON_AddObjectToObject(root, "headers");
+
+    /* copy every header */
+    for(int i = 0; i < req->header_count; ++i)
+    {
         cJSON_AddStringToObject(hdrs, req->header_names[i], /* key   */
                                 req->header_values[i]);     /* value */
+    }
 
-    char *body = cJSON_PrintUnformatted(root); /* compact JSON string      */
-    cJSON_Delete(root);                        /* free DOM tree            */
+    if(validate_whoami_shape(root) != 0)
+    {
+        log_error("[whoami] schema shape check failed");
+        cJSON_Delete(root);
+        send_500(res);
+        return -1;
+    }
+
+    char *body = cJSON_PrintUnformatted(root); /* compact JSON string */
+    cJSON_Delete(root);                        /* free DOM tree       */
 
     /*-----------------------------------------------------------------------
      * (3)  Populate the HttpResponse structure for the caller.             *
@@ -109,5 +133,10 @@ int handler_whoami(const HttpRequest *req, HttpResponse *res)
     res->body = body;                       /* transfer ownership       */
     res->body_length = strlen(body);        /* cache len for sender     */
 
+    /* Optional: add a response header your HTTP layer will serialize */
+    // http_response_add_header(res, "X-Contract-Version", CONTRACT_VERSION);
+
     return 0; /* success                  */
 }
+
+REGISTER_ROUTE("/api/whoami", handler_whoami)

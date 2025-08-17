@@ -13,6 +13,7 @@ initTheme();
 
 // Code-split home page
 const Home = lazy(() => import('./routes/Home.jsx'));
+const Test = lazy(() => import('./routes/Test.jsx'));
 
 const routes = [
   { path: '/',     element: <Navigate to="/home" replace /> },
@@ -21,6 +22,14 @@ const routes = [
     element: (
       <Suspense fallback={<p style={{padding:'2rem'}}>Loading…</p>}>
         <Home />
+      </Suspense>
+    )
+  },
+  {
+    path: '/test',
+    element: (
+      <Suspense fallback={<p style={{padding:'2rem'}}>Loading…</p>}>
+        <Test />
       </Suspense>
     )
   },
