@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:roman:contract:schemas:whoami.response",
+  "type": "object",
+  "required": ["server_time", "method", "path", "headers", "contract_version"],
+  "properties": {
+    "server_time": {
+      "type": "string",
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{3}Z$"
+    },
+    "method": { "type": "string", "enum": ["GET"] },
+    "path":   { "type": "string", "const": "/api/whoami" },
+    "headers": {
+      "type": "object",
+      "additionalProperties": { "type": "string" }
+    },
+    "contract_version": { "type": "string" }
+  },
+  "additionalProperties": false
+}

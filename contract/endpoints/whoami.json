@@ -1,0 +1,11 @@
+{
+  "id": "whoami",
+  "path": "/api/whoami",
+  "method": "GET",
+  "cache": { "maxAgeSeconds": 0 },
+  "accept": ["application/json"],
+  "produce": ["application/json"],
+  "responseSchema": "../schemas/whoami.response.json",
+  "notes": "Echoes request metadata; safe for public use. No auth."
+}
+

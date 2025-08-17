@@ -15,7 +15,9 @@
 #include <string.h>   /* strcmp(), strcpy(), strerror(), strstr(), strdup()   */
 #include <sys/stat.h> /* stat(), struct stat                                  */
 
-#include "cJSON.h"
+/* forward declare from cJSON without including it here */
+typedef struct cJSON cJSON;
+#include "contract_version.h" /* CONTRACT_VERSION */
 #include "http_manager.h"
 #include "logger.h"          /* log_info(), log_error()                              */
 #include "server_settings.h" /* PATH_MAX, NAME_MAX, EXP_ROOT, etc.                */
@@ -110,6 +112,8 @@ void send_404(HttpResponse *response);
  */
 void send_405(HttpResponse *response);
 
+void send_500(HttpResponse *response);
+
 /**
  * @brief Guess the MIME type for a file based on its extension.
  *
@@ -117,5 +121,7 @@ void send_405(HttpResponse *response);
  * @return MIME type string (e.g., "text/html").
  */
 const char *guess_mime_type(const char *path);
+
+int validate_whoami_shape(const cJSON *root);
 
 #endif /* SERVER_BROWSER_HANDLER_UTILS_H */

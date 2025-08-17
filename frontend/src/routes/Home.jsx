@@ -228,23 +228,6 @@ build/bin/server`}
 
       {/* CTA */}
       <Section id="cta" kicker="Next" title="Where to go from here">
-        {/* ← new cat animation above the buttons ↓ */}
-        <div className="flex justify-center mb-6">
-          <div className="cat">
-            <div className="ear ear--left" />
-            <div className="ear ear--right" />
-            <div className="face">
-              <div className="eye eye--left">
-                <div className="eye-pupil" />
-              </div>
-              <div className="eye eye--right">
-                <div className="eye-pupil" />
-              </div>
-              <div className="muzzle" />
-            </div>
-          </div>
-        </div>
-
         <div className="flex flex-wrap gap-3">
           <a
             className="rounded-lg bg-[var(--accent)] text-black px-4 py-2.5 text-sm font-semibold hover:bg-[var(--accent-hover)] shadow"

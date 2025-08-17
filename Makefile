@@ -1,69 +1,79 @@
 # ------ Build configuration ------
-CC              := gcc
-# Default to debug flags for all/all: debug build
-CFLAGS          := -std=c11 -Wall -Werror -Wextra -pedantic -g -O0 -DDEBUG_MODE
+CC       := gcc
+CSTD     := -std=c11
+WARN     := -Wall -Wextra -Werror -pedantic
 
-# External libraries (relative to app/external)
-LDLIBS          += -Lapp/external/llhttp -lllhttp \
-				   -Lapp/external/cjson -lcjson \
-				   -Lapp/external/spsc_ring -lspsc_ring
+# Build type flags
+DBGFLAGS := -g -O0 -DDEBUG_MODE
+RELFLAGS := -O2 -DNDEBUG
+
+# External libs
+LDFLAGS  += -Lapp/external/llhttp -Lapp/external/cjson -Lapp/external/spsc_ring
+LDLIBS   += -lllhttp -lcjson -lspsc_ring
 
 # Include directories (relative to app/)
-INCDIRS         := app/include app/include/core app/include/browser \
-					app/include/utils app/include/browser/handlers \
-					app/include/browser/router app/external/llhttp \
-					app/external/cjson app/external/spsc_ring
-SRCDIRS         := app/src
-BUILDDIR        := build
-OBJDIR          := $(BUILDDIR)/obj
-BINDIR          := $(BUILDDIR)/bin
-TARGET          := server
+INCDIRS  := app/include app/include/core app/include/browser \
+            app/include/utils app/include/browser/handlers \
+            app/include/browser/router app/external/llhttp \
+            app/external/cjson app/external/spsc_ring
+SRCDIRS  := app/src
+BUILDDIR := build
+OBJDIR   := $(BUILDDIR)/obj
+BINDIR   := $(BUILDDIR)/bin
+TARGET   := server
 
-# Expand include flags
-INCLUDES        := $(foreach dir,$(INCDIRS),-I$(dir))
+# Contract header (generated)
+CONTRACT_MANIFEST := contract/manifest.json
+CONTRACT_GEN      := utils/gen_contract_header.sh
+CONTRACT_HDR      := app/include/contract_version.h
 
-# For static analysis tools
-CPPCHECK_INCLUDES := $(foreach dir,$(INCDIRS),-I$(dir))
-CLANGTIDY_INCLUDES := $(CPPCHECK_INCLUDES)
+# Include flags & default compile flags (debug by default)
+CPPFLAGS := $(addprefix -I,$(INCDIRS)) -MMD -MP
+CFLAGS   := $(CSTD) $(WARN) $(DBGFLAGS)
 
-# ------ Source & object lists ------
-SOURCES         := $(shell find $(SRCDIRS) -name '*.c')
-OBJECTS         := $(patsubst %.c,$(OBJDIR)/%.o,$(SOURCES))
-DEPS            := $(OBJECTS:.o=.d)
+# Source/object/deps
+SOURCES  := $(shell find $(SRCDIRS) -name '*.c')
+OBJECTS  := $(patsubst %.c,$(OBJDIR)/%.o,$(SOURCES))
+DEPS     := $(OBJECTS:.o=.d)
 
 # ------ Phony targets ------
-.PHONY: all clean run debug release tidy lint format notes
+.PHONY: all clean run debug release tidy lint format notes help contract publish-contract
+
+
+# ===== Contract: generate header from manifest =====
+$(CONTRACT_HDR): $(CONTRACT_MANIFEST) $(CONTRACT_GEN)
+	@bash $(CONTRACT_GEN)
 
 # Link step ---------------------------------------------------------------
 $(BINDIR)/$(TARGET): $(OBJECTS)
 	@mkdir -p $(BINDIR)
-	$(CC) $(CFLAGS) $^ $(LDLIBS) -o $@
+	$(CC) $(CFLAGS) $^ $(LDFLAGS) $(LDLIBS) -o $@
 
 # Compile step -------------------------------------------------------------
-$(OBJDIR)/%.o: %.c
+# Ensure OBJDIR exists and CONTRACT_HDR is generated BEFORE compiling.
+# It's an order-only dep here; subsequent rebuilds on manifest edits are handled
+# by the auto-generated .d files because sources that include the header record it.
+$(OBJDIR)/%.o: %.c | $(OBJDIR) $(CONTRACT_HDR)
 	@mkdir -p $(dir $@)
-	$(CC) $(CFLAGS) $(INCLUDES) -MMD -MP -c $< -o $@
+	$(CC) $(CPPFLAGS) $(CFLAGS) -c $< -o $@
 
-# Create the object directory only when needed-----------------------------
 $(OBJDIR):
 	@mkdir -p $(OBJDIR)
 
-# Convenience helpers ------------------------------------------------------
-run: all
-	@./$(BINDIR)/$(TARGET) 3490
-
-
+# ===== Top-level targets =====
 # ------ Default build ------
 all: $(BINDIR)/$(TARGET)
 
 # Debug build (same as default)
-debug: all
+debug: clean all
 
 # Release build: optimized, no debug flags, no DEBUG_MODE
-release: export CFLAGS = -std=c11 -Wall -Werror -Wextra -pedantic -O2 -DNDEBUG_MODE
-release: all
+# Release overrides only CFLAGS; keeps includes/LDFLAGS etc.
+release: CFLAGS := $(CSTD) $(WARN) $(RELFLAGS)
+release: clean all
 
-all: $(BINDIR)/$(TARGET)
+run: all
+	@./$(BINDIR)/$(TARGET) 3490
 
 # Auto formatting ---------------------------------------------------------
 format:
@@ -79,7 +89,7 @@ endif
 lint:
 	@cppcheck --enable=all --inconclusive --std=c11 --language=c --quiet \
 		--suppress=missingIncludeSystem \
-		$(CPPCHECK_INCLUDES) \
+		$(addprefix -I,$(INCDIRS)) \
 		$(SRCDIRS)/
 
 # Better Static analysis
@@ -88,7 +98,7 @@ tidy:
 	bear -- make -B > /dev/null
 
 	@echo "🧠 Running clang-tidy (suppressing C11 unsafe API warnings)…"
-	clang-tidy $(SOURCES) -p . -- $(CLANGTIDY_INCLUDES)
+	clang-tidy $(SOURCES) -p . -- $(addprefix -I,$(INCDIRS))
 
 	@echo "🧼 Cleaning temporary build files…"
 	rm -f *.o */*.o */*/*.o
@@ -115,10 +125,20 @@ notes:
 	@echo "}"                                                         >> $(MANIFEST)
 	@echo "$(MANIFEST) updated."
 
+
+
+# ===== (Optional) publish the contract to static web dir =====
+CONTRACT_PUB_DIR := /var/www/contract
+publish-contract:
+	@mkdir -p $(CONTRACT_PUB_DIR)
+	@rsync -a --delete contract/ $(CONTRACT_PUB_DIR)/
+
+
+
 # ─── Container ──────────────────────────────────────────────
-IMAGE_APP      ?= homeserver-app
-IMAGE_TAG      ?= $(shell git rev-parse --short HEAD)
-COMPOSE        ?= docker compose
+# IMAGE_APP      ?= homeserver-app
+# IMAGE_TAG      ?= $(shell git rev-parse --short HEAD)
+# COMPOSE        ?= docker compose
 
 # .PHONY: docker-build docker-push docker-up docker-down docker-clean
 
@@ -139,12 +159,26 @@ COMPOSE        ?= docker compose
 
 # ─── Clean up ─────────────────────────────────────────────
 clean:
-	rm -rf $(BUILDDIR)
+	rm -rf $(BUILDDIR) frontend/dist frontend/node_modules
 	rm -f var/www/server.log var/www/map.json 
 
 # Auto‑generated dependency files -----------------------------------------
 -include $(DEPS)
 
+# Help
+help:
+	@echo "Targets:"
+	@echo "  all            - build debug (default)"
+	@echo "  run            - run ./build/bin/server 3490"
+	@echo "  debug          - clean + build with DEBUG_MODE"
+	@echo "  release        - clean + build optimized, no DEBUG_MODE"
+	@echo "  format         - clang-format C sources/headers"
+	@echo "  lint           - cppcheck"
+	@echo "  tidy           - bear + clang-tidy"
+	@echo "  notes          - (re)generate build notes manifest"
+	@echo "  publish-contract - copy ./contract → var/www/contract"
+	@echo "  clean          - remove build outputs"
+	
 # Notes:
 # - Source and include paths now use the 'app/' prefix for clarity.
 # - Static files should be placed in 'var/www', persistent data in 'var/lib'.
