@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-proj="$HOME/HomeServer"
+proj="/home/roman/HomeServer"
 bin="server"
 dest="/srv/home_server/bin"
 
