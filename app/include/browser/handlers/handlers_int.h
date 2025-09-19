@@ -15,10 +15,10 @@
 #include <string.h>   /* strcmp, strcpy, strerror, strstr, strdup */
 #include <sys/stat.h> /* stat, struct stat */
 
-#include "http_manager.h" /* HttpRequest, HttpResponse */
+#include "http_manager.h"     /* HttpRequest, HttpResponse */
 #include "contract_version.h" /* CONTRACT_VERSION */
 #include "handlers_interface.h"
-#include "logger.h"          /* log_info, log_error */
+#include "logger.h" /* log_info, log_error */
 #include "route_register.h"
 
 #include "cJSON.h"
@@ -27,16 +27,7 @@
  * PUBLIC DEFINES
  ****************************************************************************
  */
-
-/* stringify PATH_MAX to build “%<PATH_MAX>s” format strings with sscanf()   */
-#define _STR(x) #x
-#define _XSTR(x) _STR(x)
-#define PATH_MAX_STR _XSTR(PATH_MAX)
-
-/* Allow room for “www” prefix + path + NUL                                   */
-#define FULLPATH_MAX (PATH_MAX + 4)
-/* Allow room for fullpath + “/” + NAME_MAX + NUL                             */
-#define CHILDFULL_MAX (FULLPATH_MAX + NAME_MAX + 1)
+/* None */
 
 /****************************************************************************
  * PUBLIC STRUCTURED VARIABLES DECLARATIONS
@@ -47,7 +38,8 @@
 /****************************************************************************
  * PUBLIC FUNCTIONS DECLARATIONS
  ****************************************************************************
- *//**
+ */
+/**
  * url_decode()
  * ------------
  * Percent‑decodes @p src and writes the result to @p dst.

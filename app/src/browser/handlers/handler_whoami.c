@@ -23,7 +23,6 @@
 #include <sys/time.h> /* gettimeofday() */
 #include <time.h>     /* gmtime_r(), strftime() */
 
-
 /****************************************************************************
  * PRIVATE DEFINES
  ****************************************************************************
@@ -61,9 +60,9 @@ int handler_whoami(const HttpRequest *req, HttpResponse *res)
      *      format as “YYYY‑MM‑DDThh:mm:ss.mmmZ“.                            *
      *---------------------------------------------------------------------*/
 
-    static struct tm tm;      /* broken‑down UTC    */
-    static char timestr[32];  /*  “YYYY-MM-DDThh:mm:ss” */
-    static struct timeval tv; /* wall‑clock with µs */
+    static struct tm      tm;          /* broken‑down UTC    */
+    static char           timestr[32]; /*  “YYYY-MM-DDThh:mm:ss” */
+    static struct timeval tv;          /* wall‑clock with µs */
 
     gmtime_r(&tv.tv_sec, &tm); /* thread‑safe gmtime */
     gettimeofday(&tv, NULL);   /* POSIX; never fails */
@@ -71,8 +70,8 @@ int handler_whoami(const HttpRequest *req, HttpResponse *res)
 
     char iso_time[32]; /* final “…mmmZ” string */
 
-    int len =
-        snprintf(iso_time, sizeof iso_time, "%s.%03ldZ", timestr, tv.tv_usec / 1000L); /* µs → ms */
+    int len = snprintf(iso_time, sizeof iso_time, "%s.%03ldZ", timestr,
+                       tv.tv_usec / 1000L); /* µs → ms */
 
     /* Check for buffer overrun */
     if(len < 0 || len >= (int)sizeof iso_time)
@@ -123,11 +122,11 @@ int handler_whoami(const HttpRequest *req, HttpResponse *res)
     /*-----------------------------------------------------------------------
      * (3)  Populate the HttpResponse structure for the caller.             *
      *---------------------------------------------------------------------*/
-    res->status_code = 200;                 /* HTTP 200 OK              */
-    res->status_text = "OK";                /* reason phrase            */
+    res->status_code  = 200;                /* HTTP 200 OK              */
+    res->status_text  = "OK";               /* reason phrase            */
     res->content_type = "application/json"; /* MIME type                */
-    res->body = body;                       /* transfer ownership       */
-    res->body_length = strlen(body);        /* cache len for sender     */
+    res->body         = body;               /* transfer ownership       */
+    res->body_length  = strlen(body);       /* cache len for sender     */
 
     /* Optional: add a response header to HTTP layer will serialize */
     // http_response_add_header(res, "X-Contract-Version", CONTRACT_VERSION);

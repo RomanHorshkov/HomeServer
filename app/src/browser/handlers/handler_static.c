@@ -92,7 +92,8 @@ int handler_static(const HttpRequest *request, HttpResponse *response)
         if(strlen(rel_path) + 1 <= sizeof(requested_file_path))
         {
             /* Copy the relative path into requested_file_path */
-            snprintf(requested_file_path, sizeof(requested_file_path), "%s", rel_path);
+            snprintf(requested_file_path, sizeof(requested_file_path), "%s",
+                     rel_path);
 
             /* Open the file in binary mode */
             f = fopen(requested_file_path, "rb");
@@ -116,10 +117,11 @@ int handler_static(const HttpRequest *request, HttpResponse *response)
                         /* Populate the HttpResponse structure */
                         response->status_code = 200;
                         response->status_text = "OK";
-                        response->content_type = guess_mime_type(requested_file_path);
-                        response->body = body;
+                        response->content_type =
+                            guess_mime_type(requested_file_path);
+                        response->body        = body;
                         response->body_length = (size_t)size;
-                        res = STATUS_SUCCESS;
+                        res                   = STATUS_SUCCESS;
                     }
                 }
                 /* Close file handle */
@@ -128,14 +130,17 @@ int handler_static(const HttpRequest *request, HttpResponse *response)
             else
             {
 #ifdef DEBUG_MODE
-                log_error("[handler static]: Failed to open file", requested_file_path);
+                log_error("[handler static]: Failed to open file",
+                          requested_file_path);
 #endif /* DEBUG_MODE */
             }
         }
         else
         {
 #ifdef DEBUG_MODE
-            log_error("[handler static]: requested path length does not fit into buffer");
+            log_error(
+                "[handler static]: requested path length does not fit into "
+                "buffer");
 #endif /* DEBUG_MODE */
         }
     }

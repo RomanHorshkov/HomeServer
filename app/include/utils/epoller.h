@@ -63,10 +63,11 @@ int epoller_wait(int epoll_fd, struct epoll_event *out_events);
  *  @param event     event mask (only used for ADD and MOD; ignored for DEL)
  *  @param data      ptr to user data to store in the kernel tree
  *  @return  0 on success, <0 = -errno on failure */
-int epoller_manage_fd(int epoll_fd, int target_fd, int operation, uint32_t event, void *data);
+int epoller_manage_fd(int epoll_fd, int target_fd, int operation,
+                      uint32_t event, void *data);
 
-int epoller_manage_fd_with_ptr(int epoll_fd, int target_fd, void *target_ptr, int operation,
-                               uint32_t events);
+int epoller_manage_fd_with_ptr(int epoll_fd, int target_fd, void *target_ptr,
+                               int operation, uint32_t events);
 
 /** Check whether an epoll event mask indicates we should close the connection */
 int epoller_check_if_to_close(uint32_t ev_conn);

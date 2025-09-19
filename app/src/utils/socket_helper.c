@@ -10,7 +10,7 @@
  */
 
 #define _POSIX_C_SOURCE 200112L
-#define _GNU_SOURCE /* for accept4 */
+#define _GNU_SOURCE     /* for accept4 */
 
 #include "socket_helper.h"
 
@@ -77,14 +77,16 @@ int socket_set_non_blocking(const int *socket_fd)
         int flags = fcntl(*socket_fd, F_GETFL, 0);
         if(flags == -1)
         {
-            log_error("[socket_helper] fcntl(F_GETFL) failed: %s", strerror(errno));
+            log_error("[socket_helper] fcntl(F_GETFL) failed: %s",
+                      strerror(errno));
         }
         else
         {
             /* Set O_NONBLOCK flag */
             if(fcntl(*socket_fd, F_SETFL, flags | O_NONBLOCK) == -1)
             {
-                log_error("[socket_helper] fcntl(F_SETFL) failed: %s", strerror(errno));
+                log_error("[socket_helper] fcntl(F_SETFL) failed: %s",
+                          strerror(errno));
             }
             else
             {
@@ -103,13 +105,15 @@ int socket_set_reusability(const int *socket_fd)
     /* Allow reuse of address (critical for restarts) */
     int yes = 1;
 
-    if(setsockopt(*socket_fd, SOL_SOCKET, SO_REUSEADDR, &yes, sizeof(yes)) != -1)
+    if(setsockopt(*socket_fd, SOL_SOCKET, SO_REUSEADDR, &yes, sizeof(yes)) !=
+       -1)
     {
         res = STATUS_SUCCESS;
     }
     else
     {
-        log_error("listener socket reusability failed to set: %s", strerror(errno));
+        log_error("listener socket reusability failed to set: %s",
+                  strerror(errno));
     }
 
     return res;
@@ -125,7 +129,7 @@ int socket_set_restartability(const int *socket_fd)
      * These options are ok for listeners.
      */
     struct linger sl;
-    sl.l_onoff = 1;
+    sl.l_onoff  = 1;
     sl.l_linger = 0;
     if(setsockopt(*socket_fd, SOL_SOCKET, SO_LINGER, &sl, sizeof(sl)) != -1)
     {
@@ -133,7 +137,8 @@ int socket_set_restartability(const int *socket_fd)
     }
     else
     {
-        log_error("listener socket restartability failed to set: %s", strerror(errno));
+        log_error("listener socket restartability failed to set: %s",
+                  strerror(errno));
     }
 
     return res;
@@ -150,9 +155,11 @@ int socket_disable_nagle(const int *socket_fd)
     }
     else
     {
-        if(setsockopt(*socket_fd, IPPROTO_TCP, TCP_NODELAY, &one, sizeof(one)) == -1)
+        if(setsockopt(*socket_fd, IPPROTO_TCP, TCP_NODELAY, &one,
+                      sizeof(one)) == -1)
         {
-            log_error("[socket_helper] setsockopt(TCP_NODELAY) failed: %s", strerror(errno));
+            log_error("[socket_helper] setsockopt(TCP_NODELAY) failed: %s",
+                      strerror(errno));
         }
         else
         {
@@ -191,7 +198,7 @@ int socket_set_listener_hints(struct addrinfo *hints)
 int64_t socket_drain(const int fd)
 {
     uint64_t n;
-    ssize_t r = read(fd, &n, sizeof n);
+    ssize_t  r = read(fd, &n, sizeof n);
     return (r == sizeof n) ? (int64_t)n : -1;
 }
 
@@ -231,7 +238,8 @@ int listener_socket_init(const int *listen_fd, const int32_t *ai_family)
     /* Set non-blocking mode */
     else if(socket_set_non_blocking(listen_fd) != STATUS_SUCCESS)
     {
-        log_error("[socket_helper] listener_socket_init: failed to set non-blocking");
+        log_error(
+            "[socket_helper] listener_socket_init: failed to set non-blocking");
     }
 
     /* Everything went ok */
@@ -246,8 +254,8 @@ int listener_socket_init(const int *listen_fd, const int32_t *ai_family)
             int yes = 1;
 
             /* Check if restriction successfully occurred */
-            if(setsockopt(*listen_fd, IPPROTO_IPV6, IPV6_V6ONLY, &yes, sizeof(yes)) !=
-               STATUS_SUCCESS)
+            if(setsockopt(*listen_fd, IPPROTO_IPV6, IPV6_V6ONLY, &yes,
+                          sizeof(yes)) != STATUS_SUCCESS)
             {
                 /* if restriction fails set return variable to failure */
                 res = STATUS_FAILURE;
@@ -280,12 +288,16 @@ int client_socket_init(const int *client_fd)
             }
             else
             {
-                log_error("[socket_helper] client_socket_init: failed to disable Nagle");
+                log_error(
+                    "[socket_helper] client_socket_init: failed to disable "
+                    "Nagle");
             }
         }
         else
         {
-            log_error("[socket_helper] client_socket_init: failed to set non-blocking");
+            log_error(
+                "[socket_helper] client_socket_init: failed to set "
+                "non-blocking");
         }
     }
     return res;
@@ -305,13 +317,17 @@ int pipe_socket_init(const int *pipe_fds)
     /* Set non-blocking for the first pipe file descriptor */
     else if(socket_set_non_blocking(&pipe_fds[0]) != STATUS_SUCCESS)
     {
-        log_error("[socket_helper] pipe_socket_init: failed to set non-blocking for pipe 0");
+        log_error(
+            "[socket_helper] pipe_socket_init: failed to set non-blocking for "
+            "pipe 0");
     }
 
     /* Set non-blocking for the second pipe file descriptor */
     else if(socket_set_non_blocking(&pipe_fds[1]) != STATUS_SUCCESS)
     {
-        log_error("[socket_helper] pipe_socket_init: failed to set non-blocking for pipe 1");
+        log_error(
+            "[socket_helper] pipe_socket_init: failed to set non-blocking for "
+            "pipe 1");
     }
 
     /* If everything went ok */

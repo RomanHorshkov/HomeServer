@@ -116,8 +116,8 @@ int server_init(const char *port)
     // all this is a partial representation of the server's core folder and
     // what is visible in it, from which user it is running, and the current working directory.
     /* Print current user */
-    uid_t uid = geteuid();
-    const struct passwd *pw = getpwuid(uid);
+    uid_t                uid = geteuid();
+    const struct passwd *pw  = getpwuid(uid);
     if(pw)
     {
         printf("[CORE]: running as user: %s\n", pw->pw_name);
@@ -129,7 +129,8 @@ int server_init(const char *port)
 
     /* Print current working directory */
     char cwd[HTTP_MAX_PATH_LEN];
-    if(getcwd(cwd, sizeof(cwd)) != NULL) printf("[CORE]: cwd: %s\n", cwd);
+    if(getcwd(cwd, sizeof(cwd)) != NULL)
+        printf("[CORE]: cwd: %s\n", cwd);
 
     /* List directory contents */
     printf("[CORE]: ls -la:\n");
@@ -146,7 +147,8 @@ int server_init(const char *port)
     }
 
     /* Initialize the listener with port, pipe read end, wakeup_fd, and ring */
-    else if(listener_init(&server.listener, port, server.pipeline) != STATUS_SUCCESS)
+    else if(listener_init(&server.listener, port, server.pipeline) !=
+            STATUS_SUCCESS)
     {
         log_error("[CORE] listener failed to init.", strerror(errno));
     }
@@ -170,7 +172,8 @@ int server_init(const char *port)
 void server_run(void)
 {
     /* run threads */
-    pthread_create(&server.listener_thread, NULL, listener_run, server.listener);
+    pthread_create(&server.listener_thread, NULL, listener_run,
+                   server.listener);
     pthread_create(&server.worker_thread, NULL, worker_run, server.worker);
 #ifdef DEBUG_MODE
     pthread_create(&server.control_thread, NULL, control_run, NULL);
@@ -207,7 +210,8 @@ void *control_run(void *arg)
         printf("Select: ");
         fflush(stdout);
 
-        if(fgets(input, sizeof(input), stdin) == NULL) continue;
+        if(fgets(input, sizeof(input), stdin) == NULL)
+            continue;
 
         if(input[0] == '1')
         {
