@@ -76,7 +76,7 @@ int browser_manage_client_req(int fd)
     int res = STATUS_FAILURE;
 
     /* create the request and response variables */
-    HttpRequest request;
+    HttpRequest  request;
     HttpResponse response;
 
     memset(&request, 0, sizeof(HttpRequest));
@@ -156,18 +156,19 @@ int browser_manage_client_req(int fd)
 static int send_response(int fd, const HttpResponse *resp)
 {
     char hdr_buf[1024]; /* stack buffer for headers */
-    int hdr_len;
+    int  hdr_len;
 
     /* Build the status line and headers into hdr_buf */
-    hdr_len =
-        snprintf(hdr_buf, sizeof hdr_buf,
-                 "HTTP/1.1 %d %s\r\n"
-                 "Content-Type: %s\r\n"
-                 "Content-Length: %zu\r\n"
-                 "Connection: %s\r\n"
-                 "\r\n",
-                 resp->status_code, resp->status_text, resp->content_type, resp->body_length,
-                 "keep-alive"); /* keep alive here because with close send_response is not called */
+    hdr_len = snprintf(
+        hdr_buf, sizeof hdr_buf,
+        "HTTP/1.1 %d %s\r\n"
+        "Content-Type: %s\r\n"
+        "Content-Length: %zu\r\n"
+        "Connection: %s\r\n"
+        "\r\n",
+        resp->status_code, resp->status_text, resp->content_type,
+        resp->body_length,
+        "keep-alive"); /* keep alive here because with close send_response is not called */
 
     /* Validate header length */
     if(hdr_len < 0 || hdr_len >= (int)sizeof hdr_buf)
@@ -203,8 +204,8 @@ static int send_response(int fd, const HttpResponse *resp)
  */
 static ssize_t send_all(int fd, const void *buf, size_t len)
 {
-    size_t total_sent = 0;
-    const char *ptr = (const char *)buf;
+    size_t      total_sent = 0;
+    const char *ptr        = (const char *)buf;
 
     while(total_sent < len)
     {

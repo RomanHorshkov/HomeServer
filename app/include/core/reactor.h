@@ -37,9 +37,9 @@ struct fd_ctx_s
 {
     int fd;
     // fd_type_e type;
-    void *owner;            /* listener_t*, worker_t*, connection_t* */
+    void          *owner;   /* listener_t*, worker_t*, connection_t* */
     fd_callback_fn handler; /* function to call on event */
-    uint32_t events;        /* current mask */
+    uint32_t       events;  /* current mask */
 };
 
 /****************************************************************************
@@ -85,7 +85,8 @@ int reactor_add_out(const reactor_t *reactor_ptr, int fd, fd_ctx_t *ctx);
  * @retval  0     Success.
  * @retval -1    Failure (e.g., fd not found).
  */
-int reactor_mod(const reactor_t *reactor_ptr, int fd, uint32_t events, fd_ctx_t *ctx);
+int reactor_mod(const reactor_t *reactor_ptr, int fd, uint32_t events,
+                fd_ctx_t *ctx);
 
 /**
  * @brief Remove a file descriptor from the reactor.

@@ -13,8 +13,8 @@ typedef int (*route_handler_t)(const HttpRequest *, HttpResponse *);
 /* ---------- metadata struct ---------- */
 typedef struct
 {
-    const char *path; /* string literal, never freed      */
-    size_t path_len;  /* cache of strlen(path)            */
+    const char     *path;     /* string literal, never freed      */
+    size_t          path_len; /* cache of strlen(path)            */
     route_handler_t handler;
 } route_t;
 

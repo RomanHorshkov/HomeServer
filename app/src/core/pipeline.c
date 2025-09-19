@@ -85,11 +85,14 @@ int pipeline_init(pipeline_t **pipeline_ptr_ptr)
     else
     {
         /* Allocate memory for pipeline_t structure */
-        pipeline_t *new_pipeline_ptr = (pipeline_t *)calloc(1, sizeof(pipeline_t));
+        pipeline_t *new_pipeline_ptr =
+            (pipeline_t *)calloc(1, sizeof(pipeline_t));
 
         if(new_pipeline_ptr == NULL)
         {
-            log_error("[pipeline] communication_init: failed to allocate memory for pipeline_t");
+            log_error(
+                "[pipeline] communication_init: failed to allocate memory for "
+                "pipeline_t");
         }
 
         /* Initialize the pipe between listener and worker */
@@ -118,7 +121,8 @@ int pipeline_init(pipeline_t **pipeline_ptr_ptr)
              * write() fails with -1 and errno = EAGAIN if counter would overflow (very rare in
              * practice)
              */
-            new_pipeline_ptr->wakeup_fd = eventfd(0, EFD_SEMAPHORE | EFD_NONBLOCK);
+            new_pipeline_ptr->wakeup_fd =
+                eventfd(0, EFD_SEMAPHORE | EFD_NONBLOCK);
 
             /* Create ring object */
             spsc_ring_t *ring_ptr = spsc_ring_init(SPSC_RING_CAPACITY);
@@ -126,12 +130,14 @@ int pipeline_init(pipeline_t **pipeline_ptr_ptr)
             /* Check memory allocation */
             if(ring_ptr == NULL)
             {
-                log_error("[pipeline] communication_init: failed to create SPSC ring buffer");
+                log_error(
+                    "[pipeline] communication_init: failed to create SPSC ring "
+                    "buffer");
             }
             else
             {
                 new_pipeline_ptr->ring_ptr = ring_ptr;
-                *pipeline_ptr_ptr = new_pipeline_ptr;
+                *pipeline_ptr_ptr          = new_pipeline_ptr;
 
                 res = STATUS_SUCCESS;
 #ifdef DEBUG_MODE
@@ -158,14 +164,17 @@ int pipeline_push(pipeline_t *pipeline_ptr, const int client_fd)
     /* Check if ring has free space */
     else if(spsc_ring_is_full(pipeline_ptr->ring_ptr))
     {
-        log_error("[pipeline]: pipeline_push spsc_ring_is_full, fd %d refused and closed",
-                  client_fd);
+        log_error(
+            "[pipeline]: pipeline_push spsc_ring_is_full, fd %d refused and "
+            "closed",
+            client_fd);
     }
 
     /* Check if push on ring successful */
     else if(spsc_ring_push(pipeline_ptr->ring_ptr, client_fd) != 0)
     {
-        log_error("[pipeline]: pipeline_push spsc_ring_push failed for fd %d", client_fd);
+        log_error("[pipeline]: pipeline_push spsc_ring_push failed for fd %d",
+                  client_fd);
     }
 
     /* Send a wake-up signal */
@@ -175,7 +184,8 @@ int pipeline_push(pipeline_t *pipeline_ptr, const int client_fd)
         uint64_t inc = 1;
 
         /* Check if successfully written */
-        if(write(pipeline_ptr->wakeup_fd, &inc, sizeof(uint64_t)) == sizeof(uint64_t))
+        if(write(pipeline_ptr->wakeup_fd, &inc, sizeof(uint64_t)) ==
+           sizeof(uint64_t))
         {
             /* Set return status */
             res = STATUS_SUCCESS;
@@ -211,7 +221,8 @@ int pipeline_pop(pipeline_t *pipeline_ptr)
     return res;
 }
 
-int pipeline_notify_worker_status_change(pipeline_t *pipeline, worker_status status)
+int pipeline_notify_worker_status_change(pipeline_t   *pipeline,
+                                         worker_status status)
 {
     /* Result variable */
     int res = STATUS_FAILURE;
@@ -219,21 +230,25 @@ int pipeline_notify_worker_status_change(pipeline_t *pipeline, worker_status sta
     /* Check input */
     if(pipeline == NULL)
     {
-        log_error("[pipeline] pipeline_notify_worker_status_change: invalid input");
+        log_error(
+            "[pipeline] pipeline_notify_worker_status_change: invalid input");
     }
 
     /* Send the status to the listener */
-    else if(write(pipeline->pipe_fds[1], &status, sizeof(uint32_t)) != sizeof(uint32_t))
+    else if(write(pipeline->pipe_fds[1], &status, sizeof(uint32_t)) !=
+            sizeof(uint32_t))
     {
-        log_error("[pipeline] pipeline_notify_worker_status_change: write failed: %s",
-                  strerror(errno));
+        log_error(
+            "[pipeline] pipeline_notify_worker_status_change: write failed: %s",
+            strerror(errno));
     }
 
     /* If everything went ok */
     else
     {
 #ifdef DEBUG_MODE
-        log_info("[pipeline] updated listener about state change %d", (int)status);
+        log_info("[pipeline] updated listener about state change %d",
+                 (int)status);
 #endif /* DEBUG_MODE */
         res = STATUS_SUCCESS;
     }

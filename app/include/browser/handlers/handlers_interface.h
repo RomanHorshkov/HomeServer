@@ -37,7 +37,6 @@
  ****************************************************************************
  */
 
-
 // #include "handler_drive.h"
 // #include "handler_expenses.h"
 // #include "handler_static.h"
@@ -70,8 +69,7 @@
  * @retval  0      Success; response is fully populated.
  * @retval !=0     Failure; response is not valid.
  */
-int handler_static(const HttpRequest *request, HttpResponse *response);
-
+int handler_static(const HttpRequest* request, HttpResponse* response);
 
 /**
  * @brief Build an “echo” JSON response for <tt>/api/whoami</tt>.
@@ -116,7 +114,7 @@ int handler_whoami(const HttpRequest* req, HttpResponse* res);
  * @retval  0  Success – resp is populated (HTTP 200).
  * @retval -1  Fatal error (e.g., memory allocation failure).
  */
-int handler_expenses(const HttpRequest *req, HttpResponse *resp);
+int handler_expenses(const HttpRequest* req, HttpResponse* resp);
 
 /**
  * @brief Return a JSON directory listing for the “Drive” feature.

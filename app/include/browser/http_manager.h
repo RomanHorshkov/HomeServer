@@ -27,7 +27,7 @@
 typedef enum
 {
     HTTP_CONNECTION_KEEP_ALIVE = 0, /* Keep connection alive */
-    HTTP_CONNECTION_CLOSE = 1,      /* Close connection */
+    HTTP_CONNECTION_CLOSE      = 1, /* Close connection */
 } HTTPConnectionPolicy;
 
 /****************************************************************************
@@ -40,14 +40,17 @@ typedef enum
  */
 typedef struct
 {
-    http_method_t method;         /* HTTP method (GET, POST, etc.) */
-    char path[HTTP_MAX_PATH_LEN]; /* Request path */
-    char header_names[HTTP_MAX_HEADER_COUNT][HTTP_MAX_HEADER_NAME_LEN];   /* Header names */
-    char header_values[HTTP_MAX_HEADER_COUNT][HTTP_MAX_HEADER_VALUE_LEN]; /* Header values */
-    int header_count;                       /* Number of headers parsed */
-    char* body;                             /* Pointer to dynamically allocated request body */
-    size_t body_len;                        /* Length of the body in bytes */
-    HTTPConnectionPolicy connection_policy; /* Connection policy (keep-alive or close) */
+    http_method_t method;                  /* HTTP method (GET, POST, etc.) */
+    char          path[HTTP_MAX_PATH_LEN]; /* Request path */
+    char          header_names[HTTP_MAX_HEADER_COUNT]
+                     [HTTP_MAX_HEADER_NAME_LEN]; /* Header names */
+    char header_values[HTTP_MAX_HEADER_COUNT]
+                      [HTTP_MAX_HEADER_VALUE_LEN]; /* Header values */
+    int    header_count; /* Number of headers parsed */
+    char*  body;         /* Pointer to dynamically allocated request body */
+    size_t body_len;     /* Length of the body in bytes */
+    HTTPConnectionPolicy
+        connection_policy; /* Connection policy (keep-alive or close) */
 
 } HttpRequest;
 
@@ -56,11 +59,11 @@ typedef struct
  */
 typedef struct
 {
-    int status_code;
+    int         status_code;
     const char* status_text;
     const char* content_type;
     const char* body;
-    size_t body_length;
+    size_t      body_length;
 } HttpResponse;
 
 /****************************************************************************
@@ -105,6 +108,7 @@ static inline const char* http_method_to_string(http_method_t method)
  * @retval  0  Success.
  * @retval -1  Parse error (malformed request).
  */
-int http_manage_request(const char* recv_buf, const size_t buffer_len, HttpRequest* request);
+int http_manage_request(const char* recv_buf, const size_t buffer_len,
+                        HttpRequest* request);
 
 #endif /* HTTP_MANAGER_H */

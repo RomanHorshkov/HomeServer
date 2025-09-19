@@ -13,9 +13,9 @@ int time_helper_init(void)
 
 int time_helper_set(int timer_fd, uint32_t s, uint32_t ns)
 {
-    struct itimerspec spec = {.it_value.tv_sec = s,
-                              .it_value.tv_nsec = ns,
-                              .it_interval.tv_sec = s,
+    struct itimerspec spec = {.it_value.tv_sec     = s,
+                              .it_value.tv_nsec    = ns,
+                              .it_interval.tv_sec  = s,
                               .it_interval.tv_nsec = ns};
     return timerfd_settime(timer_fd, 0, &spec, NULL);
 }

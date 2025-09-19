@@ -51,9 +51,9 @@
 typedef struct
 {
     HttpRequest* req;
-    char current_field[HTTP_MAX_HEADER_NAME_LEN];
-    char current_value[HTTP_MAX_HEADER_VALUE_LEN];
-    int in_header_field;
+    char         current_field[HTTP_MAX_HEADER_NAME_LEN];
+    char         current_value[HTTP_MAX_HEADER_VALUE_LEN];
+    int          in_header_field;
 
 } LlhttpParserContext;
 
@@ -133,7 +133,8 @@ static http_method_t parse_http_method(const char* at, size_t length);
  * @param req         Pointer to the HttpRequest structure to populate.
  * @return            0 on success, negative value on failure.
  */
-static int http_parse_request(const char* buffer, const size_t buffer_len, HttpRequest* req);
+static int http_parse_request(const char* buffer, const size_t buffer_len,
+                              HttpRequest* req);
 
 /**
  * @brief Validates and sanitizes a parsed HttpRequest structure.
@@ -189,7 +190,8 @@ static int validate_http_header_value(const char* hval, const char* hname);
  ****************************************************************************
  */
 
-int http_manage_request(const char* recv_buf, const size_t buffer_len, HttpRequest* request)
+int http_manage_request(const char* recv_buf, const size_t buffer_len,
+                        HttpRequest* request)
 {
     /* result variable */
     int res = STATUS_FAILURE;
@@ -223,23 +225,24 @@ int http_manage_request(const char* recv_buf, const size_t buffer_len, HttpReque
  ****************************************************************************
  */
 
-static int http_parse_request(const char* buffer, const size_t buffer_len, HttpRequest* req)
+static int http_parse_request(const char* buffer, const size_t buffer_len,
+                              HttpRequest* req)
 {
     /* Return variable */
     int res = STATUS_FAILURE;
 
     /* llhttp parser declare */
-    llhttp_t parser;
+    llhttp_t          parser;
     llhttp_settings_t settings;
 
     /* llhttp parser initialize */
     llhttp_settings_init(&settings);
 
-    settings.on_url = on_url;
-    settings.on_method = on_method;
+    settings.on_url          = on_url;
+    settings.on_method       = on_method;
     settings.on_header_field = on_header_field;
     settings.on_header_value = on_header_value;
-    settings.on_body = on_body;
+    settings.on_body         = on_body;
 
     llhttp_init(&parser, HTTP_REQUEST, &settings);
 
@@ -260,12 +263,14 @@ static int http_parse_request(const char* buffer, const size_t buffer_len, HttpR
         int i = ctx.req->header_count++;
 
         /* Copy header name */
-        size_t name_len = strnlen(ctx.current_field, HTTP_MAX_HEADER_NAME_LEN - 1);
+        size_t name_len =
+            strnlen(ctx.current_field, HTTP_MAX_HEADER_NAME_LEN - 1);
         memcpy(ctx.req->header_names[i], ctx.current_field, name_len);
         ctx.req->header_names[i][name_len] = '\0';
 
         /* Copy header value */
-        size_t value_len = strnlen(ctx.current_value, HTTP_MAX_HEADER_VALUE_LEN - 1);
+        size_t value_len =
+            strnlen(ctx.current_value, HTTP_MAX_HEADER_VALUE_LEN - 1);
         memcpy(ctx.req->header_values[i], ctx.current_value, value_len);
         ctx.req->header_values[i][value_len] = '\0';
     }
@@ -282,7 +287,8 @@ static int http_parse_request(const char* buffer, const size_t buffer_len, HttpR
 
 #ifdef DEBUG_MODE
         log_info("[http]: parse request: METHOD: %s, PATH: %s, HEADERS: %d",
-                 http_method_to_string(req->method), req->path, req->header_count);
+                 http_method_to_string(req->method), req->path,
+                 req->header_count);
         // log_info("[http]: Parsed %d headers:", req->header_count);
         // for(int i = 0; i < req->header_count; ++i)
         // {
@@ -330,16 +336,19 @@ static int validate_http_path(const char* path)
             /* Check for control characters, null byte, or suspicious characters */
             if(c < 0x20 || c == 0x7F)
             {
-                log_error("[http]: Path contains control or null character %s", path);
+                log_error("[http]: Path contains control or null character %s",
+                          path);
                 res = STATUS_FAILURE;
                 break;
             }
 
             /* Allow alphanumeric, '/', '-', ... */
-            else if(!(isalnum(c) || c == '/' || c == '-' || c == '_' || c == '.' || c == '~' ||
-                      c == '?' || c == '=' || c == '&' || c == '+' || c == '%'))
+            else if(!(isalnum(c) || c == '/' || c == '-' || c == '_' ||
+                      c == '.' || c == '~' || c == '?' || c == '=' ||
+                      c == '&' || c == '+' || c == '%'))
             {
-                log_error("[http]: Path contains suspicious character %s", path);
+                log_error("[http]: Path contains suspicious character %s",
+                          path);
                 res = STATUS_FAILURE;
                 break;
             }
@@ -367,7 +376,8 @@ static int validate_http_header_name(const char* hname)
         unsigned char c = (unsigned char)hname[j];
         if(c < 0x20 || c == 0x7F)
         {
-            log_error("[http]: Header name contains control or null character", hname);
+            log_error("[http]: Header name contains control or null character",
+                      hname);
             return STATUS_FAILURE;
         }
     }
@@ -437,7 +447,7 @@ static int sanitize_http_request(HttpRequest* req)
         for(int i = 0; i < req->header_count; ++i)
         {
             const char* hname = req->header_names[i];
-            const char* hval = req->header_values[i];
+            const char* hval  = req->header_values[i];
             if(validate_http_header_name(hname) != STATUS_SUCCESS)
             {
                 log_error("[http]: Invalid header name", hname);
@@ -476,13 +486,16 @@ static int on_header_field(llhttp_t* parser, const char* at, size_t length)
     if(!ctx->in_header_field && ctx->req->header_count < HTTP_MAX_HEADER_COUNT)
     {
         int i = ctx->req->header_count++;
-        strncpy(ctx->req->header_names[i], ctx->current_field, HTTP_MAX_HEADER_NAME_LEN);
-        strncpy(ctx->req->header_values[i], ctx->current_value, HTTP_MAX_HEADER_VALUE_LEN);
+        strncpy(ctx->req->header_names[i], ctx->current_field,
+                HTTP_MAX_HEADER_NAME_LEN);
+        strncpy(ctx->req->header_values[i], ctx->current_value,
+                HTTP_MAX_HEADER_VALUE_LEN);
         ctx->current_field[0] = 0;
         ctx->current_value[0] = 0;
     }
 
-    snprintf(ctx->current_field, HTTP_MAX_HEADER_NAME_LEN, "%.*s", (int)length, at);
+    snprintf(ctx->current_field, HTTP_MAX_HEADER_NAME_LEN, "%.*s", (int)length,
+             at);
     ctx->in_header_field = 1;
     return 0;
 }
@@ -490,7 +503,8 @@ static int on_header_field(llhttp_t* parser, const char* at, size_t length)
 static int on_header_value(llhttp_t* parser, const char* at, size_t length)
 {
     LlhttpParserContext* ctx = (LlhttpParserContext*)parser->data;
-    snprintf(ctx->current_value, HTTP_MAX_HEADER_VALUE_LEN, "%.*s", (int)length, at);
+    snprintf(ctx->current_value, HTTP_MAX_HEADER_VALUE_LEN, "%.*s", (int)length,
+             at);
     ctx->in_header_field = 0;
     return 0;
 }
@@ -498,17 +512,19 @@ static int on_header_value(llhttp_t* parser, const char* at, size_t length)
 static int on_body(llhttp_t* parser, const char* at, size_t length)
 {
     LlhttpParserContext* ctx = (LlhttpParserContext*)parser->data;
-    HttpRequest* req = ctx->req;
+    HttpRequest*         req = ctx->req;
 
     /* If this chunk would push us over the RAM cap, abort */
     if(req->body_len + length > HTTP_MAX_BODY_RAM_CAPACITY)
     {
-        log_error("[http]: Request body exceeds HTTP_MAX_BODY_RAM_CAPACITY (%d bytes)",
-                  HTTP_MAX_BODY_RAM_CAPACITY);
+        log_error(
+            "[http]: Request body exceeds HTTP_MAX_BODY_RAM_CAPACITY (%d "
+            "bytes)",
+            HTTP_MAX_BODY_RAM_CAPACITY);
 
         /* drop any data we’d buffered so far */
         free(req->body);
-        req->body = NULL;
+        req->body     = NULL;
         req->body_len = 0;
 
         /* return non-zero to tell llhttp to stop parsing with error */
@@ -525,16 +541,16 @@ static int on_body(llhttp_t* parser, const char* at, size_t length)
 
         /* Clean up on OOM */
         free(req->body);
-        req->body = NULL;
+        req->body     = NULL;
         req->body_len = 0;
         return 1;
     }
 
     /* copy in the new chunk and update length */
     memcpy(new_buf + req->body_len, at, length);
-    req->body = new_buf;
-    req->body_len += length;
-    req->body[req->body_len] = '\0';
+    req->body                 = new_buf;
+    req->body_len            += length;
+    req->body[req->body_len]  = '\0';
 
     /* success! */
     return 0;
@@ -543,7 +559,7 @@ static int on_body(llhttp_t* parser, const char* at, size_t length)
 static int on_method(llhttp_t* parser, const char* at, size_t length)
 {
     LlhttpParserContext* ctx = (LlhttpParserContext*)parser->data;
-    ctx->req->method = parse_http_method(at, length);
+    ctx->req->method         = parse_http_method(at, length);
     return 0;
 }
 
