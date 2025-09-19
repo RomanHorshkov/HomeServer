@@ -18,15 +18,11 @@
  */
 #define _GNU_SOURCE
 
-#include "handler_whoami.h"
+#include "handlers_int.h"
 
 #include <sys/time.h> /* gettimeofday() */
 #include <time.h>     /* gmtime_r(), strftime() */
 
-#include "cJSON.h"
-#include "contract_version.h" /* CONTRACT_VERSION */
-#include "handler_utils.h"
-#include "route_register.h"
 
 /****************************************************************************
  * PRIVATE DEFINES
@@ -133,7 +129,7 @@ int handler_whoami(const HttpRequest *req, HttpResponse *res)
     res->body = body;                       /* transfer ownership       */
     res->body_length = strlen(body);        /* cache len for sender     */
 
-    /* Optional: add a response header your HTTP layer will serialize */
+    /* Optional: add a response header to HTTP layer will serialize */
     // http_response_add_header(res, "X-Contract-Version", CONTRACT_VERSION);
 
     return 0; /* success                  */
