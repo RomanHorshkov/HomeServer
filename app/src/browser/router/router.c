@@ -91,7 +91,7 @@ int router_handle_request(const HttpRequest *request, HttpResponse *response)
     else if(strncmp(request->path, "/api/", 5) == 0)
     {
 #ifdef DEBUG_MODE
-        log_info("[router] API route detected %s, calling handler",
+        log_info("[router] API request detected %s, searching handler",
                  request->path);
 #endif
         res = call_api_handler(request, response);
@@ -140,10 +140,6 @@ static int call_api_handler(const HttpRequest *request, HttpResponse *response)
         /* Compare each table entry to request */
         for(size_t i = 0; i < count; ++i)
         {
-#ifdef DEBUG_MODE
-            log_info("[router] api path %s, table path %s", request->path,
-                     table[i].path);
-#endif
             /* Check if any table entry corresponds to request */
             if(strncmp(request->path, table[i].path, table[i].path_len) == 0)
             {
@@ -151,6 +147,10 @@ static int call_api_handler(const HttpRequest *request, HttpResponse *response)
                 /* Check if next char is a / or \0, to avoid /api/whoami123 as ok */
                 if(next == '\0' || next == '/')
                 {
+#ifdef DEBUG_MODE
+                    log_info("[router] api path %s, table path %s",
+                             request->path, table[i].path);
+#endif
                     res = table[i].handler(request, response);
                 }
 
