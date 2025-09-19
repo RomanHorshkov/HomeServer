@@ -27,7 +27,7 @@
 #include <unistd.h>    // access
 
 #include "cJSON.h"
-#include "handlers.h"
+#include "handlers_interface.h"
 #include "logger.h"
 #include "route_register.h"
 

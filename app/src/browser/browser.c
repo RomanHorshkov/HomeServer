@@ -26,7 +26,6 @@
 #include <string.h>     /* strerror */
 #include <sys/socket.h> /* send(), recv() */
 
-#include "handler_static.h"  /* handler_static_page */
 #include "logger.h"          /* log_info, log_error */
 #include "router.h"          /* router_handle_request */
 #include "server_settings.h" /* HTTP constants */

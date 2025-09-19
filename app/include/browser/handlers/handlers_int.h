@@ -1,5 +1,5 @@
-#ifndef SERVER_BROWSER_HANDLER_UTILS_H
-#define SERVER_BROWSER_HANDLER_UTILS_H
+#ifndef SERVER_BROWSER_HANDLER_WHOAMI_H
+#define SERVER_BROWSER_HANDLER_WHOAMI_H
 
 /****************************************************************************
  * PUBLIC INCLUDES
@@ -7,20 +7,21 @@
  */
 
 /* libc / POSIX */
-#include <ctype.h>  /* isxdigit()                                           */
-#include <dirent.h> /* opendir(), readdir(), closedir()                     */
+#include <ctype.h>  /* isxdigit() */
+#include <dirent.h> /* opendir(), readdir(), closedir() */
 #include <stddef.h>
-#include <stdio.h>    /* snprintf(), sscanf()                                 */
-#include <stdlib.h>   /* malloc(), free(), strdup(), strtol(), qsort()        */
-#include <string.h>   /* strcmp(), strcpy(), strerror(), strstr(), strdup()   */
-#include <sys/stat.h> /* stat(), struct stat                                  */
+#include <stdio.h>    /* snprintf, sscanf, fopen, fseek, ftell, fread, fclose */
+#include <stdlib.h>   /* malloc, free, strdup, strtol, qsort */
+#include <string.h>   /* strcmp, strcpy, strerror, strstr, strdup */
+#include <sys/stat.h> /* stat, struct stat */
 
-/* forward declare from cJSON without including it here */
-typedef struct cJSON cJSON;
+#include "http_manager.h" /* HttpRequest, HttpResponse */
 #include "contract_version.h" /* CONTRACT_VERSION */
-#include "http_manager.h"
-#include "logger.h"          /* log_info(), log_error()                              */
-#include "server_settings.h" /* PATH_MAX, NAME_MAX, EXP_ROOT, etc.                */
+#include "handlers_interface.h"
+#include "logger.h"          /* log_info, log_error */
+#include "route_register.h"
+
+#include "cJSON.h"
 
 /****************************************************************************
  * PUBLIC DEFINES
@@ -46,8 +47,7 @@ typedef struct cJSON cJSON;
 /****************************************************************************
  * PUBLIC FUNCTIONS DECLARATIONS
  ****************************************************************************
- */
-/**
+ *//**
  * url_decode()
  * ------------
  * Percent‑decodes @p src and writes the result to @p dst.
@@ -124,4 +124,4 @@ const char *guess_mime_type(const char *path);
 
 int validate_whoami_shape(const cJSON *root);
 
-#endif /* SERVER_BROWSER_HANDLER_UTILS_H */
+#endif /* SERVER_BROWSER_HANDLER_WHOAMI_H */

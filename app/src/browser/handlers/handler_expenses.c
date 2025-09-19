@@ -14,21 +14,8 @@
  *   @date    2025‑05‑11
  *   (c) 2025
  */
-
 #define _GNU_SOURCE
-
-#include "handler_expenses.h"
-
-#include <ctype.h>
-#include <dirent.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <sys/stat.h>
-
-#include "cJSON.h"
-#include "handler_utils.h"
-#include "route_register.h"
+#include "handlers_int.h"
 
 /****************************************************************************
  * PRIVATE DEFINES

@@ -5,21 +5,12 @@
  * Contains helper routines (e.g. guess_mime_type, send_404) that
  * assist other handler modules in building and sending HTTP responses.
  *
- * Usage:
- *   guess_mime_type("file.txt");
- *   send_404(&response);
- *
  *   @author  Roman Horshkov <roman.horshkov@gmail.com>
  *   @date    2025‑05‑11
  *   (c) 2025
  */
 
-#define _GNU_SOURCE
-
-/* Public interface */
-#include "handler_utils.h"
-
-#include "cJSON.h"
+#include "handlers_int.h"
 
 /****************************************************************************
  * PRIVATE DEFINES

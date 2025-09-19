@@ -15,14 +15,7 @@
  *   (c) 2025
  */
 
-#define _GNU_SOURCE
-
-#include "handler_drive.h"
-
-#include <errno.h> /* errno                                                */
-
-#include "handler_utils.h"
-#include "route_register.h"
+#include "handlers_int.h"
 
 /****************************************************************************
  * PRIVATE DEFINES

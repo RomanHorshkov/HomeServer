@@ -12,12 +12,7 @@
  *   @date    2025‑05‑11
  *   (c) 2025
  */
-#include "handler_static.h"
-
-#include <stdio.h>  /* fopen, fseek, ftell, fread, fclose */
-#include <stdlib.h> /* malloc, free */
-
-#include "handler_utils.h"
+#include "handlers_int.h"
 
 /****************************************************************************
  * PRIVATE DEFINES

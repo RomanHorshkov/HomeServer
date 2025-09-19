@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import "../animations/cat.css";
-import { whoAmI } from "../api/client";
+import { whoAmI, db_add_user, db_list_users } from "../api/client";
 
 function CopyButton({ value }) {
   const [ok, setOk] = useState(false);
@@ -21,11 +21,13 @@ export default function Test() {
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState("");
 
+  const [email, setEmail] = useState("");
+  const [usersJson, setUsersJson] = useState("");
+
   const reveal = async () => {
     setLoading(true); setErr("");
     try {
       const data = await whoAmI();
-      // Curated view
       const view = {
         server_time: data.server_time,
         method: data.method,
@@ -44,19 +46,38 @@ export default function Test() {
     }
   };
 
+  const doAddUser = async () => {
+    setErr("");
+    try {
+      const r = await db_add_user(email.trim());
+      setUsersJson(JSON.stringify(r, null, 2));
+    } catch (e) {
+      setErr(e.message || String(e));
+    }
+  };
+
+  const doListUsers = async () => {
+    setErr("");
+    try {
+      const r = await db_list_users();
+      setUsersJson(JSON.stringify(r, null, 2));
+    } catch (e) {
+      setErr(e.message || String(e));
+    }
+  };
+
   return (
     <main className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-10 sm:py-16">
-      {/* small hero */}
       <header className="mb-8">
         <h1 className="text-3xl sm:text-4xl font-extrabold tracking-tight text-[var(--text)]">
           Diagnostics / Test
         </h1>
         <p className="mt-2 text-[var(--muted)]">
-          Press the button to see what the server sees about your request.
+          Quick endpoints: whoami, add user, list users.
         </p>
       </header>
 
-      {/* Cat as a fun separator; lives only on this page */}
+      {/* Cat animation */}
       <div className="flex justify-center mb-6">
         <div className="cat">
           <div className="ear ear--left" />
@@ -69,8 +90,8 @@ export default function Test() {
         </div>
       </div>
 
-      {/* Action + output */}
-      <div className="rounded-xl border border-[var(--border)] bg-[var(--surface)] p-4 sm:p-6 shadow-md">
+      {/* whoami */}
+      <section className="rounded-xl border border-[var(--border)] bg-[var(--surface)] p-4 sm:p-6 shadow-md mb-6">
         <div className="flex flex-wrap items-center gap-3 justify-between">
           <div className="flex items-center gap-3">
             <button
@@ -83,31 +104,42 @@ export default function Test() {
             {out && <CopyButton value={out} />}
           </div>
           <div className="text-xs text-[var(--muted)]">
-            Contract: <code>X-Contract-Version</code> is in the body as <code>contract_version</code>
+            Contract: <code>X-Contract-Version</code> also in body as <code>contract_version</code>
           </div>
         </div>
+        {err && <p className="mt-3 text-sm text-red-500">Error: {err}</p>}
+        <pre className="mt-3 overflow-x-auto rounded-lg border border-[var(--border)] p-3 text-sm pretty-json" aria-live="polite">{out}</pre>
+      </section>
 
-        {err && (
-          <p className="mt-3 text-sm text-red-500">
-            Error: {err}
-          </p>
-        )}
-
-        <pre
-          className="mt-3 overflow-x-auto rounded-lg border border-[var(--border)] p-3 text-sm pretty-json"
-          aria-live="polite"
-        >{out}</pre>
-      </div>
-
-      {/* Optional: link to contract if you publish it under /contract */}
-      {/* <div className="mt-6">
-        <a
-          className="inline-block rounded-lg border border-[var(--border)] bg-[var(--surface)] px-3 py-2 text-sm font-semibold hover:translate-y-[-1px] transition"
-          href="/contract/manifest.json"
-        >
-          View contract manifest →
-        </a>
-      </div> */}
+      {/* users */}
+      <section className="rounded-xl border border-[var(--border)] bg-[var(--surface)] p-4 sm:p-6 shadow-md">
+        <div className="flex flex-wrap items-center gap-3">
+          <input
+            type="email"
+            placeholder="email@example.com"
+            value={email}
+            onChange={(e)=>setEmail(e.target.value)}
+            className="rounded-lg border border-[var(--border)] bg-[var(--surface)] px-3 py-2 text-sm w-64"
+          />
+          <button
+            onClick={doAddUser}
+            className="rounded-lg px-4 py-2.5 text-sm font-semibold bg-[var(--accent)] text-black hover:bg-[var(--accent-hover)] disabled:opacity-60"
+            disabled={!email.trim()}
+          >
+            PUT /api/users
+          </button>
+          <button
+            onClick={doListUsers}
+            className="rounded-lg px-4 py-2.5 text-sm font-semibold border border-[var(--border)] hover:translate-y-[-1px] transition"
+          >
+            GET /api/users
+          </button>
+          {usersJson && <CopyButton value={usersJson} />}
+        </div>
+        <pre className="mt-3 overflow-x-auto rounded-lg border border-[var(--border)] p-3 text-sm pretty-json">
+{usersJson || "// Press one of the buttons above"}
+        </pre>
+      </section>
     </main>
   );
 }
