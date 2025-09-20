@@ -62,7 +62,7 @@ typedef struct
     int         status_code;
     const char* status_text;
     const char* content_type;
-    const char* body;
+    char*       body;
     size_t      body_length;
 } HttpResponse;
 

@@ -14,6 +14,7 @@
 #include <stdlib.h>   /* malloc, free, strdup, strtol, qsort */
 #include <string.h>   /* strcmp, strcpy, strerror, strstr, strdup */
 #include <sys/stat.h> /* stat, struct stat */
+#include <stdint.h>
 
 #include "http_manager.h"     /* HttpRequest, HttpResponse */
 #include "contract_version.h" /* CONTRACT_VERSION */

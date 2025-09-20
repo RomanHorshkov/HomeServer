@@ -111,4 +111,10 @@ typedef enum
 #define HTTP_MAX_HEADER_VALUE_LEN  256
 #define HTTP_MAX_BODY_RAM_CAPACITY (64 * 1024) /* 64 KB */
 
+/**
+ * DATABASE PROPERTIES
+ */
+
+#define DATABASE_INITIAL_SIZE      (1ULL << 28) /* 1<<28 256 MiB */
+
 #endif /* SERVER_SETTINGS_H */
