@@ -31,14 +31,3 @@ export async function whoAmI()
   if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
   return res.json();
 }
-
-// DataBase functions
-export async function db_add_user(email)
-{
-  return apiPut('/api/users', { email });
-}
-
-export async function db_list_users()
-{
-  return apiGet('/api/users');
-}

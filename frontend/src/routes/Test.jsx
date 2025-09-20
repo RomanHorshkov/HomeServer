@@ -1,6 +1,8 @@
 import React, { useState } from "react";
 import "../animations/cat.css";
-import { whoAmI, db_add_user, db_list_users } from "../api/client";
+import { whoAmI } from "../api/client";
+import { db_add_user, db_list_users } from "../api/db";
+import EmailField from "../components/EmailField";
 
 function CopyButton({ value }) {
   const [ok, setOk] = useState(false);
@@ -21,7 +23,10 @@ export default function Test() {
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState("");
 
-  const [email, setEmail] = useState("");
+  const [emailRaw, setEmailRaw] = useState("");
+  const [emailCanon, setEmailCanon] = useState("");
+  const [emailOk, setEmailOk] = useState(false);
+
   const [usersJson, setUsersJson] = useState("");
 
   const reveal = async () => {
@@ -49,7 +54,7 @@ export default function Test() {
   const doAddUser = async () => {
     setErr("");
     try {
-      const r = await db_add_user(email.trim());
+      const r = await db_add_user(emailCanon || emailRaw);
       setUsersJson(JSON.stringify(r, null, 2));
     } catch (e) {
       setErr(e.message || String(e));
@@ -68,28 +73,6 @@ export default function Test() {
 
   return (
     <main className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-10 sm:py-16">
-      <header className="mb-8">
-        <h1 className="text-3xl sm:text-4xl font-extrabold tracking-tight text-[var(--text)]">
-          Diagnostics / Test
-        </h1>
-        <p className="mt-2 text-[var(--muted)]">
-          Quick endpoints: whoami, add user, list users.
-        </p>
-      </header>
-
-      {/* Cat animation */}
-      <div className="flex justify-center mb-6">
-        <div className="cat">
-          <div className="ear ear--left" />
-          <div className="ear ear--right" />
-          <div className="face">
-            <div className="eye eye--left"><div className="eye-pupil" /></div>
-            <div className="eye eye--right"><div className="eye-pupil" /></div>
-            <div className="muzzle" />
-          </div>
-        </div>
-      </div>
-
       {/* whoami */}
       <section className="rounded-xl border border-[var(--border)] bg-[var(--surface)] p-4 sm:p-6 shadow-md mb-6">
         <div className="flex flex-wrap items-center gap-3 justify-between">
@@ -108,34 +91,41 @@ export default function Test() {
           </div>
         </div>
         {err && <p className="mt-3 text-sm text-red-500">Error: {err}</p>}
-        <pre className="mt-3 overflow-x-auto rounded-lg border border-[var(--border)] p-3 text-sm pretty-json" aria-live="polite">{out}</pre>
+        <pre className="mt-3 overflow-x-auto rounded-lg border border-[var(--border)] p-3 text-sm pretty-json" aria-live="polite">
+{out}
+        </pre>
       </section>
 
       {/* users */}
       <section className="rounded-xl border border-[var(--border)] bg-[var(--surface)] p-4 sm:p-6 shadow-md">
         <div className="flex flex-wrap items-center gap-3">
-          <input
-            type="email"
-            placeholder="email@example.com"
-            value={email}
-            onChange={(e)=>setEmail(e.target.value)}
-            className="rounded-lg border border-[var(--border)] bg-[var(--surface)] px-3 py-2 text-sm w-64"
+          <EmailField
+            value={emailRaw}
+            onChange={({ raw, canon, ok }) => {
+              setEmailRaw(raw);
+              setEmailCanon(canon);
+              setEmailOk(ok);
+            }}
           />
+
           <button
             onClick={doAddUser}
             className="rounded-lg px-4 py-2.5 text-sm font-semibold bg-[var(--accent)] text-black hover:bg-[var(--accent-hover)] disabled:opacity-60"
-            disabled={!email.trim()}
+            disabled={!emailOk}
           >
-            PUT /api/users
+            add user
           </button>
+
           <button
             onClick={doListUsers}
             className="rounded-lg px-4 py-2.5 text-sm font-semibold border border-[var(--border)] hover:translate-y-[-1px] transition"
           >
-            GET /api/users
+            get users list
           </button>
+
           {usersJson && <CopyButton value={usersJson} />}
         </div>
+
         <pre className="mt-3 overflow-x-auto rounded-lg border border-[var(--border)] p-3 text-sm pretty-json">
 {usersJson || "// Press one of the buttons above"}
         </pre>

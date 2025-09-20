@@ -39,6 +39,7 @@
 #include "server_settings.h"
 #include "socket_helper.h"
 #include "worker.h"
+#include "db_interface.h"
 
 /****************************************************************************
  * PRIVATE STRUCTURED TYPES
@@ -139,6 +140,12 @@ int server_init(const char *port)
 
     /* Initialize the logger */
     logger_init("server.log");
+
+    /* Initialize the DataBase*/
+    if(db_open("./database", DATABASE_INITIAL_SIZE) != STATUS_SUCCESS)
+    {
+        log_error("[CORE]: DataBase open failed.");
+    }
 
     /* Initialize the pipeline between listener and worker */
     if(pipeline_init(&server.pipeline) != STATUS_SUCCESS)
