@@ -5,21 +5,20 @@ It now serves **dynamic JSON APIs**, **rich client‑side pages**, a **build-not
 
 | Capability | Implementation notes |
 |------------|----------------------|
-| 🧵 **True multithreading** | Dedicated *Listener*, *Worker* and optional *Ctrl* threads; hand‑off via an SPSC ring so **no mutexes needed**. |
-| ⚡ **Edge‑triggered `epoll` everywhere** | One sys‑call per wake‑up, thousands of concurrent sockets, no busy‑polling. |
-| 🎛 **Graceful admission control** | Hard cap (`MAX_CLIENTS`); worker flips to **FULL**, listener pauses all `accept4()` calls in real time. |
-| 🔄 **Lock‑free SPSC ring + `eventfd`** | Zero‑copy FD transfer from listener → worker; one 8‑byte signal wakes the consumer. |
-| 📜 **HTTP/1.1 spec‑grade parsing** | Static‑linked 🏎 **[llhttp]** state‑machine (zero allocations, ~3 kB hot path). |
-| 📦 **JSON encoding/decoding** | Static‑linked **[cJSON]** (MIT licence) for REST endpoints and on‑disk manifests. |
-| 🗂 **Static & dynamic content** | Static files from `var/www/`, JSON APIs (`whoami`, `drive`), and an embedded Build‑Notes viewer. |
-| 📝 **Structured logging** | Single‑writer, line‑buffered `var/www/server.log`; ready for `tail -f` or ELK shipping. |
-| 🔒 **Robust request sanitation** | Path traversal defence, header/value length limits, body RAM‑cap, optional chroot/uid‑drop. |
-| 🛠 **One‑shot GNU Make** | `make debug` / `make release` → static binary in `build/bin/server` (`-Wall -Wextra -Werror -pedantic`). |
-| 🐳 **Docker‑ready** | Minimal scratch‑based image + optional nginx front for HTTPS termination. |
+| **True multithreading** | Dedicated *Listener*, *Worker* and optional *Ctrl* threads; hand‑off via an SPSC ring so **no mutexes needed**. |
+| **Edge‑triggered `epoll` everywhere** | One sys‑call per wake‑up, thousands of concurrent sockets, no busy‑polling. |
+| **Graceful admission control** | Hard cap (`MAX_CLIENTS`); worker flips to **FULL**, listener pauses all `accept4()` calls in real time. |
+| **Lock‑free SPSC ring + `eventfd`** | Zero‑copy FD transfer from listener → worker; one 8‑byte signal wakes the consumer. |
+| **HTTP/1.1 spec‑grade parsing** | Static‑linked 🏎 **[llhttp]** state‑machine (zero allocations, ~3 kB hot path). |
+| **JSON encoding/decoding** | Static‑linked **[cJSON]** (MIT licence) for REST endpoints and on‑disk manifests. |
+| **Static & dynamic content** | Static files from `var/www/`, JSON APIs (`whoami`, `drive`), and an embedded Build‑Notes viewer. |
+| **Structured logging** | Single‑writer, line‑buffered `var/www/server.log`; ready for `tail -f` or ELK shipping. |
+| **Robust request sanitation** | Path traversal defence, header/value length limits, body RAM‑cap, optional chroot/uid‑drop. |
+| **One‑shot GNU Make** | `make debug` / `make release` → static binary in `build/bin/server` (`-Wall -Wextra -Werror -pedantic`). |
+| **Docker‑ready** | Minimal scratch‑based image + optional nginx front for HTTPS termination. |
 
 [llhttp]: https://github.com/nodejs/llhttp  
 [cJSON]:  https://github.com/DaveGamble/cJSON
-
 
 ---
 
