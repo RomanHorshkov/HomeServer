@@ -158,6 +158,6 @@ int handler_expenses(const HttpRequest* req, HttpResponse* resp);
  */
 int handler_drive(const HttpRequest* req, HttpResponse* resp);
 
-int handler_db_add_user(const HttpRequest* request, HttpResponse* response);
+int handler_database(const HttpRequest* req, HttpResponse* res);
 
 #endif /* SERVER_BROWSER_HANDLER_INTERFACE_H */

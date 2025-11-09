@@ -67,7 +67,7 @@ LDFLAGS  += \
   -L$(APP_DIR)/external/llhttp \
   -L$(APP_DIR)/external/cjson \
   -L$(APP_DIR)/external/spsc_ring \
-  -L$(APP_DIR)/external/db
+#   -L$(APP_DIR)/external/db
 
 # App’s non-DB libs
 LDLIBS_APP := -lllhttp -lcjson -lspsc_ring
