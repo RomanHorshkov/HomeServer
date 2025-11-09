@@ -133,34 +133,32 @@ static int call_api_handler(const HttpRequest *request, HttpResponse *response)
     if(count <= 0)
     {
         log_error("[router] no entries in api table");
+        return res;
     }
 
-    else
+    /* Compare each table entry to request */
+    for(size_t i = 0; i < count; ++i)
     {
-        /* Compare each table entry to request */
-        for(size_t i = 0; i < count; ++i)
+        /* Check if any table entry corresponds to request */
+        if(strncmp(request->path, table[i].path, table[i].path_len) == 0)
         {
-            /* Check if any table entry corresponds to request */
-            if(strncmp(request->path, table[i].path, table[i].path_len) == 0)
+            const char next = request->path[table[i].path_len];
+            /* Check if next char is a / or \0, to avoid /api/whoami123 as ok */
+            if(next == '\0' || next == '/')
             {
-                const char next = request->path[table[i].path_len];
-                /* Check if next char is a / or \0, to avoid /api/whoami123 as ok */
-                if(next == '\0' || next == '/')
-                {
 #ifdef DEBUG_MODE
-                    log_info("[router] api path %s, table path %s",
-                             request->path, table[i].path);
+                log_info("[router] api path %s, table path %s",
+                            request->path, table[i].path);
 #endif
-                    res = table[i].handler(request, response);
-                }
-
-                else
-                {
-                    log_error("[router] wrong api request");
-                }
-
-                break;
+                res = table[i].handler(request, response);
             }
+
+            else
+            {
+                log_error("[router] wrong api request");
+            }
+
+            break;
         }
     }
 

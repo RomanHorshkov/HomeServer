@@ -8,9 +8,68 @@
  * @date 2025-10-04
  * (c) 2025
  */
+#ifndef DB_REQUEST_H
+#define DB_REQUEST_H
 
-#include "handlers_int.h"
-#include "db_interface.h"
+#include <stddef.h>
+#include <stdint.h>
+#include <time.h>
+#include "route_register.h"
+
+/* -------- String view (no allocation, no copy) -------- */
+typedef struct {
+    const char* p;   /* may be NULL */
+    size_t      n;   /* bytes (no trailing NUL required) */
+} sv_t;
+
+/* Safe helper to make a view from a C string (up to maxlen) */
+static inline sv_t sv_c(const char* z, size_t maxlen) {
+    if(!z) return (sv_t){0,0};
+    size_t n = 0;
+    while(n < maxlen && z[n] != '\0') n++;
+    return (sv_t){ z, n };
+}
+
+/* Header pair: name and value, both as views */
+typedef struct {
+    sv_t name;
+    sv_t value;
+} db_hdr_kv_t;
+
+typedef enum
+{
+    DB_APP_OK        = 0,
+    DB_APP_BAD_REQ   = 1,
+    DB_APP_UNAUTH    = 2,
+    DB_APP_FORBIDDEN = 3,
+    DB_APP_NOT_FOUND = 4,
+    DB_APP_CONFLICT  = 5,
+    DB_APP_INTERNAL  = 9
+} db_app_status_t;
+
+/* -------- Pass-through request for the DB layer -------- */
+typedef struct {
+    /* Transport/meta (optional, just forwarded as-is) */
+    uint64_t now_epoch;     /* e.g., time(NULL) once per request */
+    uint32_t remote_ip_be;  /* optional IPv4 (network byte order), else 0 */
+    uint16_t remote_port_be;/* optional (network byte order), else 0 */
+
+    /* Request line */
+    int   method; /* your http_method_t enum value */
+    sv_t  path;   /* clean URL only; no query kept here */
+
+    /* Headers as-is (no normalization/indexing) */
+    db_hdr_kv_t* headers;   /* pointer to an array of pairs (views only) */
+    int          header_count;
+
+    /* Body as-is (raw bytes) */
+    const char* body;       /* may be NULL */
+    size_t      body_len;   /* bytes */
+} DB_request_t;
+
+#endif /* DB_REQUEST_H */
+
+// #include "db_app.h"
 #include "http_manager.h"
 
 #include <string.h>
@@ -39,15 +98,41 @@
  ****************************************************************************
  */
 
-/****************************************************************************
- * PRIVATE FUNCTION PROTOTYPES
- ****************************************************************************/
-static void hex16(const uint8_t id[DB_ID_SIZE], char out[33]);
-static const char* status_from_rc(int rc);
+static inline int db_request_init_from_http(const HttpRequest* in,
+                                            uint64_t now_epoch,
+                                            uint32_t remote_ip_be,
+                                            uint16_t remote_port_be,
+                                            db_hdr_kv_t* headers_out,
+                                            DB_request_t* out)
+{
+    if(!in || !headers_out || !out) return -1;
 
-/* endpoint handlers */
-static int handler_login_user(const HttpRequest* req, HttpResponse* res);
-static int handler_add_user(const HttpRequest* req, HttpResponse* res);
+    out->now_epoch      = now_epoch;
+    out->remote_ip_be   = remote_ip_be;
+    out->remote_port_be = remote_port_be;
+
+    out->method = in->method;
+
+    /* path as a view into in->path (bounded by HTTP_MAX_PATH_LEN) */
+    out->path = sv_c(in->path, HTTP_MAX_PATH_LEN);
+
+    /* headers: turn each NUL-terminated string into views */
+    int hc = (in->header_count < HTTP_MAX_HEADERS_IN) ? in->header_count
+                                                      : HTTP_MAX_HEADERS_IN;
+    for(int i = 0; i < hc; ++i) {
+        headers_out[i].name  = sv_c(in->header_names[i],  HTTP_MAX_HEADER_NAME_LEN);
+        headers_out[i].value = sv_c(in->header_values[i], HTTP_MAX_HEADER_VALUE_LEN);
+    }
+    out->headers      = headers_out;
+    out->header_count = hc;
+
+    /* body straight through */
+    out->body     = in->body;
+    out->body_len = in->body_len;
+
+    return 0;
+}
+
 
 /****************************************************************************
  * PRIVATE STRUCTURED VARIABLES
@@ -59,124 +144,40 @@ static int handler_add_user(const HttpRequest* req, HttpResponse* res);
  * PUBLIC FUNCTIONS DEFINITIONS
  ****************************************************************************
  */
-int handler_auth_db(const HttpRequest* req, HttpResponse* res)
+int handler_database(const HttpRequest* req, HttpResponse* res)
 {
-    if(!req || !res)
-        return STATUS_FAILURE;
+    if(!req || !res){ send_400(res); return -1; }
 
-    if(strncmp(req->path, "/api/db_add_user", 16) == 0 &&
-       req->method == HTTP_METHOD_PUT)
-        return handler_add_user(req, res);
+    /* Stack-only, no heap churn */
+    db_hdr_kv_t hdr_views[HTTP_MAX_HEADERS_IN];
+    DB_request_t db_req;
 
-    if(strncmp(req->path, "/api/login", 10) == 0 &&
-       req->method == HTTP_METHOD_POST)
-        return handler_login_user(req, res);
-
-    send_404(res);
-    return STATUS_FAILURE;
+    if(db_request_init_from_http(req, time(NULL), 0, 0, hdr_views, &db_req) != 0)
+    {
+        send_400(res); return -1;
+    }
+    
+    db_app_status_t st = db_app_call(&db_req, &res);
+    
+    return 0;
 }
-
 /****************************************************************************
  * PRIVATE FUNCTIONS DEINITIONS
  ****************************************************************************
  */
 
-static int handler_add_user(const HttpRequest* req, HttpResponse* res)
+static const char* http_get_header(const HttpRequest* req, const char* name)
 {
-    if(!req->body || req->body_len == 0)
-    {
-        send_400(res);
-        return STATUS_FAILURE;
-    }
-
-    cJSON* root = cJSON_ParseWithLength(req->body, req->body_len);
-    if(!root) { send_400(res); return STATUS_FAILURE; }
-
-    cJSON* jemail = cJSON_GetObjectItemCaseSensitive(root, "email");
-    if(!cJSON_IsString(jemail) || !jemail->valuestring || jemail->valuestring[0] == '\0')
-    {
-        cJSON_Delete(root);
-        send_400(res);
-        return STATUS_FAILURE;
-    }
-
-    char email_buf[DB_EMAIL_MAX_LEN];
-    size_t n = strnlen(jemail->valuestring, DB_EMAIL_MAX_LEN);
-    if(n == 0 || n >= DB_EMAIL_MAX_LEN)
-    {
-        cJSON_Delete(root);
-        send_400(res);
-        return STATUS_FAILURE;
-    }
-    memcpy(email_buf, jemail->valuestring, n + 1);
-
-    uint8_t id[DB_ID_SIZE] = {0};
-    int rc = db_add_user(email_buf, id);
-
-    if(rc != 0 && rc != -EEXIST)
-    {
-        cJSON_Delete(root);
-        send_500(res);
-        return STATUS_FAILURE;
-    }
-
-    char idhex[33];
-    hex16(id, idhex);
-
-    cJSON* answ = cJSON_CreateObject();
-    if(!answ) { cJSON_Delete(root); send_500(res); return STATUS_FAILURE; }
-
-    cJSON* user = cJSON_CreateObject();
-    if(!user) { cJSON_Delete(answ); cJSON_Delete(root); send_500(res); return STATUS_FAILURE; }
-
-    cJSON_AddItemToObject(answ, "user", user);
-    cJSON_AddStringToObject(user, "id", idhex);
-    cJSON_AddStringToObject(user, "email", email_buf);
-    cJSON_AddStringToObject(answ, "status", status_from_rc(rc));
-
-    char* body = cJSON_PrintUnformatted(answ);
-    if(!body) { cJSON_Delete(answ); cJSON_Delete(root); send_500(res); return STATUS_FAILURE; }
-
-    res->status_code  = (rc == 0) ? 201 : 200;
-    res->status_text  = (rc == 0) ? "Created" : "OK";
-    res->content_type = "application/json";
-    res->body         = body;
-    res->body_length  = strlen(body);
-
-    cJSON_Delete(answ);
-    cJSON_Delete(root);
-    return STATUS_SUCCESS;
+    for(int i=0;i<req->header_count;i++)
+        if(strcasecmp(req->header_names[i], name)==0)
+            return req->header_values[i];
+    return NULL;
 }
 
-static int handler_login_user(const HttpRequest* req, HttpResponse* res)
-{
-    // similar pattern as add_user
-    send_501(res); // not implemented yet
-    return STATUS_FAILURE;
-}
-
-/****************************************************************************
- * UTILITIES
- ****************************************************************************/
-static void hex16(const uint8_t id[DB_ID_SIZE], char out[33])
-{
-    static const char* h = "0123456789abcdef";
-    for(int i = 0; i < 16; i++)
-    {
-        out[i*2]     = h[id[i] >> 4];
-        out[i*2 + 1] = h[id[i] & 0xF];
-    }
-    out[32] = '\0';
-}
-
-static const char* status_from_rc(int rc)
-{
-    if(rc == 0) return "inserted";
-    if(rc == -EEXIST) return "exists";
-    return "error";
-}
 
 /****************************************************************************
  * REGISTER ROUTE
  ****************************************************************************/
-REGISTER_ROUTE("/api/auth_db", handler_auth_db)
+REGISTER_ROUTE("/api/database", handler_database)
+
+// handler_database.c

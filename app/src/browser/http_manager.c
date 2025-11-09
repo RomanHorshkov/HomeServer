@@ -200,24 +200,20 @@ int http_manage_request(const char* recv_buf, const size_t buffer_len,
     if(http_parse_request(recv_buf, buffer_len, request) != STATUS_SUCCESS)
     {
         log_error("[browser] parse failed", strerror(errno));
+        return res;
     }
 
     /* Sanitize parsed HTTP reuest */
-    else if(sanitize_http_request(request) != STATUS_SUCCESS)
+    if(sanitize_http_request(request) != STATUS_SUCCESS)
     {
         log_error("[browser] sanitize_http_request failed", strerror(errno));
+        return res;
     }
 
-    else
-    {
-        /* Set return variable to success */
-        res = STATUS_SUCCESS;
+    /* Determine connection policy based on headers */
+    determine_connection_policy(request);
 
-        /* Determine connection policy based on headers */
-        determine_connection_policy(request);
-    }
-
-    return res;
+    return STATUS_SUCCESS;
 }
 
 /****************************************************************************
@@ -258,7 +254,7 @@ static int http_parse_request(const char* buffer, const size_t buffer_len,
     llhttp_errno_t err = llhttp_execute(&parser, buffer, buffer_len);
 
     /* Store last header if not already stored */
-    if(ctx.current_field[0] && ctx.req->header_count < HTTP_MAX_HEADER_COUNT)
+    if(ctx.current_field[0] && ctx.req->header_count < HTTP_MAX_HEADERS_IN)
     {
         int i = ctx.req->header_count++;
 
@@ -433,7 +429,7 @@ static int sanitize_http_request(HttpRequest* req)
     }
 
     /* Ensure headers are within limits */
-    else if(req->header_count > HTTP_MAX_HEADER_COUNT)
+    else if(req->header_count > HTTP_MAX_HEADERS_IN)
     {
         log_error("[http]: Too many headers", "");
         return STATUS_FAILURE;
@@ -483,7 +479,7 @@ static int on_header_field(llhttp_t* parser, const char* at, size_t length)
     LlhttpParserContext* ctx = (LlhttpParserContext*)parser->data;
 
     // If were finishing a previous header, store it
-    if(!ctx->in_header_field && ctx->req->header_count < HTTP_MAX_HEADER_COUNT)
+    if(!ctx->in_header_field && ctx->req->header_count < HTTP_MAX_HEADERS_IN)
     {
         int i = ctx->req->header_count++;
         strncpy(ctx->req->header_names[i], ctx->current_field,
