@@ -121,25 +121,25 @@ void log_error(const char *fmt, ...)
 #ifdef DEBUG_MODE
 void log_addrinfo_list(const struct addrinfo *ai)
 {
-    int  index = 0;
+    int index = 0;
     char ip_str[INET6_ADDRSTRLEN];
 
     for(; ai != NULL; ai = ai->ai_next, ++index)
     {
-        void       *addr;
+        void *addr;
         const char *ipver;
 
         if(ai->ai_family == AF_INET)
         {
             struct sockaddr_in *ipv4 = (struct sockaddr_in *)ai->ai_addr;
-            addr                     = &(ipv4->sin_addr);
-            ipver                    = "IPv4";
+            addr = &(ipv4->sin_addr);
+            ipver = "IPv4";
         }
         else if(ai->ai_family == AF_INET6)
         {
             struct sockaddr_in6 *ipv6 = (struct sockaddr_in6 *)ai->ai_addr;
-            addr                      = &(ipv6->sin6_addr);
-            ipver                     = "IPv6";
+            addr = &(ipv6->sin6_addr);
+            ipver = "IPv6";
         }
         else
         {
@@ -185,10 +185,10 @@ void log_addrinfo_list(const struct addrinfo *ai)
 
 static void log_timestamp()
 {
-    static time_t     now;
+    static time_t now;
     static struct tm *tm_info;
-    char              buffer[32];
-    now     = time(NULL);
+    char buffer[32];
+    now = time(NULL);
     tm_info = localtime(&now);
     strftime(buffer, sizeof(buffer), "[%Y-%m-%d %H:%M:%S]", tm_info);
     fprintf(log_file, "%s ", buffer);

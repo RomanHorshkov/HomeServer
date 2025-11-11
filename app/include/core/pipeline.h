@@ -40,8 +40,7 @@ int pipeline_push(pipeline_t *pipeline_ptr, const int client_fd);
 
 int pipeline_pop(pipeline_t *pipeline_ptr);
 
-int pipeline_notify_worker_status_change(pipeline_t   *pipeline,
-                                         worker_status status);
+int pipeline_notify_worker_status_change(pipeline_t *pipeline, worker_status status);
 
 int pipeline_get_wakeup_fd(pipeline_t *pipeline_ptr);
 

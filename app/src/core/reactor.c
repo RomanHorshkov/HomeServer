@@ -77,8 +77,8 @@ struct reactor
  ****************************************************************************
  */
 
-static int reactor_manage_fd(const reactor_t *reactor_ptr, int watch_fd,
-                             int operation, uint32_t events, fd_ctx_t *ctx);
+static int reactor_manage_fd(const reactor_t *reactor_ptr, int watch_fd, int operation,
+                             uint32_t events, fd_ctx_t *ctx);
 
 /****************************************************************************
  * PUBLIC FUNCTIONS DEFINITIONS
@@ -119,13 +119,11 @@ int reactor_init(reactor_t **reactor_ptr_ptr)
             else
             {
                 /* Allocate the events buffer (one slot per possible registration) */
-                new_reactor->events =
-                    calloc(MAX_FAN_OUT_SOCKETS, sizeof(struct epoll_event));
+                new_reactor->events = calloc(MAX_FAN_OUT_SOCKETS, sizeof(struct epoll_event));
 
                 if(new_reactor->events == NULL)
                 {
-                    log_error("[reactor] calloc() events failed %s",
-                              strerror(errno));
+                    log_error("[reactor] calloc() events failed %s", strerror(errno));
                     free(new_reactor->events);
                     free(new_reactor);
                 }
@@ -133,7 +131,7 @@ int reactor_init(reactor_t **reactor_ptr_ptr)
                 else
                 {
                     *reactor_ptr_ptr = new_reactor;
-                    res              = STATUS_SUCCESS;
+                    res = STATUS_SUCCESS;
                 }
             }
         }
@@ -226,9 +224,8 @@ int reactor_add_in_client(const reactor_t *reactor_ptr, int fd, fd_ctx_t *ctx)
 
     else
     {
-        res =
-            reactor_manage_fd(reactor_ptr, fd, EPOLL_CTL_ADD,
-                              EPOLLIN | EPOLLRDHUP | EPOLLHUP | EPOLLERR, ctx);
+        res = reactor_manage_fd(reactor_ptr, fd, EPOLL_CTL_ADD,
+                                EPOLLIN | EPOLLRDHUP | EPOLLHUP | EPOLLERR, ctx);
     }
 
     return res;
@@ -252,8 +249,7 @@ int reactor_add_out(const reactor_t *reactor_ptr, int fd, fd_ctx_t *ctx)
     return res;
 }
 
-int reactor_mod(const reactor_t *reactor_ptr, int fd, uint32_t events,
-                fd_ctx_t *ctx)
+int reactor_mod(const reactor_t *reactor_ptr, int fd, uint32_t events, fd_ctx_t *ctx)
 {
     if(!reactor_ptr || fd < 0 || !ctx)
     {
@@ -289,8 +285,7 @@ int reactor_run(reactor_t *reactor_ptr, int *out_fd)
         int n = epoller_wait(reactor_ptr->epoll_fd, reactor_ptr->events);
         if(n <= 0)
         {
-            log_error("[reactor] _run epoller_listen_events error %s",
-                      strerror(errno));
+            log_error("[reactor] _run epoller_listen_events error %s", strerror(errno));
         }
 
         else
@@ -319,8 +314,7 @@ int reactor_run(reactor_t *reactor_ptr, int *out_fd)
                 else
                 {
 #ifdef DEBUG_MODE
-                    log_info("[reactor] reactor_run: calling fd %d handler",
-                             ctx->fd);
+                    log_info("[reactor] reactor_run: calling fd %d handler", ctx->fd);
 #endif
                     /* Call the handler */
                     res = ctx->handler(ctx->fd, ctx);
@@ -355,8 +349,7 @@ int reactor_shutdown(reactor_t **reactor_ptr_ptr)
         /* Close epoll instance */
         if(epoller_shutdown(reactor_ptr->epoll_fd) < 0)
         {
-            log_error("[reactor] shutdown: failed to close epoll fd (%s)",
-                      strerror(errno));
+            log_error("[reactor] shutdown: failed to close epoll fd (%s)", strerror(errno));
         }
 
         else
@@ -382,8 +375,8 @@ int reactor_shutdown(reactor_t **reactor_ptr_ptr)
  ****************************************************************************
  */
 
-static int reactor_manage_fd(const reactor_t *reactor_ptr, int watch_fd,
-                             int operation, uint32_t events, fd_ctx_t *ctx)
+static int reactor_manage_fd(const reactor_t *reactor_ptr, int watch_fd, int operation,
+                             uint32_t events, fd_ctx_t *ctx)
 {
     /* Result variable */
     int res = STATUS_FAILURE;
@@ -394,11 +387,9 @@ static int reactor_manage_fd(const reactor_t *reactor_ptr, int watch_fd,
     }
 
     /* 1. Let the kernel work first – if this fails don’t mutate state. */
-    else if(epoller_manage_fd(reactor_ptr->epoll_fd, watch_fd, operation,
-                              events, (void *)ctx) < 0)
+    else if(epoller_manage_fd(reactor_ptr->epoll_fd, watch_fd, operation, events, (void *)ctx) < 0)
     {
-        log_error("[reactor] manage_fd: epoll_manage_fd failed (%s)",
-                  strerror(errno));
+        log_error("[reactor] manage_fd: epoll_manage_fd failed (%s)", strerror(errno));
     }
 
     else

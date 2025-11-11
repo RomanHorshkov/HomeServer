@@ -10,19 +10,18 @@
 #include <ctype.h>  /* isxdigit() */
 #include <dirent.h> /* opendir(), readdir(), closedir() */
 #include <stddef.h>
+#include <stdint.h>
 #include <stdio.h>    /* snprintf, sscanf, fopen, fseek, ftell, fread, fclose */
 #include <stdlib.h>   /* malloc, free, strdup, strtol, qsort */
 #include <string.h>   /* strcmp, strcpy, strerror, strstr, strdup */
 #include <sys/stat.h> /* stat, struct stat */
-#include <stdint.h>
-
-#include "http_manager.h"     /* HttpRequest, HttpResponse */
-#include "contract_version.h" /* CONTRACT_VERSION */
-#include "handlers_interface.h"
-#include "logger.h" /* log_info, log_error */
-#include "route_register.h"
 
 #include "cJSON.h"
+#include "contract_version.h" /* CONTRACT_VERSION */
+#include "handlers_interface.h"
+#include "http_manager.h" /* HttpRequest, HttpResponse */
+#include "logger.h"       /* log_info, log_error */
+#include "route_register.h"
 
 /****************************************************************************
  * PUBLIC DEFINES

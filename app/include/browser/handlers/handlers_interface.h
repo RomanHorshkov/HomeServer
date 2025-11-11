@@ -40,6 +40,7 @@
 // #include "handler_drive.h"
 // #include "handler_expenses.h"
 // #include "handler_static.h"
+#include "http_manager.h"
 #include "server_settings.h"
 
 /****************************************************************************
