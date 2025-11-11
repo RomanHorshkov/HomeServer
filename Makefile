@@ -152,7 +152,8 @@ run: all
 format:
 ifndef FILES
 	@echo "🛠  Formatting all .c/.h files in the project..."
-	@find app -regex '.*\.\(c\|h\)' -exec clang-format -i {} +
+	@find app \( -path 'app/external' -o -path 'app/external/*' \) -prune -o \
+		-regex '.*\.(c\|h)' -exec clang-format -i {} +
 else
 	@echo "🛠  Formatting staged files: $(FILES)"
 	@clang-format -i $(FILES)
@@ -205,6 +206,7 @@ publish-contract:
 clean:
 	rm -rf $(BUILDDIR) frontend/dist frontend/node_modules
 	rm -f var/www/server.log var/www/map.json
+	@$(MAKE) -C $(APP_DIR)/external/DataBase clean || true
 
 # Auto-generated dependency files ------------------------------------
 -include $(DEPS)
