@@ -56,8 +56,7 @@ typedef struct listener listener_t;
  * @retval  0  Success.
  * @retval -1  Failure (see log for details).
  */
-int listener_init(listener_t **listener_ptr, const char *port,
-                  pipeline_t *pipeline_ptr);
+int listener_init(listener_t **listener_ptr, const char *port, pipeline_t *pipeline_ptr);
 
 /**
  * @brief Main listener thread function: accepts new connections and forwards them.

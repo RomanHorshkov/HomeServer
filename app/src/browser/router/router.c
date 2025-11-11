@@ -50,7 +50,7 @@
 
 /* Existing vector of handlers (populated by constructors) */
 extern route_t *vec;
-extern size_t   used;
+extern size_t used;
 
 /****************************************************************************
  * PRIVATE DEFINES
@@ -91,8 +91,7 @@ int router_handle_request(const HttpRequest *request, HttpResponse *response)
     else if(strncmp(request->path, "/api/", 5) == 0)
     {
 #ifdef DEBUG_MODE
-        log_info("[router] API request detected %s, searching handler",
-                 request->path);
+        log_info("[router] API request detected %s, searching handler", request->path);
 #endif
         res = call_api_handler(request, response);
     }
@@ -103,7 +102,7 @@ int router_handle_request(const HttpRequest *request, HttpResponse *response)
 
         /* SPA fallback (serve homepage/entrypoint) */
         HttpRequest *copy_req = calloc(1, sizeof(HttpRequest));
-        *copy_req             = *request;  // shallow copy all fields
+        *copy_req = *request;  // shallow copy all fields
         strncpy(copy_req->path, "/", sizeof(copy_req->path));
         res = handler_static(copy_req, response);
 
@@ -126,7 +125,7 @@ static int call_api_handler(const HttpRequest *request, HttpResponse *response)
     /* Return variable */
     int res = STATUS_FAILURE;
 
-    size_t         count = -1;
+    size_t count = -1;
     const route_t *table = router_get_table(&count);
 
     /* Check if any api have been registered */
@@ -147,8 +146,7 @@ static int call_api_handler(const HttpRequest *request, HttpResponse *response)
             if(next == '\0' || next == '/')
             {
 #ifdef DEBUG_MODE
-                log_info("[router] api path %s, table path %s",
-                            request->path, table[i].path);
+                log_info("[router] api path %s, table path %s", request->path, table[i].path);
 #endif
                 res = table[i].handler(request, response);
             }

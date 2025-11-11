@@ -41,6 +41,18 @@ else
   endif
 endif
 
+# --- libsodium detection (required by libdb.a) ---
+ifeq ($(PKGCONFIG),)
+	SODIUM_CFLAGS :=
+	SODIUM_LIBS   := -lsodium
+else
+	SODIUM_CFLAGS := $(shell pkg-config --cflags libsodium 2>/dev/null)
+	SODIUM_LIBS   := $(shell pkg-config --libs   libsodium 2>/dev/null)
+	ifeq ($(SODIUM_LIBS),)
+		SODIUM_LIBS := -lsodium
+	endif
+endif
+
 # ------ Paths ------
 APP_DIR   := app
 SRCDIRS   := $(APP_DIR)/src
@@ -51,16 +63,15 @@ TARGET    := server
 
 # External include roots (headers live here)
 INCDIRS  := \
-  $(APP_DIR)/include \
-  $(APP_DIR)/include/core \
-  $(APP_DIR)/include/browser \
-  $(APP_DIR)/include/utils \
-  $(APP_DIR)/include/browser/handlers \
-  $(APP_DIR)/include/browser/router \
-  $(APP_DIR)/external/llhttp \
-  $(APP_DIR)/external/cjson \
-  $(APP_DIR)/external/spsc_ring \
-  $(APP_DIR)/external/db
+	$(APP_DIR)/include \
+	$(APP_DIR)/include/core \
+	$(APP_DIR)/include/browser \
+	$(APP_DIR)/include/utils \
+	$(APP_DIR)/include/browser/handlers \
+	$(APP_DIR)/include/browser/router \
+	$(APP_DIR)/external/llhttp \
+	$(APP_DIR)/external/cjson \
+	$(APP_DIR)/external/spsc_ring
 
 # External library search paths
 LDFLAGS  += \
@@ -70,12 +81,12 @@ LDFLAGS  += \
 #   -L$(APP_DIR)/external/db
 
 # App’s non-DB libs
-LDLIBS_APP := -lllhttp -lcjson -lspsc_ring
+LDLIBS_APP = -lllhttp -lcjson -lspsc_ring
 
 # DB lib + its deps (order matters; group avoids --as-needed surprises)
-LDLIBS_DB  := -Wl,--start-group -ldb $(LMDB_LIBS) $(OPENSSL_LIBS) -Wl,--end-group
+LDLIBS_DB  = -Wl,--start-group $(DB_LIB) $(LMDB_LIBS) $(OPENSSL_LIBS) $(SODIUM_LIBS) -Wl,--end-group
 
-LDLIBS := $(LDLIBS_APP) $(LDLIBS_DB)
+LDLIBS = $(LDLIBS_APP) $(LDLIBS_DB)
 
 # ------ Contract header (generated) ------
 CONTRACT_MANIFEST := contract/manifest.json
@@ -83,7 +94,7 @@ CONTRACT_GEN      := utils/gen_contract_header.sh
 CONTRACT_HDR      := $(APP_DIR)/include/contract_version.h
 
 # ------ Flags ------
-CPPFLAGS := $(addprefix -I,$(INCDIRS)) -MMD -MP $(OPENSSL_CFLAGS) $(LMDB_CFLAGS)
+CPPFLAGS := $(addprefix -I,$(INCDIRS)) -MMD -MP $(OPENSSL_CFLAGS) $(LMDB_CFLAGS) $(SODIUM_CFLAGS) -D_POSIX_C_SOURCE=200809L
 CFLAGS   := $(CSTD) $(WARN) $(DBGFLAGS)
 
 # ------ Sources / objects / deps ------
@@ -99,7 +110,7 @@ $(CONTRACT_HDR): $(CONTRACT_MANIFEST) $(CONTRACT_GEN)
 	@bash $(CONTRACT_GEN)
 
 # ------ Build targets ------
-all: deps $(BINDIR)/$(TARGET)
+all: db-lib deps $(BINDIR)/$(TARGET)
 
 # Warn early if deps missing (non-fatal: you might have a static lib that already bundles)
 deps:
@@ -109,9 +120,14 @@ endif
 ifeq ($(OPENSSL_FOUND),0)
 	@echo "[warn] OpenSSL (libcrypto) not detected. Install: sudo apt-get install -y libssl-dev"
 endif
+ifeq ($(SODIUM_LIBS),-lsodium)
+	@if ! printf '#include <sodium.h>\nint main(){return sodium_init();}\n' | $(CC) -x c - -o /dev/null -lsodium >/dev/null 2>&1; then \
+		echo "[warn] libsodium not detected. Install: sudo apt-get install -y libsodium-dev"; \
+	fi
+endif
 
 # Link ---------------------------------------------------------------
-$(BINDIR)/$(TARGET): $(OBJECTS)
+$(BINDIR)/$(TARGET): $(OBJECTS) $(DB_LIB)
 	@mkdir -p $(BINDIR)
 	$(CC) $(CFLAGS) $^ $(LDFLAGS) $(LDLIBS) -o $@
 
@@ -206,3 +222,62 @@ help:
 	@echo "  notes          - (re)generate build notes manifest"
 	@echo "  publish-contract - copy ./contract → /var/www/contract"
 	@echo "  clean          - remove build outputs"
+
+# External Database project settings
+DB_MODE ?= release
+DB_DIR := $(APP_DIR)/external/DataBase
+DB_BUILD_DIR := $(DB_DIR)
+DB_INC := $(DB_DIR)/app/include
+DB_LIB := $(DB_DIR)/build/$(DB_MODE)/lib/libdb.a
+DB_UUID7_LIB := $(DB_DIR)/app/external/UUID7/build/libuuid7.a
+DB_YYJSON_LIB := $(DB_DIR)/app/external/yyjson/libyyjson.a
+DB_EMLOG_LIB := $(DB_DIR)/app/external/EMlog/libemlog.a
+
+# Additional static archives produced by the DB project that must be linked
+DB_EXTRA_LIBS := $(DB_UUID7_LIB) $(DB_YYJSON_LIB) $(DB_EMLOG_LIB)
+
+# Include directories exported by the DB project
+DB_INC_DIRS := \
+	$(DB_INC) \
+	$(DB_INC)/auth \
+	$(DB_INC)/client \
+	$(DB_INC)/cryptography \
+	$(DB_INC)/db \
+	$(DB_INC)/db_app \
+	$(DB_INC)/keys \
+	$(DB_INC)/platform \
+	$(DB_INC)/utils \
+	$(DB_DIR)/app/external/UUID7/include
+
+INCDIRS += $(DB_INC_DIRS)
+
+# Ensure include path and library are used by the project
+# Add DB include to CPPFLAGS and library to LDLIBS/LDFLAGS
+CPPFLAGS += $(addprefix -I,$(DB_INC_DIRS))
+# Link by direct path to static archive to avoid needing -L/-l adjustments:
+LDLIBS += -pthread $(DB_EXTRA_LIBS)
+
+# Build Database library before main targets:
+# 'all' should depend on db library; if your existing all target differs, add db build as prerequisite.
+.PHONY: db-lib
+db-lib: $(DB_LIB)
+
+$(DB_LIB):
+	@echo "Building external Database project in $(DB_DIR) [MODE=$(DB_MODE)]"
+	$(MAKE) -C $(DB_BUILD_DIR) MODE=$(DB_MODE) lib
+	@if [ ! -f $(DB_LIB) ]; then \
+		echo "ERROR: Database library $(DB_LIB) not found after building $(DB_BUILD_DIR)"; \
+		exit 1; \
+	fi
+	@if [ -f $(DB_UUID7_LIB) ]; then :; else \
+		echo "ERROR: Expected UUID7 static library $(DB_UUID7_LIB)"; \
+		exit 1; \
+	fi
+	@if [ -f $(DB_YYJSON_LIB) ]; then :; else \
+		echo "ERROR: Expected yyjson static library $(DB_YYJSON_LIB)"; \
+		exit 1; \
+	fi
+	@if [ -f $(DB_EMLOG_LIB) ]; then :; else \
+		echo "ERROR: Expected EMlog static library $(DB_EMLOG_LIB)"; \
+		exit 1; \
+	fi

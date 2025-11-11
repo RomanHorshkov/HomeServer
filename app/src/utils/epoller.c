@@ -39,8 +39,7 @@
 int epoller_new(void)
 {
     int res = epoll_create1(0);
-    if(res < 0)
-        return -errno;
+    if(res < 0) return -errno;
     return res;
 }
 
@@ -51,25 +50,21 @@ int epoller_wait(int epoll_fd, struct epoll_event *out_events)
     {
         if(errno == EINTR)
         {
-            log_info(
-                "[reactor] epoll_listen_events interrupted by signal EINTR: %s",
-                strerror(errno));
+            log_info("[reactor] epoll_listen_events interrupted by signal EINTR: %s",
+                     strerror(errno));
         }
         else
         {
-            log_error("[reactor] epoll_listen_events error: %s",
-                      strerror(errno));
+            log_error("[reactor] epoll_listen_events error: %s", strerror(errno));
         }
     }
 
     return n;
 }
 
-int epoller_manage_fd(int epoll_fd, int target_fd, int operation,
-                      uint32_t event, void *data)
+int epoller_manage_fd(int epoll_fd, int target_fd, int operation, uint32_t event, void *data)
 {
-    if(epoll_fd < 0 || target_fd < 0)
-        return -EINVAL;
+    if(epoll_fd < 0 || target_fd < 0) return -EINVAL;
 
     struct epoll_event ev;
 
@@ -91,7 +86,7 @@ int epoller_manage_fd(int epoll_fd, int target_fd, int operation,
                     "[epoller] _manage_fd with data, epoll_fd %d, target_fd "
                     "%d, op %d",
                     epoll_fd, target_fd, operation);
-                ev.events   = event;
+                ev.events = event;
                 ev.data.ptr = data;
             }
 
@@ -104,8 +99,7 @@ int epoller_manage_fd(int epoll_fd, int target_fd, int operation,
                 "[epoller] _manage_fd Deleting, epoll_fd %d, target_fd %d, op "
                 "%d",
                 epoll_fd, target_fd, operation);
-            return epoll_ctl(epoll_fd, EPOLL_CTL_DEL, target_fd, NULL) ? -errno
-                                                                       : 0;
+            return epoll_ctl(epoll_fd, EPOLL_CTL_DEL, target_fd, NULL) ? -errno : 0;
     }
 }
 
@@ -116,9 +110,7 @@ int epoller_check_if_to_close(uint32_t ev_conn)
 
 int epoller_shutdown(int epoll_fd)
 {
-    if(epoll_fd < 0)
-        return -EINVAL;
-    if(close(epoll_fd) < 0)
-        return -errno;
+    if(epoll_fd < 0) return -EINVAL;
+    if(close(epoll_fd) < 0) return -errno;
     return 0;
 }
