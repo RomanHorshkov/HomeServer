@@ -144,6 +144,7 @@ int server_init(const char *port)
     if(db_app_init() != 0)
     {
         log_error("[CORE]: db_app_init failed");
+        return -1;
     }
 
     /* Initialize the pipeline between listener and worker */
