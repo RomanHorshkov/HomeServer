@@ -266,9 +266,10 @@ static void core_logger_bootstrap(void)
     emlog_set_writev_flush(true);
     EML_INFO(LOG_TAG, "Debug logger active; stdout/stderr sink");
 #else
-    emlog_init(EML_LEVEL_INFO, true);
-    emlog_set_writev_flush(true);
-    EML_INFO(LOG_TAG, "Production logger active; stdout/stderr sink");
+    /* Production will go to journald */
+    emlog_init(EML_LEVEL_INFO, false);
+    emlog_set_writev_flush(false);
+    EML_INFO(LOG_TAG, "Production logger active; journald sink");
 #endif
 
     initialized = true;

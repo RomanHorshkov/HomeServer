@@ -129,6 +129,12 @@ list(REMOVE_DUPLICATES SERVER_INCLUDE_DIRS)
 add_executable(server ${SERVER_SOURCES})
 add_dependencies(server contract_header)
 target_include_directories(server PRIVATE ${SERVER_INCLUDE_DIRS})
+set_target_properties(
+    server
+    PROPERTIES
+        BUILD_RPATH "\$ORIGIN/../lib;${CMAKE_BINARY_DIR}/lib"
+        INSTALL_RPATH "\$ORIGIN/../lib"
+)
 target_link_libraries(
     server
     PRIVATE
