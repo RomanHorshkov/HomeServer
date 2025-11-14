@@ -87,6 +87,9 @@ struct worker
     /* collaboration with listener structure */
     pipeline_t *pipeline_ptr;
 
+    /* reactor context for the pipeline wakeup fd */
+    fd_ctx_t *wakeup_ctx;
+
     /* clients array */
     client_slot_t clients[MAX_CLIENTS];
 
@@ -178,17 +181,39 @@ int worker_init(worker_t **worker_ptr_ptr, pipeline_t *pipeline_ptr)
             }
 
             /* Register wakeup_fd to reactor */
-            else if(reactor_add_in(new_worker->reactor_ptr, wakeup_fd,
-                                   (fd_ctx_t *)&(fd_ctx_t){.fd = wakeup_fd,
-                                                           .owner = new_worker,
-                                                           .handler = handle_wakeup_event}) !=
-                    STATUS_SUCCESS)
+            else
             {
-                EML_ERROR(LOG_TAG, "[worker]: worker_init: epoll_add_in failed wakeup_fd: %s",
-                          strerror(errno));
+                fd_ctx_t *wakeup_ctx = calloc(1, sizeof(*wakeup_ctx));
+                if(!wakeup_ctx)
+                {
+                    EML_ERROR(LOG_TAG, "[worker]: worker_init: wakeup_ctx alloc failed: %s",
+                              strerror(errno));
+                }
+                else
+                {
+                    wakeup_ctx->fd = wakeup_fd;
+                    wakeup_ctx->owner = new_worker;
+                    wakeup_ctx->handler = handle_wakeup_event;
+
+                    if(reactor_add_in(new_worker->reactor_ptr, wakeup_fd, wakeup_ctx) !=
+                       STATUS_SUCCESS)
+                    {
+                        free(wakeup_ctx);
+                        EML_ERROR(LOG_TAG, "[worker]: worker_init: epoll_add_in failed wakeup_fd: %s",
+                                  strerror(errno));
+                    }
+                    else
+                    {
+                        new_worker->wakeup_ctx = wakeup_ctx;
+                    }
+                }
             }
 
             /* Initialize the worker's status and update the listener */
+            if(!new_worker->wakeup_ctx)
+            {
+                EML_ERROR(LOG_TAG, "[worker]: worker_init: wakeup fd context missing, aborting");
+            }
             else if(worker_set_status(new_worker, (worker_status)WORKER_STATUS_ACTIVE) !=
                     STATUS_SUCCESS)
             {
@@ -257,6 +282,7 @@ void *worker_run(void *arg)
     /* Tear down timer, reactor */
     reactor_shutdown(&worker_ptr->reactor_ptr);
     close(worker_ptr->timer_fd);
+    free(worker_ptr->wakeup_ctx);
     free(worker_ptr);
 
     return NULL;
