@@ -58,11 +58,13 @@ add_prebuilt_static(
     ${CMAKE_SOURCE_DIR}/app/external/cjson
     ${CMAKE_SOURCE_DIR}/app/external/cjson/libcjson.a
 )
-add_prebuilt_static(
-    spsc_ring
-    ${CMAKE_SOURCE_DIR}/app/external/spsc_ring
-    ${CMAKE_SOURCE_DIR}/app/external/spsc_ring/libspsc_ring.a
-)
+
+# -----------------------------------------------------------------------------
+# SPSC ring submodule
+# -----------------------------------------------------------------------------
+set(SPSCRING_BUILD_SHARED OFF CACHE BOOL "" FORCE)
+set(SPSCRING_BUILD_STATIC ON CACHE BOOL "" FORCE)
+add_subdirectory(app/external/SPSCring/app)
 
 # -----------------------------------------------------------------------------
 # Contract header (generated from contract/manifest.json, mirrors Makefile rule)
@@ -110,7 +112,7 @@ list(
     APPEND SERVER_INCLUDE_DIRS
         ${CMAKE_SOURCE_DIR}/app/external/llhttp
         ${CMAKE_SOURCE_DIR}/app/external/cjson
-        ${CMAKE_SOURCE_DIR}/app/external/spsc_ring
+        ${CMAKE_SOURCE_DIR}/app/external/SPSCring/app/include
         ${CMAKE_SOURCE_DIR}/app/external/DataBase/app/include
         ${CMAKE_SOURCE_DIR}/app/external/DataBase/app/external/UUID7/include
 )
@@ -142,7 +144,7 @@ target_link_libraries(
         emlog_shared
         llhttp
         cjson
-        spsc_ring
+        spsc_ring_static
         Threads::Threads
 )
 target_compile_options(

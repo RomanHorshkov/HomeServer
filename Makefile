@@ -55,7 +55,7 @@ endif
 
 # ------ Paths ------
 APP_DIR   := app
-SRCDIRS   := $(APP_DIR)/src
+SRCDIRS   := $(APP_DIR)/src $(APP_DIR)/external/SPSCring/app/src
 BUILDDIR  := build
 OBJDIR    := $(BUILDDIR)/obj
 BINDIR    := $(BUILDDIR)/bin
@@ -71,7 +71,7 @@ INCDIRS  := \
 	$(APP_DIR)/include/browser/router \
 	$(APP_DIR)/external/llhttp \
 	$(APP_DIR)/external/cjson \
-	$(APP_DIR)/external/spsc_ring
+	$(APP_DIR)/external/SPSCring/app/include
 
 # External library search paths
 LDFLAGS  += \
