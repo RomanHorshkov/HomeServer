@@ -26,9 +26,11 @@
 #include <string.h>     /* strerror */
 #include <sys/socket.h> /* send(), recv() */
 
-#include "logger.h"          /* log_info, log_error */
+#include <emlog.h>
 #include "router.h"          /* router_handle_request */
 #include "server_settings.h" /* HTTP constants */
+
+#define LOG_TAG "browser"
 
 /****************************************************************************
  * PRIVATE DEFINES
@@ -98,38 +100,38 @@ int browser_manage_client_req(int fd)
     if(n == 0)
     {
 #ifdef DEBUG_MODE
-        log_info("[browser] Peer closed connection (fd %d)", fd);
+        EML_INFO(LOG_TAG, "Peer closed connection (fd %d)", fd);
 #endif /* DEBUG_MODE */
     }
 
     /* If read() failed, log the error */
     else if(n < 0)
     {
-        log_error("[browser] read() error on fd %d: %s", fd, strerror(errno));
+        EML_ERROR(LOG_TAG, "read() error on fd %d: %s", fd, strerror(errno));
     }
 
     else
     {
 #ifdef DEBUG_MODE
-        // log_info("[worker] Received from fd %d:\n%.*s", fd, (int)n, recv_buf);
+        // EML_INFO(LOG_TAG, "[worker] Received from fd %d:\n%.*s", fd, (int)n, recv_buf);
 #endif /* DEBUG_MODE */
 
         /* manage http request */
         if(http_manage_request(recv_buf, n, &request) != STATUS_SUCCESS)
         {
-            log_perror("[browser] http_manage_request failed");
+            EML_PERR(LOG_TAG, "http_manage_request failed");
         }
 
         /* Route request to generate HttpResponse (status, headers, body) */
         else if(router_handle_request(&request, &response) != STATUS_SUCCESS)
         {
-            log_error("[browser] router_handle_request failed for fd %d", fd);
+            EML_ERROR(LOG_TAG, "router_handle_request failed for fd %d", fd);
         }
 
         /* Send HTTP response over TCP (headers + binary body) */
         else if(send_response(fd, &response) < 0)
         {
-            log_perror("[browser] send_response failed");
+            EML_PERR(LOG_TAG, "send_response failed");
 
             /* Free any heap buffer allocated by handler_static_page */
             free((void *)response.body);
@@ -172,14 +174,14 @@ static int send_response(int fd, const HttpResponse *resp)
     /* Validate header length */
     if(hdr_len < 0 || hdr_len >= (int)sizeof hdr_buf)
     {
-        log_error("[browser]: response headers too large");
+        EML_ERROR(LOG_TAG, "response headers too large");
         return -1;
     }
 
     /* Send all header bytes */
     if(send_all(fd, hdr_buf, (size_t)hdr_len) < 0)
     {
-        log_perror("[browser]: response header send failed");
+        EML_PERR(LOG_TAG, "response header send failed");
         return -1;
     }
 
@@ -188,7 +190,7 @@ static int send_response(int fd, const HttpResponse *resp)
     {
         if(send_all(fd, resp->body, resp->body_length) < 0)
         {
-            log_perror("[browser]: response body send failed");
+            EML_PERR(LOG_TAG, "response body send failed");
             return -1;
         }
     }

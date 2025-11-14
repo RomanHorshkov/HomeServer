@@ -79,9 +79,6 @@ typedef enum
 /* Home page URI */
 #define HOME_PAGE "index.html"
 
-/* chdir and chroot paths */
-#define CHDIR_PATH "/srv/home_server/pri"  // DO NOT WRITE /var/www as global path
-
 /* Server timeout */
 #define SERVER_KEEPALIVE_TIMEOUT_ALONE 60U
 #define SERVER_KEEPALIVE_TIMEOUT_NOT_ALONE 10U

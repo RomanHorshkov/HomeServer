@@ -20,7 +20,6 @@
 #include "contract_version.h" /* CONTRACT_VERSION */
 #include "handlers_interface.h"
 #include "http_manager.h" /* HttpRequest, HttpResponse */
-#include "logger.h"       /* log_info, log_error */
 #include "route_register.h"
 
 /****************************************************************************

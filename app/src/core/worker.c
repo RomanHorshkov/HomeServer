@@ -33,11 +33,13 @@
 #include <unistd.h>    /* fork(), close(), read(), write(), etc. */
 
 #include "browser.h"
-#include "logger.h" /* logger */
 #include "reactor.h"
 #include "server_settings.h"
 #include "socket_helper.h"
 #include "time_helper.h"
+#include <emlog.h>
+
+#define LOG_TAG "worker"
 
 /****************************************************************************
  * PRIVATE DEFINES
@@ -132,7 +134,7 @@ int worker_init(worker_t **worker_ptr_ptr, pipeline_t *pipeline_ptr)
     /* Check input */
     if(worker_ptr_ptr == NULL || pipeline_ptr == NULL)
     {
-        log_error("[worker]:worker_init: invalid input");
+        EML_ERROR(LOG_TAG, "[worker]:worker_init: invalid input");
     }
     else
     {
@@ -142,20 +144,20 @@ int worker_init(worker_t **worker_ptr_ptr, pipeline_t *pipeline_ptr)
         /* Check memory allocation */
         if(new_worker == NULL)
         {
-            log_error("[worker]:worker_init: memory allocation failed: %s", strerror(errno));
+            EML_ERROR(LOG_TAG, "[worker]:worker_init: memory allocation failed: %s", strerror(errno));
         }
 
         /* Create reactor */
         else if(reactor_init(&new_worker->reactor_ptr) != STATUS_SUCCESS)
         {
-            log_error("[worker]:worker_init: reactor_init failed: %s", strerror(errno));
+            EML_ERROR(LOG_TAG, "[worker]:worker_init: reactor_init failed: %s", strerror(errno));
             free(new_worker);
         }
 
         /* Initialize worker's timer and register to reactor */
         else if(timer_init(new_worker, &new_worker->timer_fd) != STATUS_SUCCESS)
         {
-            log_error("[worker]: worker_init: timer_init failed: %s", strerror(errno));
+            EML_ERROR(LOG_TAG, "[worker]: worker_init: timer_init failed: %s", strerror(errno));
             free(new_worker);
         }
 
@@ -169,7 +171,7 @@ int worker_init(worker_t **worker_ptr_ptr, pipeline_t *pipeline_ptr)
             /* Get wakeup fd from pipeline */
             if(wakeup_fd < 0)
             {
-                log_error(
+                EML_ERROR(LOG_TAG, 
                     "[worker]: worker_init: pipeline_get_wakeup_fd failed: %s, "
                     "wakeup_fd %d",
                     strerror(errno), wakeup_fd);
@@ -182,7 +184,7 @@ int worker_init(worker_t **worker_ptr_ptr, pipeline_t *pipeline_ptr)
                                                            .handler = handle_wakeup_event}) !=
                     STATUS_SUCCESS)
             {
-                log_error("[worker]: worker_init: epoll_add_in failed wakeup_fd: %s",
+                EML_ERROR(LOG_TAG, "[worker]: worker_init: epoll_add_in failed wakeup_fd: %s",
                           strerror(errno));
             }
 
@@ -190,7 +192,7 @@ int worker_init(worker_t **worker_ptr_ptr, pipeline_t *pipeline_ptr)
             else if(worker_set_status(new_worker, (worker_status)WORKER_STATUS_ACTIVE) !=
                     STATUS_SUCCESS)
             {
-                log_error(
+                EML_ERROR(LOG_TAG, 
                     "[worker]: worker_init: worker_set_status failed "
                     "%s",
                     strerror(errno));
@@ -212,7 +214,7 @@ void *worker_run(void *arg)
     /* Check input */
     if(arg == NULL)
     {
-        log_error("[worker]: worker_run: invalid input");
+        EML_ERROR(LOG_TAG, "[worker]: worker_run: invalid input");
         return NULL;
     }
 
@@ -230,14 +232,14 @@ void *worker_run(void *arg)
             /* If the reactor did not run successfully, check if a socket has to be closed */
             if(out_fd != -1)
             {
-                log_info("[worker]: reactor signaled to remove fd %d, removing...", out_fd);
+                EML_INFO(LOG_TAG, "[worker]: reactor signaled to remove fd %d, removing...", out_fd);
 
                 remove_client(worker_ptr, out_fd);
                 out_fd = -1;
             }
             else
             {
-                log_error("[worker] reactor_run failed: %s", strerror(errno));
+                EML_ERROR(LOG_TAG, "[worker] reactor_run failed: %s", strerror(errno));
             }
         }
 
@@ -267,12 +269,12 @@ int worker_set_status(worker_t *worker_ptr, worker_status status)
 
     if(worker_ptr == NULL)
     {
-        log_error("[worker] _set_status: invalid listener pointer");
+        EML_ERROR(LOG_TAG, "[worker] _set_status: invalid listener pointer");
     }
 
     else if(status >= WORKER_STATUS_INVALID)
     {
-        log_error("[worker] _set_status: invalid status value %d", status);
+        EML_ERROR(LOG_TAG, "[worker] _set_status: invalid status value %d", status);
     }
 
     else
@@ -284,13 +286,13 @@ int worker_set_status(worker_t *worker_ptr, worker_status status)
 
 #ifdef DEBUG_MODE
         /* Log the status change */
-        log_info("[worker] _set_status: status set to %d", status);
+        EML_INFO(LOG_TAG, "[worker] _set_status: status set to %d", status);
 #endif /* DEBUG_MODE */
 
         /* writes the pipe */
         if(pipeline_notify_worker_status_change(worker_ptr->pipeline_ptr, status) != STATUS_SUCCESS)
         {
-            log_error(
+            EML_ERROR(LOG_TAG, 
                 "[worker] _set_status: pipeline_notify "
                 "failed");
         }
@@ -323,7 +325,7 @@ static int handle_wakeup_event(int fd, fd_ctx_t *ctx)
     {
         if(add_client(worker_ptr, client_fd) != STATUS_SUCCESS)
         {
-            log_error("[worker] on_wakeup: add_client failed, closing %d", client_fd);
+            EML_ERROR(LOG_TAG, "[worker] on_wakeup: add_client failed, closing %d", client_fd);
             socket_shutdown_and_close(client_fd);
             worker_set_status(worker_ptr, WORKER_STATUS_FULL);
         }
@@ -352,7 +354,7 @@ static int handle_client_event(int fd, fd_ctx_t *ctx)
 static int handle_timer_event(int fd, fd_ctx_t *ctx)
 {
 #ifdef DEBUG_MODE
-    log_info("[worker] IN manage_time_event");
+    EML_INFO(LOG_TAG, "[worker] IN manage_time_event");
 #endif /* DEBUG_MODE */
 
     /* Result variable */
@@ -364,7 +366,7 @@ static int handle_timer_event(int fd, fd_ctx_t *ctx)
     /* Drain the socket to shutdownn epoll wait */
     if(socket_drain(fd) == -1)
     {
-        log_error("[worker] Failed to read timerfd: %s", strerror(errno));
+        EML_ERROR(LOG_TAG, "[worker] Failed to read timerfd: %s", strerror(errno));
     }
 
     /* Update the timer */
@@ -400,7 +402,7 @@ static int add_client(worker_t *worker_ptr, int client_fd)
 
     if(worker_ptr->active_clients >= MAX_CLIENTS)
     {
-        log_error("[worker] add_client MAX_CLIENTS %d reached", MAX_CLIENTS);
+        EML_ERROR(LOG_TAG, "[worker] add_client MAX_CLIENTS %d reached", MAX_CLIENTS);
     }
     else
     {
@@ -417,7 +419,7 @@ static int add_client(worker_t *worker_ptr, int client_fd)
         if(reactor_add_in_client(worker_ptr->reactor_ptr, client_fd, ctx) != STATUS_SUCCESS)
         {
             free(ctx);
-            log_error("[worker] add_client reactor_add_in_client failed");
+            EML_ERROR(LOG_TAG, "[worker] add_client reactor_add_in_client failed");
         }
         else
         {
@@ -443,12 +445,12 @@ static int remove_client(worker_t *worker_ptr, int client_fd)
     /* Check input */
     if(worker_ptr == NULL || client_fd < CLIENT_FIRST_SOCKET)
     {
-        log_error("[worker] remove_client: invalid input");
+        EML_ERROR(LOG_TAG, "[worker] remove_client: invalid input");
     }
 
     else if(reactor_del(worker_ptr->reactor_ptr, worker_ptr->clients[slot].fd) != STATUS_SUCCESS)
     {
-        log_error("[worker] remove_client: reactor_del failed fd %d at slot %d",
+        EML_ERROR(LOG_TAG, "[worker] remove_client: reactor_del failed fd %d at slot %d",
                   worker_ptr->clients[slot].fd, slot);
     }
 
@@ -463,7 +465,7 @@ static int remove_client(worker_t *worker_ptr, int client_fd)
 
         res = STATUS_SUCCESS;
 #ifdef DEBUG_MODE
-        log_info("[worker] remove_client: fd %d @ %d removed successfully", client_fd, slot);
+        EML_INFO(LOG_TAG, "[worker] remove_client: fd %d @ %d removed successfully", client_fd, slot);
 #endif
     }
 
@@ -478,7 +480,7 @@ static int timer_init(worker_t *worker_ptr, int *timer_fd)
     /* Check input */
     if(timer_fd == NULL)
     {
-        log_error("[worker] time_helper_init: invalid input");
+        EML_ERROR(LOG_TAG, "[worker] time_helper_init: invalid input");
     }
     else
     {
@@ -487,7 +489,7 @@ static int timer_init(worker_t *worker_ptr, int *timer_fd)
 
         if(*timer_fd == -1)
         {
-            log_error("[worker] time_helper_init: timerfd_create failed: %s", strerror(errno));
+            EML_ERROR(LOG_TAG, "[worker] time_helper_init: timerfd_create failed: %s", strerror(errno));
         }
 
         else
@@ -497,7 +499,7 @@ static int timer_init(worker_t *worker_ptr, int *timer_fd)
 
             if(!timer_ctx)
             {
-                log_error("[worker] time_helper_init: timer_ctx failed: %s", strerror(errno));
+                EML_ERROR(LOG_TAG, "[worker] time_helper_init: timer_ctx failed: %s", strerror(errno));
             }
             else
             {
@@ -508,7 +510,7 @@ static int timer_init(worker_t *worker_ptr, int *timer_fd)
                 /* Set the timer interval and initial expiry */
                 if(time_helper_set(*timer_fd, SERVER_KEEPALIVE_TIMEOUT_NOT_ALONE, 0) == -1)
                 {
-                    log_error(
+                    EML_ERROR(LOG_TAG, 
                         "[worker] time_helper_init: time_helper_set failed: "
                         "%s, timer closed.",
                         strerror(errno));
@@ -519,7 +521,7 @@ static int timer_init(worker_t *worker_ptr, int *timer_fd)
                 else if(reactor_add_in(worker_ptr->reactor_ptr, *timer_fd, timer_ctx) !=
                         STATUS_SUCCESS)
                 {
-                    log_error(
+                    EML_ERROR(LOG_TAG, 
                         "[worker]: worker_init: reactor_add_in failed "
                         "timer_fd: %s",
                         strerror(errno));
@@ -543,7 +545,7 @@ static void timer_update(const worker_t *worker_ptr)
 
     if(worker_ptr == NULL)
     {
-        log_error("[worker] timer_update: invalid input");
+        EML_ERROR(LOG_TAG, "[worker] timer_update: invalid input");
     }
 
     /* Set timer with connections */
@@ -553,7 +555,7 @@ static void timer_update(const worker_t *worker_ptr)
         last_timer_update = SERVER_KEEPALIVE_TIMEOUT_NOT_ALONE;
         time_helper_set(worker_ptr->timer_fd, last_timer_update, 0);
 #ifdef DEBUG_MODE
-        log_info("[worker] timer_update: Updated timer (%d seconds)", last_timer_update);
+        EML_INFO(LOG_TAG, "[worker] timer_update: Updated timer (%d seconds)", last_timer_update);
 #endif /* DEBUG_MODE */
     }
 
@@ -563,7 +565,7 @@ static void timer_update(const worker_t *worker_ptr)
         last_timer_update = SERVER_KEEPALIVE_TIMEOUT_ALONE;
         time_helper_set(worker_ptr->timer_fd, last_timer_update, 0);
 #ifdef DEBUG_MODE
-        log_info("[worker] timer_update: Updated timer to (%d seconds)", last_timer_update);
+        EML_INFO(LOG_TAG, "[worker] timer_update: Updated timer to (%d seconds)", last_timer_update);
 #endif /* DEBUG_MODE */
     }
 

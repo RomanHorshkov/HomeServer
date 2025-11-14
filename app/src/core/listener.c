@@ -34,10 +34,12 @@
 #include <string.h>      /* memset(), strcpy(), strlen(), etc. */
 #include <unistd.h>      /* fork(), close(), read(), write(), etc. */
 
-#include "logger.h"          /* logger */
 #include "reactor.h"         /* reactor */
 #include "server_settings.h" /* settings */
 #include "socket_helper.h"
+#include <emlog.h>
+
+#define LOG_TAG "listener"
 
 /****************************************************************************
  * PRIVATE DEFINES
@@ -137,6 +139,10 @@ static int handle_worker_event(int fd, fd_ctx_t *ctx);
 
 static int handle_listen_event(int fd, fd_ctx_t *ctx);
 
+#ifdef DEBUG_MODE
+static void listener_log_addrinfo_list(const struct addrinfo *ai);
+#endif
+
 /**
  * @brief Shutdown the listener and release all associated resources.
  *
@@ -184,31 +190,31 @@ int listener_init(listener_t **listener_ptr, const char *port, pipeline_t *pipel
     /* Check input */
     if(listener_ptr == NULL || port == NULL || pipeline_ptr == NULL)
     {
-        log_error("[listener] _init: invalid input");
+        EML_ERROR(LOG_TAG, "[listener] _init: invalid input");
     }
 
     /* Initialize memory */
     else if(init_memory(listener_ptr) != STATUS_SUCCESS)
     {
-        log_perror("[listener] _init: memory initialization failed");
+        EML_PERR(LOG_TAG, "[listener] _init: memory initialization failed");
     }
 
     /* Initialize communication pipeline */
     else if(init_pipeline(*listener_ptr, pipeline_ptr) != STATUS_SUCCESS)
     {
-        log_perror("[listener] _init: pipeline initialization failed");
+        EML_PERR(LOG_TAG, "[listener] _init: pipeline initialization failed");
     }
 
     /* Create and start the listener sockets */
     else if(init_listening_sockets(*listener_ptr, port) != STATUS_SUCCESS)
     {
-        log_perror("[listener]: _init init_listening_sockets failed");
+        EML_PERR(LOG_TAG, "[listener]: _init init_listening_sockets failed");
     }
 
     /* Initialize reactor */
     else if(reactor_init(&(*listener_ptr)->reactor_ptr) != STATUS_SUCCESS)
     {
-        log_error("[listener]: _init: reactor_init failed: %s", strerror(errno));
+        EML_ERROR(LOG_TAG, "[listener]: _init: reactor_init failed: %s", strerror(errno));
     }
 
     /* Add pipeline read socket to reactor */
@@ -223,13 +229,13 @@ int listener_init(listener_t **listener_ptr, const char *port, pipeline_t *pipel
 
         if(reactor_add_in((*listener_ptr)->reactor_ptr, pipe_fd, ctx) != STATUS_SUCCESS)
         {
-            log_error("[listener]: _init: reactor_add_in failed pipe read: %s", strerror(errno));
+            EML_ERROR(LOG_TAG, "[listener]: _init: reactor_add_in failed pipe read: %s", strerror(errno));
         }
 
         /* Register all listening sockets to reactor */
         else if(register_listening_sockets(*listener_ptr) != STATUS_SUCCESS)
         {
-            log_perror("[listener]: _init register_listening_sockets failed");
+            EML_PERR(LOG_TAG, "[listener]: _init register_listening_sockets failed");
         }
 
         /* If everything succceded */
@@ -255,7 +261,7 @@ void *listener_run(void *arg)
     /* Check input */
     if(arg == NULL)
     {
-        log_error("listener_run invalid input");
+        EML_ERROR(LOG_TAG, "listener_run invalid input");
     }
 
     else
@@ -273,7 +279,7 @@ void *listener_run(void *arg)
     }
 
 #ifdef DEBUG_MODE
-    log_info("[listener] Listener thread exiting.");
+    EML_INFO(LOG_TAG, "[listener] Listener thread exiting.");
 #endif /* DEBUG_MODE */
 
     return NULL;
@@ -284,12 +290,12 @@ void listener_set_status(listener_t *listener_ptr, int status)
     /* check input */
     if(listener_ptr == NULL)
     {
-        log_error("listener_set_status: invalid listener pointer");
+        EML_ERROR(LOG_TAG, "listener_set_status: invalid listener pointer");
     }
 
     else if(status >= LISTENER_STATUS_INVALID)
     {
-        log_error("listener_set_status: invalid status value %d", status);
+        EML_ERROR(LOG_TAG, "listener_set_status: invalid status value %d", status);
     }
 
     /* Set the status */
@@ -298,7 +304,7 @@ void listener_set_status(listener_t *listener_ptr, int status)
         atomic_store(&listener_ptr->status, status);
 
 #ifdef DEBUG_MODE
-        log_info("[listener] status set to %d", status);
+        EML_INFO(LOG_TAG, "[listener] status set to %d", status);
 #endif /* DEBUG_MODE */
     }
 }
@@ -325,19 +331,19 @@ static int init_memory(listener_t **listener_ptr)
             *listener_ptr = new_listener;
             res = STATUS_SUCCESS;
 #ifdef DEBUG_MODE
-            log_info("[listener] memory setted up correctly");
+            EML_INFO(LOG_TAG, "[listener] memory setted up correctly");
 #endif /* DEBUG_MODE */
         }
 
         else
         {
-            log_perror("[listener] memory allocation failed calloc");
+            EML_PERR(LOG_TAG, "[listener] memory allocation failed calloc");
         }
     }
 
     else
     {
-        log_perror("[listener] allocation failed, invalid input");
+        EML_PERR(LOG_TAG, "[listener] allocation failed, invalid input");
     }
 
     return res;
@@ -356,7 +362,7 @@ static int init_pipeline(listener_t *listener_ptr, pipeline_t *pipeline_ptr)
 
     else
     {
-        log_perror("[listener] init_pipeline failed, invalid input");
+        EML_PERR(LOG_TAG, "[listener] init_pipeline failed, invalid input");
     }
 
     return res;
@@ -380,23 +386,23 @@ static int init_listening_sockets(listener_t *listener_ptr, const char *port)
     /* Set socket hints for getaddr */
     if(socket_set_listener_hints(&hints) != STATUS_SUCCESS)
     {
-        log_error("[listener] init_listening_sockets socket hints failed: %s", strerror(errno));
+        EML_ERROR(LOG_TAG, "[listener] init_listening_sockets socket hints failed: %s", strerror(errno));
     }
 
     /* get connectable sockets with hints */
     else if(getaddrinfo(NULL, port, &hints, &server_info_out) != 0)
     {
-        log_error("[listener] init_listening_sockets getaddrinfo failed: %s", strerror(errno));
+        EML_ERROR(LOG_TAG, "[listener] init_listening_sockets getaddrinfo failed: %s", strerror(errno));
     }
 
     else
     {
 #ifdef DEBUG_MODE
-        log_info(
+        EML_INFO(LOG_TAG, 
             "[listener] getaddrinfo(NULL, %s) succeeded. Printing address info "
             "list results:\n",
             port);
-        log_addrinfo_list(server_info_out);
+        listener_log_addrinfo_list(server_info_out);
 #endif
 
         /* loop through all the getaddrinfo output results */
@@ -412,13 +418,13 @@ static int init_listening_sockets(listener_t *listener_ptr, const char *port)
 
             if(listener_socket_fd == -1)
             {
-                log_error("[listener] socket creation failed: %s\n", strerror(errno));
+                EML_ERROR(LOG_TAG, "[listener] socket creation failed: %s\n", strerror(errno));
             }
 
             /* check if available space for more sockets */
             else if(listener_ptr->active_sockets_no >= MAX_LISTENERS)
             {
-                log_error("[listener] Maximum number of listeners reached: %d", MAX_LISTENERS);
+                EML_ERROR(LOG_TAG, "[listener] Maximum number of listeners reached: %d", MAX_LISTENERS);
                 /* delete the socket */
                 close(listener_socket_fd);
             }
@@ -427,7 +433,7 @@ static int init_listening_sockets(listener_t *listener_ptr, const char *port)
             else if(listener_socket_init(&listener_socket_fd, &server_info_out->ai_family) !=
                     STATUS_SUCCESS)
             {
-                log_error("[listener] setsockopt failed: %s\n", strerror(errno));
+                EML_ERROR(LOG_TAG, "[listener] setsockopt failed: %s\n", strerror(errno));
                 /* delete the socket */
                 close(listener_socket_fd);
             }
@@ -436,7 +442,7 @@ static int init_listening_sockets(listener_t *listener_ptr, const char *port)
             else if(bind(listener_socket_fd, server_info_out->ai_addr,
                          server_info_out->ai_addrlen) == -1)
             {
-                log_error("[listener] bind failed: %s\n", strerror(errno));
+                EML_ERROR(LOG_TAG, "[listener] bind failed: %s\n", strerror(errno));
                 /* delete the socket */
                 close(listener_socket_fd);
             }
@@ -444,7 +450,7 @@ static int init_listening_sockets(listener_t *listener_ptr, const char *port)
             /* Start listening */
             else if(listen(listener_socket_fd, MAX_PENDING_CONNECTIONS) == -1)
             {
-                log_error("[listener] listen failed: %s\n", strerror(errno));
+                EML_ERROR(LOG_TAG, "[listener] listen failed: %s\n", strerror(errno));
                 /* delete the socket */
                 close(listener_socket_fd);
             }
@@ -493,7 +499,7 @@ static int register_listening_sockets(listener_t *listener_ptr)
             if(reactor_add_in(listener_ptr->reactor_ptr, listener_ptr->sockets_fds[i], ctx) !=
                STATUS_SUCCESS)
             {
-                log_error(
+                EML_ERROR(LOG_TAG, 
                     "[listener] reactor_add_in failed to add listener fd %d to "
                     "reactor, %s",
                     listener_ptr->sockets_fds[i], strerror(errno));
@@ -507,7 +513,7 @@ static int register_listening_sockets(listener_t *listener_ptr)
         }
         else
         {
-            log_perror("[listener] init_epoll_instance socket OFF, continue");
+            EML_PERR(LOG_TAG, "[listener] init_epoll_instance socket OFF, continue");
         }
     }
 
@@ -522,7 +528,7 @@ static int on_worker_status_change(listener_t *listener_ptr, worker_status worke
     switch(worker_actual_status)
     {
         case WORKER_STATUS_ACTIVE:
-            log_info("[listener] on worket status change, WORKER_STATUS_ACTIVE");
+            EML_INFO(LOG_TAG, "[listener] on worket status change, WORKER_STATUS_ACTIVE");
             // resume_listening(listener_ptr);
             init_listening_sockets(listener_ptr, listener_ptr->port);
             // register_listener_sockets_to_epoll(listener_ptr);
@@ -532,7 +538,7 @@ static int on_worker_status_change(listener_t *listener_ptr, worker_status worke
 
         case WORKER_STATUS_FULL:
 
-            log_info("[listener] on worket status change, WORKER_STATUS_FULL");
+            EML_INFO(LOG_TAG, "[listener] on worket status change, WORKER_STATUS_FULL");
             // pause_listening(listener_ptr);
             stop_listener(listener_ptr);
 
@@ -540,7 +546,7 @@ static int on_worker_status_change(listener_t *listener_ptr, worker_status worke
             break;
 
         default:
-            log_error("[listener] Unknown worker_status: %s", strerror(errno));
+            EML_ERROR(LOG_TAG, "[listener] Unknown worker_status: %s", strerror(errno));
             break;
     }
 
@@ -560,7 +566,7 @@ static int handle_worker_event(int fd, fd_ctx_t *ctx)
 
     if(read(fd, &worker_msg, sizeof(uint32_t)) != sizeof(uint32_t))
     {
-        log_error("[listener] handle_worker_event Failed to read from pipe: %s", strerror(errno));
+        EML_ERROR(LOG_TAG, "[listener] handle_worker_event Failed to read from pipe: %s", strerror(errno));
     }
 
     /* Check if a status change occurred */
@@ -568,14 +574,14 @@ static int handle_worker_event(int fd, fd_ctx_t *ctx)
             ((worker_status)worker_msg != WORKER_STATUS_INVALID))
     {
 #ifdef DEBUG_MODE
-        log_info("[listener] worker_actual_status[%d] != worker_old_status[%d]",
+        EML_INFO(LOG_TAG, "[listener] worker_actual_status[%d] != worker_old_status[%d]",
                  (worker_status)worker_msg, listener_ptr->status_worker);
 #endif /* DEBUG_MODE */
 
         /* Check if change notification occurred */
         if(on_worker_status_change(listener_ptr, (worker_status)worker_msg) != STATUS_SUCCESS)
         {
-            log_error(
+            EML_ERROR(LOG_TAG, 
                 "[listener] handle_worker_event status change detected but "
                 "action faled");
         }
@@ -590,7 +596,7 @@ static int handle_worker_event(int fd, fd_ctx_t *ctx)
     else
     {
 #ifdef DEBUG_MODE
-        log_info(
+        EML_INFO(LOG_TAG, 
             "[listener] read_worker_message Pipe event received, worker_msg "
             "%u, size %zu",
             worker_msg, sizeof(uint32_t));
@@ -605,7 +611,7 @@ static int handle_worker_event(int fd, fd_ctx_t *ctx)
 static int handle_listen_event(int fd, fd_ctx_t *ctx)
 {
 #ifdef DEBUG_MODE
-    log_info("[listener] handle_listen_eventfd: %d", fd);
+    EML_INFO(LOG_TAG, "[listener] handle_listen_eventfd: %d", fd);
 #endif /* DEBUG_MODE */
     /* Result variable */
     int res = STATUS_FAILURE;
@@ -640,7 +646,7 @@ static int handle_listen_event(int fd, fd_ctx_t *ctx)
                 if(pipeline_push(listener_ptr->pipeline, client_fd) != STATUS_SUCCESS)
                 {
                     close(client_fd);
-                    log_error("[listener] pipeline_push FAILED");
+                    EML_ERROR(LOG_TAG, "[listener] pipeline_push FAILED");
                 }
                 else
                 {
@@ -649,7 +655,7 @@ static int handle_listen_event(int fd, fd_ctx_t *ctx)
             }
             else
             {
-                log_error("[listener] Failed to accept client: %s", strerror(errno));
+                EML_ERROR(LOG_TAG, "[listener] Failed to accept client: %s", strerror(errno));
             }
 
             break;
@@ -657,7 +663,7 @@ static int handle_listen_event(int fd, fd_ctx_t *ctx)
         case WORKER_STATUS_FULL:
 
 #ifdef DEBUG_MODE
-            log_info("[listener] worker status FULL... ");
+            EML_INFO(LOG_TAG, "[listener] worker status FULL... ");
 #endif /* DEBUG_MODE */
 
             /* Should proceed here and lock the listeners */
@@ -668,13 +674,70 @@ static int handle_listen_event(int fd, fd_ctx_t *ctx)
         default:
 
 #ifdef DEBUG_MODE
-            log_info("[listener] worker status UNKNOWN %d", listener_ptr->status_worker);
+            EML_INFO(LOG_TAG, "[listener] worker status UNKNOWN %d", listener_ptr->status_worker);
 #endif /* DEBUG_MODE */
             break;
     }
 
     return res;
 }
+
+#ifdef DEBUG_MODE
+static void listener_log_addrinfo_list(const struct addrinfo *ai)
+{
+    if(ai == NULL)
+    {
+        EML_INFO(LOG_TAG, "addrinfo list is empty");
+        return;
+    }
+
+    int  index = 0;
+    char ip_str[INET6_ADDRSTRLEN];
+
+    for(; ai != NULL; ai = ai->ai_next, ++index)
+    {
+        void       *addr   = NULL;
+        const char *ipver  = "UNKNOWN";
+        int         family = ai->ai_family;
+
+        if(family == AF_INET)
+        {
+            struct sockaddr_in *ipv4 = (struct sockaddr_in *)ai->ai_addr;
+            addr                     = &(ipv4->sin_addr);
+            ipver                    = "IPv4";
+        }
+        else if(family == AF_INET6)
+        {
+            struct sockaddr_in6 *ipv6 = (struct sockaddr_in6 *)ai->ai_addr;
+            addr                      = &(ipv6->sin6_addr);
+            ipver                     = "IPv6";
+        }
+        else
+        {
+            EML_INFO(LOG_TAG, "addrinfo[%d] Unknown family=%d", index, family);
+            continue;
+        }
+
+        inet_ntop(family, addr, ip_str, sizeof ip_str);
+
+        const char *protocol_name = "UNKNOWN";
+        switch(ai->ai_protocol)
+        {
+            case IPPROTO_TCP:
+                protocol_name = "TCP";
+                break;
+            case IPPROTO_UDP:
+                protocol_name = "UDP";
+                break;
+            default:
+                break;
+        }
+
+        EML_INFO(LOG_TAG, "addr_info[%d] %s address=%s socktype=%d protocol=%s flags=0x%x",
+                 index, ipver, ip_str, ai->ai_socktype, protocol_name, ai->ai_flags);
+    }
+}
+#endif /* DEBUG_MODE */
 
 #if 0
 static int pause_listening(listener_t *listener_ptr)
@@ -687,7 +750,7 @@ static int pause_listening(listener_t *listener_ptr)
         int fd = listener_ptr->sockets_fds[i];
         if(epoll_ctl(listener_ptr->epoll_fd, EPOLL_CTL_DEL, fd, NULL) != 0)
         {
-            log_error("[listener] pause_listening: error re-adding fd %d, %s", fd, strerror(errno));
+            EML_ERROR(LOG_TAG, "[listener] pause_listening: error re-adding fd %d, %s", fd, strerror(errno));
         }
 
         else
@@ -696,7 +759,7 @@ static int pause_listening(listener_t *listener_ptr)
         }
     }
 #    ifdef DEBUG_MODE
-    log_info("[listener] pause_listening: listening paused");
+    EML_INFO(LOG_TAG, "[listener] pause_listening: listening paused");
 #    endif /* DEBUG_MODE */
 
     return res;
@@ -713,7 +776,7 @@ static int resume_listening(listener_t *listener_ptr)
         ev.data.fd = listener_ptr->sockets_fds[i];
         if(epoll_ctl(listener_ptr->epoll_fd, EPOLL_CTL_ADD, listener_ptr->sockets_fds[i], &ev) != 0)
         {
-            log_error("[listener] resume_listening: error re-adding fd %d, %s", ev.data.fd,
+            EML_ERROR(LOG_TAG, "[listener] resume_listening: error re-adding fd %d, %s", ev.data.fd,
                       strerror(errno));
         }
 
@@ -724,7 +787,7 @@ static int resume_listening(listener_t *listener_ptr)
     }
 
 #    ifdef DEBUG_MODE
-    log_info("[listener] resume_listening: listening resumed");
+    EML_INFO(LOG_TAG, "[listener] resume_listening: listening resumed");
 #    endif /* DEBUG_MODE */
 
     return res;
@@ -738,13 +801,13 @@ static int stop_listener(listener_t *listener_ptr)
     int res = STATUS_FAILURE;
 
 #ifdef DEBUG_MODE
-    log_info(
+    EML_INFO(LOG_TAG, 
         "[listener]: stop_listener: un-epolling and closing all listening "
         "sockets");
 #endif /* DEBUG_MODE */
     if(listener_ptr == NULL || listener_ptr->reactor_ptr != NULL)
     {
-        log_error("[listener]: stop_listener: invalid listener pointer");
+        EML_ERROR(LOG_TAG, "[listener]: stop_listener: invalid listener pointer");
     }
 
     // /* loop through all listener's sockets */
@@ -762,7 +825,7 @@ static int stop_listener(listener_t *listener_ptr)
     //             /* Unregister each listen‑fd from epoll */
     //             if(epoll_del(listener_ptr->epoll_fd, fd) != 0)
     //             {
-    //                 log_error("[listener]: epoll_ctl DEL failed on fd %d: %s", fd,
+    //                 EML_ERROR(LOG_TAG, "[listener]: epoll_ctl DEL failed on fd %d: %s", fd,
     //                 strerror(errno));
     //             }
 
@@ -771,14 +834,14 @@ static int stop_listener(listener_t *listener_ptr)
     //              * timeout makes close() send RST instead of FIN) */
     //             else if(setsockopt(fd, SOL_SOCKET, SO_LINGER, &lngr, sizeof(lngr)) != 0)
     //             {
-    //                 log_error("[listener]: setsockopt SO_LINGER failed on fd %d: %s", fd,
+    //                 EML_ERROR(LOG_TAG, "[listener]: setsockopt SO_LINGER failed on fd %d: %s", fd,
     //                           strerror(errno));
     //             }
 
     //             /* close listener file descriptor */
     //             else if(close(fd) != 0)
     //             {
-    //                 log_error("[listener]: close failed on fd %d: %s", fd, strerror(errno));
+    //                 EML_ERROR(LOG_TAG, "[listener]: close failed on fd %d: %s", fd, strerror(errno));
     //             }
 
     //             /* Everything went good */
@@ -805,7 +868,7 @@ static int stop_listener(listener_t *listener_ptr)
 static void listener_shutdown(listener_t *listener_ptr)
 {
 #ifdef DEBUG_MODE
-    log_info("[listener]: shutting down...");
+    EML_INFO(LOG_TAG, "[listener]: shutting down...");
 #endif /* DEBUG_MODE */
 
     /* Close listener's listener sockets */
@@ -833,13 +896,13 @@ static int listener_accept_and_p_client_info(int listen_fd)
     {
         struct sockaddr_in *s = (struct sockaddr_in *)&client_addr;
         inet_ntop(AF_INET, &s->sin_addr, ipstr, sizeof(ipstr));
-        log_info("[listener] Accepted connection from %s:%d", ipstr, ntohs(s->sin_port));
+        EML_INFO(LOG_TAG, "[listener] Accepted connection from %s:%d", ipstr, ntohs(s->sin_port));
     }
     else if(client_addr.ss_family == AF_INET6)
     {
         struct sockaddr_in6 *s = (struct sockaddr_in6 *)&client_addr;
         inet_ntop(AF_INET6, &s->sin6_addr, ipstr, sizeof(ipstr));
-        log_info("[listener] Accepted connection from [%s]:%d", ipstr, ntohs(s->sin6_port));
+        EML_INFO(LOG_TAG, "[listener] Accepted connection from [%s]:%d", ipstr, ntohs(s->sin6_port));
     }
 
     return client_fd;
