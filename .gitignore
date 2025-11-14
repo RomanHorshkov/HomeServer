@@ -32,3 +32,4 @@ var/www/map.json
 # .env
 cmake-build/
 cmake-out/
+db/

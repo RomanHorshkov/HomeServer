@@ -53,16 +53,6 @@ else
 	endif
 endif
 
-# --- systemd-journald detection (required by EMlog when journald writer is enabled) ---
-ifeq ($(PKGCONFIG),)
-	SYSTEMD_LIBS := -lsystemd
-else
-	SYSTEMD_LIBS := $(shell pkg-config --libs libsystemd 2>/dev/null)
-	ifeq ($(SYSTEMD_LIBS),)
-		SYSTEMD_LIBS := -lsystemd
-	endif
-endif
-
 # ------ Paths ------
 APP_DIR   := app
 SRCDIRS   := $(APP_DIR)/src
@@ -97,7 +87,6 @@ LDLIBS_APP = -lllhttp -lcjson -lspsc_ring
 LDLIBS_DB  = -Wl,--start-group $(DB_LIB) $(LMDB_LIBS) $(OPENSSL_LIBS) $(SODIUM_LIBS) -Wl,--end-group
 
 LDLIBS = $(LDLIBS_APP) $(LDLIBS_DB)
-LDLIBS += $(SYSTEMD_LIBS)
 
 # ------ Contract header (generated) ------
 CONTRACT_MANIFEST := contract/manifest.json
