@@ -2,8 +2,8 @@
  * @file main.c
  * @brief The containerized micro-HTTP server entry point.
  *
- * This function sets the working directory, initializes the server,
- * and processes incoming requests until shutdown.
+ * This function initializes the server and processes incoming requests
+ * until shutdown.
  *
  * Usage:
  *   ./server <port>
@@ -21,11 +21,7 @@
 #    include <stdio.h> /* printf / fprintf / perror */
 #endif                 /* DEBUG_MODE */
 
-#include <server_settings.h>
-#include <unistd.h> /* chdir */
-
 #include "core.h" /* server_init / run / shutdown */
-// #include "logger.h" /* loginfo / log_error / logger_init */
 
 /****************************************************************************
  * PRIVATE DEFINES
@@ -39,42 +35,26 @@
 
 int main(int argc, char *argv[])
 {
-    /* Return variable */
-    int res = -1;
-
     /* Check input */
     if(argc != 2)
     {
 #ifdef DEBUG_MODE
         printf("Usage: %s <port>\n", argv[0]);
 #endif /* DEBUG_MODE */
-    }
-
-    /* Set working directory */
-    else if(chdir(CHDIR_PATH) != 0)
-    {
-#ifdef DEBUG_MODE
-        printf("chdir to %s failed", CHDIR_PATH);
-#endif /* DEBUG_MODE */
+        return -1;
     }
 
     /* Initialize the server */
-    else if(server_init(argv[1]) == -1)
-    {
-        /* do nothing, server not initialized */
-    }
+    else if(server_init(argv[1]) != 0) return -1;
 
     /* Run the server */
     else
     {
 #ifdef DEBUG_MODE
-        printf("Server started on port %s...", argv[1]);
+        printf("Server starting on port %s...", argv[1]);
 #endif /* DEBUG_MODE */
         server_run();
-
-        /* Set return variable to success */
-        res = 0;
     }
 
-    return res;
+    return 0;
 }

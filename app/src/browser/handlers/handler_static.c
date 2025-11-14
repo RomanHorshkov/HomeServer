@@ -6,13 +6,16 @@
  *   - handler_static_page: open a file, read its contents, and fill
  *     in an HttpResponse with the appropriate headers and body.
  *
- * Detailed error logging is performed via logger.h on failures.
+ * Detailed error logging is performed via EMlog on failures.
  *
  *   @author  Roman Horshkov <roman.horshkov@gmail.com>
  *   @date    2025‑05‑11
  *   (c) 2025
  */
 #include "handlers_int.h"
+#include <emlog.h>
+
+#define LOG_TAG "handler_static"
 
 /****************************************************************************
  * PRIVATE DEFINES
@@ -128,16 +131,16 @@ int handler_static(const HttpRequest *request, HttpResponse *response)
             else
             {
 #ifdef DEBUG_MODE
-                log_error("[handler static]: Failed to open file %s", requested_file_path);
+                EML_ERROR(LOG_TAG, "Failed to open file %s", requested_file_path);
 #endif /* DEBUG_MODE */
             }
         }
         else
         {
 #ifdef DEBUG_MODE
-            log_error(
-                "[handler static]: requested path length does not fit into "
-                "buffer");
+            EML_ERROR(LOG_TAG,
+                      "Requested path length does not fit into buffer (len=%zu)",
+                      strlen(rel_path));
 #endif /* DEBUG_MODE */
         }
     }

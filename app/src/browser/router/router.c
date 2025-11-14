@@ -28,8 +28,10 @@
 
 #include "cJSON.h"
 #include "handlers_interface.h"
-#include "logger.h"
 #include "route_register.h"
+#include <emlog.h>
+
+#define LOG_TAG "router"
 
 /****************************************************************************
  * PRIVATE STRUCTURED VARIABLES
@@ -84,21 +86,21 @@ int router_handle_request(const HttpRequest *request, HttpResponse *response)
     /* Check input validity */
     if(!request || !response)
     {
-        log_error("[router]: router_handle_request: invalid arguments");
+        EML_ERROR(LOG_TAG, "[router]: router_handle_request: invalid arguments");
     }
 
     /* Try API routes first */
     else if(strncmp(request->path, "/api/", 5) == 0)
     {
 #ifdef DEBUG_MODE
-        log_info("[router] API request detected %s, searching handler", request->path);
+        EML_INFO(LOG_TAG, "[router] API request detected %s, searching handler", request->path);
 #endif
         res = call_api_handler(request, response);
     }
 
     else
     {
-        log_error("[router] Fallback to / from %s", request->path);
+        EML_ERROR(LOG_TAG, "[router] Fallback to / from %s", request->path);
 
         /* SPA fallback (serve homepage/entrypoint) */
         HttpRequest *copy_req = calloc(1, sizeof(HttpRequest));
@@ -131,7 +133,7 @@ static int call_api_handler(const HttpRequest *request, HttpResponse *response)
     /* Check if any api have been registered */
     if(count <= 0)
     {
-        log_error("[router] no entries in api table");
+        EML_ERROR(LOG_TAG, "[router] no entries in api table");
         return res;
     }
 
@@ -146,14 +148,14 @@ static int call_api_handler(const HttpRequest *request, HttpResponse *response)
             if(next == '\0' || next == '/')
             {
 #ifdef DEBUG_MODE
-                log_info("[router] api path %s, table path %s", request->path, table[i].path);
+                EML_INFO(LOG_TAG, "[router] api path %s, table path %s", request->path, table[i].path);
 #endif
                 res = table[i].handler(request, response);
             }
 
             else
             {
-                log_error("[router] wrong api request");
+                EML_ERROR(LOG_TAG, "[router] wrong api request");
             }
 
             break;

@@ -5,12 +5,15 @@
 #include <errno.h>       /* errno, EAGAIN, etc. */
 #include <stdatomic.h>   /* atomic_int */
 #include <stdlib.h>      /* malloc(), calloc(), etc */
+#include <string.h>
 #include <sys/eventfd.h> /* eventfd(),  */
 #include <unistd.h> /* fork(), close(), pipe(), read(), write(), getlogin(), getcwd(), system() etc. */
 
-#include "logger.h"
 #include "socket_helper.h"
 #include "spsc_ring.h"
+#include <emlog.h>
+
+#define LOG_TAG "pipeline"
 
 /**
  * @file pipeline.c
@@ -79,7 +82,7 @@ int pipeline_init(pipeline_t **pipeline_ptr_ptr)
     /* Check input */
     if(pipeline_ptr_ptr == NULL)
     {
-        log_error("[pipeline] communication_init: invalid input");
+        EML_ERROR(LOG_TAG, "[pipeline] communication_init: invalid input");
     }
 
     else
@@ -89,7 +92,7 @@ int pipeline_init(pipeline_t **pipeline_ptr_ptr)
 
         if(new_pipeline_ptr == NULL)
         {
-            log_error(
+            EML_ERROR(LOG_TAG, 
                 "[pipeline] communication_init: failed to allocate memory for "
                 "pipeline_t");
         }
@@ -97,13 +100,13 @@ int pipeline_init(pipeline_t **pipeline_ptr_ptr)
         /* Initialize the pipe between listener and worker */
         else if(pipe(new_pipeline_ptr->pipe_fds) == -1)
         {
-            log_error("[pipeline] pipe failed to create: %s", strerror(errno));
+            EML_ERROR(LOG_TAG, "[pipeline] pipe failed to create: %s", strerror(errno));
         }
 
         /* Set the pipe file descriptors to non-blocking */
         else if(pipe_socket_init(new_pipeline_ptr->pipe_fds) != STATUS_SUCCESS)
         {
-            log_error("[pipeline] pipe_socket_init failed.");
+            EML_ERROR(LOG_TAG, "[pipeline] pipe_socket_init failed.");
         }
 
         else
@@ -128,7 +131,7 @@ int pipeline_init(pipeline_t **pipeline_ptr_ptr)
             /* Check memory allocation */
             if(ring_ptr == NULL)
             {
-                log_error(
+                EML_ERROR(LOG_TAG, 
                     "[pipeline] communication_init: failed to create SPSC ring "
                     "buffer");
             }
@@ -139,7 +142,7 @@ int pipeline_init(pipeline_t **pipeline_ptr_ptr)
 
                 res = STATUS_SUCCESS;
 #ifdef DEBUG_MODE
-                log_info("[pipeline] started correctly");
+                EML_INFO(LOG_TAG, "[pipeline] started correctly");
 #endif
             }
         }
@@ -156,13 +159,13 @@ int pipeline_push(pipeline_t *pipeline_ptr, const int client_fd)
     /* Check inputs */
     if(pipeline_ptr == NULL || pipeline_ptr->ring_ptr == NULL || client_fd < 0)
     {
-        log_error("[pipeline]: pipeline_push invalid input");
+        EML_ERROR(LOG_TAG, "[pipeline]: pipeline_push invalid input");
     }
 
     /* Check if ring has free space */
     else if(spsc_ring_is_full(pipeline_ptr->ring_ptr))
     {
-        log_error(
+        EML_ERROR(LOG_TAG, 
             "[pipeline]: pipeline_push spsc_ring_is_full, fd %d refused and "
             "closed",
             client_fd);
@@ -171,7 +174,7 @@ int pipeline_push(pipeline_t *pipeline_ptr, const int client_fd)
     /* Check if push on ring successful */
     else if(spsc_ring_push(pipeline_ptr->ring_ptr, client_fd) != 0)
     {
-        log_error("[pipeline]: pipeline_push spsc_ring_push failed for fd %d", client_fd);
+        EML_ERROR(LOG_TAG, "[pipeline]: pipeline_push spsc_ring_push failed for fd %d", client_fd);
     }
 
     /* Send a wake-up signal */
@@ -199,19 +202,19 @@ int pipeline_pop(pipeline_t *pipeline_ptr)
     /* Check inputs */
     if(pipeline_ptr == NULL || pipeline_ptr->ring_ptr == NULL)
     {
-        log_error("[pipeline]: pipeline_pop invalid input");
+        EML_ERROR(LOG_TAG, "[pipeline]: pipeline_pop invalid input");
     }
 
     /* Check if ring has free space */
     else if(spsc_ring_is_empty(pipeline_ptr->ring_ptr))
     {
-        log_error("[pipeline] pipeline_pop, spsc_ring_is_empty");
+        EML_ERROR(LOG_TAG, "[pipeline] pipeline_pop, spsc_ring_is_empty");
     }
 
     /* Check if push on ring successful */
     else if(spsc_ring_pop(pipeline_ptr->ring_ptr, &res) != 0)
     {
-        log_error("[pipeline]: pipeline_pop, spsc_ring_pop failed");
+        EML_ERROR(LOG_TAG, "[pipeline]: pipeline_pop, spsc_ring_pop failed");
     }
 
     return res;
@@ -225,13 +228,13 @@ int pipeline_notify_worker_status_change(pipeline_t *pipeline, worker_status sta
     /* Check input */
     if(pipeline == NULL)
     {
-        log_error("[pipeline] pipeline_notify_worker_status_change: invalid input");
+        EML_ERROR(LOG_TAG, "[pipeline] pipeline_notify_worker_status_change: invalid input");
     }
 
     /* Send the status to the listener */
     else if(write(pipeline->pipe_fds[1], &status, sizeof(uint32_t)) != sizeof(uint32_t))
     {
-        log_error("[pipeline] pipeline_notify_worker_status_change: write failed: %s",
+        EML_ERROR(LOG_TAG, "[pipeline] pipeline_notify_worker_status_change: write failed: %s",
                   strerror(errno));
     }
 
@@ -239,7 +242,7 @@ int pipeline_notify_worker_status_change(pipeline_t *pipeline, worker_status sta
     else
     {
 #ifdef DEBUG_MODE
-        log_info("[pipeline] updated listener about state change %d", (int)status);
+        EML_INFO(LOG_TAG, "[pipeline] updated listener about state change %d", (int)status);
 #endif /* DEBUG_MODE */
         res = STATUS_SUCCESS;
     }

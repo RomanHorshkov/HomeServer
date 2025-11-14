@@ -22,6 +22,9 @@
 #include <time.h>     /* gmtime_r(), strftime() */
 
 #include "handlers_int.h"
+#include <emlog.h>
+
+#define LOG_TAG "handler_whoami"
 
 /****************************************************************************
  * PRIVATE DEFINES
@@ -110,7 +113,7 @@ int handler_whoami(const HttpRequest *req, HttpResponse *res)
 
     if(validate_whoami_shape(root) != 0)
     {
-        log_error("[whoami] schema shape check failed");
+        EML_ERROR(LOG_TAG, "schema shape check failed");
         cJSON_Delete(root);
         send_500(res);
         return -1;

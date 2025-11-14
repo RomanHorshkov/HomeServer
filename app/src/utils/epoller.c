@@ -4,11 +4,14 @@
 #include <errno.h>
 #include <limits.h>
 #include <stdlib.h>
+#include <string.h>
 #include <sys/epoll.h> /* epoll_create1(), epoll_ctl(), epoll_wait(), struct epoll_event */
 #include <unistd.h>
 
-#include "logger.h"
 #include "server_settings.h"
+#include <emlog.h>
+
+#define LOG_TAG "epoller"
 
 /** epoll event
  * The event argument describes the object linked to the file descriptor fd.  The struct
@@ -50,12 +53,12 @@ int epoller_wait(int epoll_fd, struct epoll_event *out_events)
     {
         if(errno == EINTR)
         {
-            log_info("[reactor] epoll_listen_events interrupted by signal EINTR: %s",
+            EML_INFO(LOG_TAG, "[reactor] epoll_listen_events interrupted by signal EINTR: %s",
                      strerror(errno));
         }
         else
         {
-            log_error("[reactor] epoll_listen_events error: %s", strerror(errno));
+            EML_ERROR(LOG_TAG, "[reactor] epoll_listen_events error: %s", strerror(errno));
         }
     }
 
@@ -75,14 +78,14 @@ int epoller_manage_fd(int epoll_fd, int target_fd, int operation, uint32_t event
 
             if(data == NULL)
             {
-                log_error(
+                EML_ERROR(LOG_TAG, 
                     "[epoller] _manage_fd with NULL data, epoll_fd %d, "
                     "target_fd %d, op %d",
                     epoll_fd, target_fd, operation);
             }
             else
             {
-                log_info(
+                EML_INFO(LOG_TAG, 
                     "[epoller] _manage_fd with data, epoll_fd %d, target_fd "
                     "%d, op %d",
                     epoll_fd, target_fd, operation);
@@ -95,7 +98,7 @@ int epoller_manage_fd(int epoll_fd, int target_fd, int operation, uint32_t event
         case EPOLL_CTL_DEL:
         default:
             /* Explicit the DEL operation */
-            log_info(
+            EML_INFO(LOG_TAG, 
                 "[epoller] _manage_fd Deleting, epoll_fd %d, target_fd %d, op "
                 "%d",
                 epoll_fd, target_fd, operation);

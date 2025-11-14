@@ -23,23 +23,36 @@
  * (c) 2025
  */
 
+#ifndef _GNU_SOURCE
+#define _GNU_SOURCE
+#endif /* _GNU_SOURCE */
+
+#include <errno.h>
 #include <netdb.h>      /* socklen_t */
 #include <pthread.h>    /* pthread_create(), pthread_join() */
 #include <pwd.h>        /* pwd */
+#include <stdbool.h>
 #include <stdio.h>      /* printf(), fprintf(), etc. */
 #include <stdlib.h>     /* malloc(), calloc(), NULL etc */
 #include <sys/socket.h> /* socklen_t, socket(), bind(), setsockopt(), etc. */
 #include <sys/types.h>
 #include <unistd.h> /* fork(), close(), pipe(), read(), write(), getlogin(), getcwd(), system() etc. */
 
+#include <emlog.h>
 #include "db_app/db_app.h"
 #include "listener.h"
-#include "logger.h"
 #include "pipeline.h"
 #include "router.h"
 #include "server_settings.h"
 #include "socket_helper.h"
 #include "worker.h"
+
+/****************************************************************************
+ * PRIVATE DEFINES
+ ****************************************************************************
+ */
+
+#define LOG_TAG "core"
 
 /****************************************************************************
  * PRIVATE STRUCTURED TYPES
@@ -103,6 +116,8 @@ static server_t server;
 void *control_run(void *arg);
 #endif /* DEBUG_MODE */
 
+static void core_logger_bootstrap(void);
+
 /****************************************************************************
  * PUBLIC FUNCTIONS DEFINITIONS
  ****************************************************************************
@@ -137,38 +152,37 @@ int server_init(const char *port)
     system("ls -la");
 #endif /* DEBUG_MODE */
 
-    /* Initialize the logger */
-    logger_init(LOGGER_IDENTIFIER_DEFAULT);
+    core_logger_bootstrap();
 
     /* Initialize the external database application */
     if(db_app_init() != 0)
     {
-        log_error("[CORE]: db_app_init failed");
+        EML_ERROR(LOG_TAG, "db_app_init failed");
         return -1;
     }
 
     /* Initialize the pipeline between listener and worker */
     if(pipeline_init(&server.pipeline) != STATUS_SUCCESS)
     {
-        log_error("[CORE]: W <-> L pipeline communication_init failed.");
+        EML_ERROR(LOG_TAG, "W <-> L pipeline communication_init failed.");
     }
 
     /* Initialize the listener with port, pipe read end, wakeup_fd, and ring */
     else if(listener_init(&server.listener, port, server.pipeline) != STATUS_SUCCESS)
     {
-        log_perror("[CORE] listener failed to init.");
+        EML_PERR(LOG_TAG, "listener failed to init.");
     }
 
     /* Initialize the worker */
     else if(worker_init(&server.worker, server.pipeline) != STATUS_SUCCESS)
     {
-        log_perror("[CORE] worker failed to init.");
+        EML_PERR(LOG_TAG, "worker failed to init.");
     }
 
     /* Successful initialization */
     else
     {
-        log_info("🚀 C Server running on http://localhost:%s\n", port);
+        EML_INFO(LOG_TAG, "🚀 C Server running on http://localhost:%s", port);
         ret = STATUS_SUCCESS;
     }
 
@@ -230,7 +244,7 @@ void *control_run(void *arg)
             /* Set listener and worker status to shutdown */
             worker_set_status(server.worker, WORKER_STATUS_SHUTDOWN);
             listener_set_status(server.listener, LISTENER_STATUS_SHUTDOWN);
-            logger_close();
+            EML_INFO(LOG_TAG, "Control thread requested shutdown via console menu");
             break;
         }
         else
@@ -241,3 +255,21 @@ void *control_run(void *arg)
     return NULL;
 }
 #endif /* DEBUG_MODE */
+
+static void core_logger_bootstrap(void)
+{
+    static bool initialized = false;
+    if(initialized) return;
+
+#ifdef DEBUG_MODE
+    emlog_init(EML_LEVEL_DBG, true);
+    emlog_set_writev_flush(true);
+    EML_INFO(LOG_TAG, "Debug logger active; stdout/stderr sink");
+#else
+    emlog_init(EML_LEVEL_INFO, true);
+    emlog_set_writev_flush(true);
+    EML_INFO(LOG_TAG, "Production logger active; stdout/stderr sink");
+#endif
+
+    initialized = true;
+}
