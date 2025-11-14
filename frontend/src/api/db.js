@@ -1,5 +1,5 @@
 // api/db.js
-import { apiPut } from "../api/client";
+import { apiGet, apiPut } from "../api/client";
 import { canonicalizeEmail } from "../utils/email";
 
 const API_BASE = "/api";
@@ -11,6 +11,5 @@ export async function db_add_user(email) {
 }
 
 export async function db_list_users() {
-  // implement when backend is ready
-  return false;
+  return apiGet(`${API_BASE}/db_list_users`);
 }
