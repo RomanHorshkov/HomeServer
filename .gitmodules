@@ -1,3 +1,6 @@
 [submodule "app/external/DataBase"]
 	path = app/external/DataBase
 	url = git@github.com:RomanHorshkov/DataBase.git
+[submodule "app/external/SPSCring"]
+	path = app/external/SPSCring
+	url = git@github.com:RomanHorshkov/SPSCring.git
