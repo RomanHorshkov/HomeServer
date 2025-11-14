@@ -1,207 +1,207 @@
 /**
  * @file logger.c
- * @brief Logging subsystem for the micro-HTTP server.
+ * @brief EMlog-backed logging bootstrap for the HomeServer daemon.
  *
- * Provides functionality for recording log messages with timestamps,
- * levels, and optional fallback to stdout if file creation fails.
+ * This module configures the external EMlog library so every component in
+ * the server emits consistent, structured log lines. Debug builds keep the
+ * legacy stdout/stderr experience (handy for local hacking) while release
+ * builds automatically forward everything to journald whenever the EMlog
+ * static library was compiled with systemd support.
  *
- * Usage:
- *   logger_init("server.log");
- *   log_info("Some message");
- *   logger_close();
+ * The rest of the codebase continues to call the simple `log_info()` /
+ * `log_error()` front-ends declared in `logger.h`; these are now thin
+ * wrappers around EMlog macros so there is no runtime overhead per call.
  *
- * @author  Roman Horshkov <roman.horshkov@gmail.com>
- * @date    2025‑05‑11
- * (c) 2025
+ * Behaviour summary:
+ *   - DEBUG_MODE: emit at DEBUG level, timestamps enabled, stdout/stderr sink.
+ *   - Release:    emit at INFO level, prefer journald sink, fall back to stdio.
+ *
+ * The journald identifier can be customised via `logger_init("name")`. When
+ * not provided the identifier defaults to `"homeserver"`.
  */
 
 #define _GNU_SOURCE
+
 #include "logger.h"
 
-#include <arpa/inet.h>  // inet_ntop(), inet_pton()
-#include <netdb.h>      // getaddrinfo(), addrinfo, gai_strerror()
-#include <stdarg.h>     // varg
-#include <stdio.h>      // FILE , fopen(), fprintf(), fflush(), fclose()
-#include <stdlib.h>     // exit(), malloc(), free()
-#include <time.h>       // For timestamps
+#include <arpa/inet.h>  /* inet_ntop, AF_INET helpers                      */
+#include <netdb.h>      /* struct addrinfo                                 */
+#include <netinet/in.h> /* sockaddr_in / sockaddr_in6                      */
+#include <stdbool.h>    /* bool                                            */
+#include <stdio.h>      /* snprintf                                        */
+#include <string.h>     /* strnlen, memcpy                                 */
 
 /****************************************************************************
  * PRIVATE DEFINES
  ****************************************************************************
  */
-/* None */
+
+/** @brief Component name used for internal logger diagnostics. */
+#define LOGGER_INTERNAL_TAG "logger"
+/** @brief Maximum identifier length accepted by journald/systemd. */
+#define LOGGER_IDENT_MAX 63
 
 /****************************************************************************
- * PRIVATE STUCTURED VARIABLES
- ****************************************************************************
- */
-/* None */
-
-/****************************************************************************
- * PRIVATE VARIABLES
- ****************************************************************************
- */
-static FILE *log_file = NULL;
-
-/****************************************************************************
- * PRIVATE FUNCTIONS PROTOTYPES
+ * PRIVATE STRUCTURES
  ****************************************************************************
  */
 
 /**
- * @brief Print current timestamp in `[YYYY-MM-DD HH:MM:SS]` format.
+ * @brief Process-wide logger state.
  *
- * Used internally before every log entry.
+ * Tracks whether EMlog has been initialised, the currently selected
+ * journald identifier, and if the journald writer is active so we can
+ * emit diagnostic breadcrumbs and tear down cleanly on shutdown.
  */
-static void log_timestamp();
-
-/**
- * @brief Internal logging implementation.
- *
- * @param level "INFO", "ERROR", etc.
- * @param fmt Format string
- * @param args Variadic arguments
- */
-static void log_internal_va(const char *level, const char *fmt, va_list args);
-
-/****************************************************************************
- * PUBLIC FUNCTIONS DEFINITIONS
- ****************************************************************************
- */
-
-void logger_init(const char *filename)
+typedef struct
 {
-    /* check if file not yet opened */
-    if(log_file == NULL)
-    {
-        /* "w" = overwrite on server restart */
-        log_file = fopen(filename, "w");
-        if(!log_file)
-        {
-            perror("Failed to open log file, falling back to stdout");
-            /* fallback to stdout if problems with file */
-            log_file = stdout;
-        }
-        else
-        {
-            /* log file opened successfully */
+    bool initialized;          /**< Guard against duplicate init calls. */
+    bool journald_active;      /**< True when emlog_enable_journald() succeeded. */
+    char identifier[64];       /**< NUL-terminated journald identifier. */
+} logger_state_t;
+
+static logger_state_t g_logger = {0};
+
+/****************************************************************************
+ * PRIVATE FUNCTIONS
+ ****************************************************************************
+ */
+
+/**
+ * @brief Copy the chosen identifier into the global state.
+ *
+ * Journald truncates identifiers longer than 63 bytes; we mirror that limit
+ * so the EMlog helper always receives a bounded string.
+ *
+ * @param ident Desired identifier (must be non-NULL).
+ */
+static void logger_store_identifier(const char *ident)
+{
+    size_t len = strnlen(ident, LOGGER_IDENT_MAX);
+    memcpy(g_logger.identifier, ident, len);
+    g_logger.identifier[len] = '\0';
+}
+
+/**
+ * @brief Return either the provided identifier or the default one.
+ *
+ * @param ident Optional identifier string.
+ * @return const char* Guaranteed non-empty identifier.
+ */
+static const char *logger_pick_identifier(const char *ident)
+{
+    return (ident && *ident) ? ident : LOGGER_IDENTIFIER_DEFAULT;
+}
+
+/****************************************************************************
+ * PUBLIC FUNCTIONS
+ ****************************************************************************
+ */
+
+void logger_init(const char *identifier)
+{
+    if(g_logger.initialized) return;
+
+    const char *chosen = logger_pick_identifier(identifier);
+    logger_store_identifier(chosen);
+
 #ifdef DEBUG_MODE
-            log_info("Logger initialized: %s\n", filename);
-#endif
-            fflush(log_file);
-        }
-    }
-}
+    emlog_init(EML_LEVEL_DBG, true);
+    emlog_set_level(EML_LEVEL_DBG);
+    emlog_set_writev_flush(true);  /* keep stdout/stderr in sync with printf */
+    g_logger.journald_active = false;
+    EML_INFO(LOGGER_INTERNAL_TAG, "Debug logger active; stdout/stderr sink (id=%s)",
+             g_logger.identifier);
+#else
+    emlog_init(EML_LEVEL_INFO, true);
+    emlog_set_level(EML_LEVEL_INFO);
 
-void logger_close()
-{
-    if(log_file && log_file != stdout)
+    if(emlog_has_journald() && emlog_enable_journald(g_logger.identifier))
     {
-        fclose(log_file);
-        log_file = NULL;
+        g_logger.journald_active = true;
+        EML_INFO(LOGGER_INTERNAL_TAG, "Journald sink enabled (identifier=%s)", g_logger.identifier);
     }
+    else
+    {
+        g_logger.journald_active = false;
+        emlog_set_writev_flush(true);
+        EML_WARN(LOGGER_INTERNAL_TAG, "Journald sink unavailable, falling back to stdio");
+    }
+#endif
+
+    g_logger.initialized = true;
 }
 
-void log_info(const char *fmt, ...)
+void logger_close(void)
 {
-    va_list args;
-    va_start(args, fmt);
-    log_internal_va("INFO", fmt, args);
-    va_end(args);
-}
+    if(!g_logger.initialized) return;
 
-void log_error(const char *fmt, ...)
-{
-    va_list args;
-    va_start(args, fmt);
-    log_internal_va("ERROR", fmt, args);
-    va_end(args);
+#ifndef DEBUG_MODE
+    if(g_logger.journald_active)
+    {
+        EML_INFO(LOGGER_INTERNAL_TAG, "Disabling journald writer");
+    }
+#endif
+
+    emlog_set_writer(NULL, NULL);
+    g_logger.journald_active = false;
+    g_logger.initialized     = false;
 }
 
 #ifdef DEBUG_MODE
 void log_addrinfo_list(const struct addrinfo *ai)
 {
-    int index = 0;
+    if(ai == NULL)
+    {
+        EML_INFO("net", "[logger]: addrinfo list is empty");
+        return;
+    }
+
+    int  index = 0;
     char ip_str[INET6_ADDRSTRLEN];
 
     for(; ai != NULL; ai = ai->ai_next, ++index)
     {
-        void *addr;
-        const char *ipver;
+        void       *addr   = NULL;
+        const char *ipver  = "UNKNOWN";
+        int         family = ai->ai_family;
 
-        if(ai->ai_family == AF_INET)
+        if(family == AF_INET)
         {
             struct sockaddr_in *ipv4 = (struct sockaddr_in *)ai->ai_addr;
-            addr = &(ipv4->sin_addr);
-            ipver = "IPv4";
+            addr                     = &(ipv4->sin_addr);
+            ipver                    = "IPv4";
         }
-        else if(ai->ai_family == AF_INET6)
+        else if(family == AF_INET6)
         {
             struct sockaddr_in6 *ipv6 = (struct sockaddr_in6 *)ai->ai_addr;
-            addr = &(ipv6->sin6_addr);
-            ipver = "IPv6";
+            addr                      = &(ipv6->sin6_addr);
+            ipver                     = "IPv6";
         }
         else
         {
-            log_info("[%d] Unknown address family: %d\n", index, ai->ai_family);
+            EML_INFO("net", "[logger]: addrinfo[%d] Unknown family=%d", index, family);
             continue;
         }
 
-        /* Convert the IP to a string */
-        inet_ntop(ai->ai_family, addr, ip_str, sizeof ip_str);
+        inet_ntop(family, addr, ip_str, sizeof ip_str);
 
-        /* Resolve protocol name */
-        char protocol_name[NI_MAXSERV];
-
+        const char *protocol_name = "UNKNOWN";
         switch(ai->ai_protocol)
         {
             case IPPROTO_TCP:
-                strcpy(protocol_name, "TCP");
+                protocol_name = "TCP";
                 break;
-
             case IPPROTO_UDP:
-                strcpy(protocol_name, "UDP");
+                protocol_name = "UDP";
                 break;
-
             default:
-                strcpy(protocol_name, "UNKNOWN");
                 break;
         }
 
-        /* Log the address information */
-        log_info(
-            "[logger]: addr_info list: [%d] %s address: %s | socktype: %d | "
-            "protocol: %s | flags: "
-            "0x%x\n",
-            index, ipver, ip_str, ai->ai_socktype, protocol_name, ai->ai_flags);
+        EML_INFO("net",
+                 "[logger]: addr_info[%d] %s address=%s socktype=%d protocol=%s flags=0x%x", index,
+                 ipver, ip_str, ai->ai_socktype, protocol_name, ai->ai_flags);
     }
 }
-#endif
-
-/****************************************************************************
- * PRIVATE FUNCTIONS DEFINITIONS
- ****************************************************************************
- */
-
-static void log_timestamp()
-{
-    static time_t now;
-    static struct tm *tm_info;
-    char buffer[32];
-    now = time(NULL);
-    tm_info = localtime(&now);
-    strftime(buffer, sizeof(buffer), "[%Y-%m-%d %H:%M:%S]", tm_info);
-    fprintf(log_file, "%s ", buffer);
-}
-
-static void log_internal_va(const char *level, const char *fmt, va_list args)
-{
-    if(log_file != NULL)
-    {
-        log_timestamp();
-        fprintf(log_file, "[%s] ", level);
-        vfprintf(log_file, fmt, args);
-        fprintf(log_file, "\n");
-        fflush(log_file);
-    }
-}
+#endif /* DEBUG_MODE */

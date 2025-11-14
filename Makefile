@@ -53,6 +53,16 @@ else
 	endif
 endif
 
+# --- systemd-journald detection (required by EMlog when journald writer is enabled) ---
+ifeq ($(PKGCONFIG),)
+	SYSTEMD_LIBS := -lsystemd
+else
+	SYSTEMD_LIBS := $(shell pkg-config --libs libsystemd 2>/dev/null)
+	ifeq ($(SYSTEMD_LIBS),)
+		SYSTEMD_LIBS := -lsystemd
+	endif
+endif
+
 # ------ Paths ------
 APP_DIR   := app
 SRCDIRS   := $(APP_DIR)/src
@@ -87,6 +97,7 @@ LDLIBS_APP = -lllhttp -lcjson -lspsc_ring
 LDLIBS_DB  = -Wl,--start-group $(DB_LIB) $(LMDB_LIBS) $(OPENSSL_LIBS) $(SODIUM_LIBS) -Wl,--end-group
 
 LDLIBS = $(LDLIBS_APP) $(LDLIBS_DB)
+LDLIBS += $(SYSTEMD_LIBS)
 
 # ------ Contract header (generated) ------
 CONTRACT_MANIFEST := contract/manifest.json
@@ -234,6 +245,7 @@ DB_LIB := $(DB_DIR)/build/$(DB_MODE)/lib/libdb.a
 DB_UUID7_LIB := $(DB_DIR)/app/external/UUID7/build/libuuid7.a
 DB_YYJSON_LIB := $(DB_DIR)/app/external/yyjson/libyyjson.a
 DB_EMLOG_LIB := $(DB_DIR)/app/external/EMlog/libemlog.a
+DB_EMLOG_INC := $(DB_DIR)/app/external/EMlog/app/include
 
 # Additional static archives produced by the DB project that must be linked
 DB_EXTRA_LIBS := $(DB_UUID7_LIB) $(DB_YYJSON_LIB) $(DB_EMLOG_LIB)
@@ -250,6 +262,9 @@ DB_INC_DIRS := \
 	$(DB_INC)/platform \
 	$(DB_INC)/utils \
 	$(DB_DIR)/app/external/UUID7/include
+ifneq ($(wildcard $(DB_EMLOG_INC)/emlog.h),)
+	DB_INC_DIRS += $(DB_EMLOG_INC)
+endif
 
 INCDIRS += $(DB_INC_DIRS)
 

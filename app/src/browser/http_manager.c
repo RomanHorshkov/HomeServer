@@ -197,14 +197,14 @@ int http_manage_request(const char* recv_buf, const size_t buffer_len, HttpReque
     /* Allocate memory and parse raw HTTP request into HttpRequest struct */
     if(http_parse_request(recv_buf, buffer_len, request) != STATUS_SUCCESS)
     {
-        log_error("[browser] parse failed", strerror(errno));
+        log_perror("[browser] parse failed");
         return res;
     }
 
     /* Sanitize parsed HTTP reuest */
     if(sanitize_http_request(request) != STATUS_SUCCESS)
     {
-        log_error("[browser] sanitize_http_request failed", strerror(errno));
+        log_perror("[browser] sanitize_http_request failed");
         return res;
     }
 
@@ -268,7 +268,7 @@ static int http_parse_request(const char* buffer, const size_t buffer_len, HttpR
 
     if(err != HPE_OK)
     {
-        log_error("[http]: llhttp parse error", llhttp_errno_name(err));
+        log_error("[http]: llhttp parse error: %s", llhttp_errno_name(err));
     }
 
     else
@@ -298,13 +298,13 @@ static int validate_http_path(const char* path)
     /* Check input */
     if(!path || path[0] == '\0')
     {
-        log_error("[http]: Request path is empty", "");
+        log_error("[http]: Request path is empty");
     }
 
     /* Check for path traversal attempts (any ".." in the path) */
     else if(strstr(path, "..") || strstr(path, "./"))
     {
-        log_error("[http]: Path traversal attempt detected", path);
+        log_error("[http]: Path traversal attempt detected: %s", path);
     }
 
     /* Check if path starts with . or ./ */
@@ -350,12 +350,12 @@ static int validate_http_header_name(const char* hname)
 {
     if(!hname)
     {
-        log_error("[http]: Null header name", "");
+        log_error("[http]: Null header name");
         return STATUS_FAILURE;
     }
     if(strlen(hname) >= HTTP_MAX_HEADER_NAME_LEN)
     {
-        log_error("[http]: Header name too long", hname);
+        log_error("[http]: Header name too long: %s", hname);
         return STATUS_FAILURE;
     }
     for(size_t j = 0; j < strlen(hname); ++j)
@@ -363,7 +363,7 @@ static int validate_http_header_name(const char* hname)
         unsigned char c = (unsigned char)hname[j];
         if(c < 0x20 || c == 0x7F)
         {
-            log_error("[http]: Header name contains control or null character", hname);
+            log_error("[http]: Header name contains control or null character: %s", hname);
             return STATUS_FAILURE;
         }
     }
@@ -374,12 +374,12 @@ static int validate_http_header_value(const char* hval, const char* hname)
 {
     if(!hval)
     {
-        log_error("[http]: Null header value", hname ? hname : "");
+        log_error("[http]: Null header value (%s)", hname ? hname : "<unknown>");
         return STATUS_FAILURE;
     }
     if(strlen(hval) >= HTTP_MAX_HEADER_VALUE_LEN)
     {
-        log_error("[http]: Header value too long", hname ? hname : "");
+        log_error("[http]: Header value too long (%s)", hname ? hname : "<unknown>");
         return STATUS_FAILURE;
     }
     for(size_t j = 0; j < strlen(hval); ++j)
@@ -387,8 +387,8 @@ static int validate_http_header_value(const char* hval, const char* hname)
         unsigned char c = (unsigned char)hval[j];
         if(c < 0x20 || c == 0x7F)
         {
-            log_error("[http]: Header value contains control or null character",
-                      hname ? hname : "");
+            log_error("[http]: Header value contains control or null character (%s)",
+                      hname ? hname : "<unknown>");
             return STATUS_FAILURE;
         }
     }
@@ -403,25 +403,25 @@ static int sanitize_http_request(HttpRequest* req)
     /* Check for null pointers */
     if(!req)
     {
-        log_error("[http]: Null pointer argument to sanitize_http_request", "");
+        log_error("[http]: Null pointer argument to sanitize_http_request");
     }
 
     /* Validate the request path */
     else if(validate_http_path(req->path) != STATUS_SUCCESS)
     {
-        log_error("[http]: Validate path failed", req->path);
+        log_error("[http]: Validate path failed: %s", req->path);
     }
 
     /* Ensure the method is valid */
     else if(req->method == HTTP_METHOD_UNKNOWN)
     {
-        log_error("[http]: Invalid HTTP method HTTP_METHOD_UNKNOWN", "");
+        log_error("[http]: Invalid HTTP method HTTP_METHOD_UNKNOWN");
     }
 
     /* Ensure headers are within limits */
     else if(req->header_count > HTTP_MAX_HEADERS_IN)
     {
-        log_error("[http]: Too many headers", "");
+        log_error("[http]: Too many headers");
         return STATUS_FAILURE;
     }
 
@@ -436,13 +436,13 @@ static int sanitize_http_request(HttpRequest* req)
             const char* hval = req->header_values[i];
             if(validate_http_header_name(hname) != STATUS_SUCCESS)
             {
-                log_error("[http]: Invalid header name", hname);
+                log_error("[http]: Invalid header name: %s", hname);
                 res = STATUS_FAILURE;
                 break;
             };
             if(validate_http_header_value(hval, hname) != STATUS_SUCCESS)
             {
-                log_error("[http]: Invalid header value", hval);
+                log_error("[http]: Invalid header value: %s", hval);
                 res = STATUS_FAILURE;
                 break;
             }
@@ -519,7 +519,7 @@ static int on_body(llhttp_t* parser, const char* at, size_t length)
     char* new_buf = realloc(req->body, req->body_len + length + 1);
     if(!new_buf)
     {
-        log_error("[http]: Failed to reallocate memory for request body", "");
+        log_error("[http]: Failed to reallocate memory for request body");
 
         /* Clean up on OOM */
         free(req->body);
@@ -552,7 +552,7 @@ static http_method_t parse_http_method(const char* at, size_t length)
 
     if(length > HTTP_MAX_METHOD_LEN)
     {
-        log_error("[http]: HTTP method too long", "");
+        log_error("[http]: HTTP method too long");
     }
     else if(length == 3 && strncmp(at, "GET", 3) == 0)
         method = HTTP_METHOD_GET;

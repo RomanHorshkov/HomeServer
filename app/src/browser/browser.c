@@ -117,7 +117,7 @@ int browser_manage_client_req(int fd)
         /* manage http request */
         if(http_manage_request(recv_buf, n, &request) != STATUS_SUCCESS)
         {
-            log_error("[browser] http_manage_request failed", strerror(errno));
+            log_perror("[browser] http_manage_request failed");
         }
 
         /* Route request to generate HttpResponse (status, headers, body) */
@@ -129,7 +129,7 @@ int browser_manage_client_req(int fd)
         /* Send HTTP response over TCP (headers + binary body) */
         else if(send_response(fd, &response) < 0)
         {
-            log_error("[browser] send_response failed", strerror(errno));
+            log_perror("[browser] send_response failed");
 
             /* Free any heap buffer allocated by handler_static_page */
             free((void *)response.body);
@@ -172,14 +172,14 @@ static int send_response(int fd, const HttpResponse *resp)
     /* Validate header length */
     if(hdr_len < 0 || hdr_len >= (int)sizeof hdr_buf)
     {
-        log_error("[browser]: response headers too large", "");
+        log_error("[browser]: response headers too large");
         return -1;
     }
 
     /* Send all header bytes */
     if(send_all(fd, hdr_buf, (size_t)hdr_len) < 0)
     {
-        log_error("[browser]: response header send failed", strerror(errno));
+        log_perror("[browser]: response header send failed");
         return -1;
     }
 
@@ -188,7 +188,7 @@ static int send_response(int fd, const HttpResponse *resp)
     {
         if(send_all(fd, resp->body, resp->body_length) < 0)
         {
-            log_error("[browser]: response body send failed", strerror(errno));
+            log_perror("[browser]: response body send failed");
             return -1;
         }
     }

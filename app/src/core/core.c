@@ -138,7 +138,7 @@ int server_init(const char *port)
 #endif /* DEBUG_MODE */
 
     /* Initialize the logger */
-    logger_init("server.log");
+    logger_init(LOGGER_IDENTIFIER_DEFAULT);
 
     /* Initialize the external database application */
     if(db_app_init() != 0)
@@ -156,13 +156,13 @@ int server_init(const char *port)
     /* Initialize the listener with port, pipe read end, wakeup_fd, and ring */
     else if(listener_init(&server.listener, port, server.pipeline) != STATUS_SUCCESS)
     {
-        log_error("[CORE] listener failed to init.", strerror(errno));
+        log_perror("[CORE] listener failed to init.");
     }
 
     /* Initialize the worker */
     else if(worker_init(&server.worker, server.pipeline) != STATUS_SUCCESS)
     {
-        log_error("[CORE] worker failed to init.", strerror(errno));
+        log_perror("[CORE] worker failed to init.");
     }
 
     /* Successful initialization */
