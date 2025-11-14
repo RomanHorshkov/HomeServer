@@ -30,3 +30,5 @@ var/www/map.json
 # !/config/config.example.yaml
 # # Ignore environment variable file
 # .env
+cmake-build/
+cmake-out/
