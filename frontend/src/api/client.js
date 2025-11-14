@@ -1,6 +1,9 @@
 // src/api/client.js
+import { mockRequest } from './mockServer';
+
 const DEFAULT_HEADERS = { 'Content-Type': 'application/json' };
 const BASE = import.meta.env.VITE_API_BASE || ''; // e.g. "/api" via Vite proxy
+const USE_MOCKS = import.meta.env.VITE_USE_MOCK_API === 'true';
 
 function url(path) {
   return `${BASE}${path}`;
@@ -20,6 +23,9 @@ async function handle(res, path) {
 }
 
 export async function apiGet(path, opts = {}) {
+  if (USE_MOCKS) {
+    return mockRequest('GET', path);
+  }
   const res = await fetch(url(path), {
     method: 'GET',
     credentials: 'include',            // ← keep cookies (sessions)
@@ -29,6 +35,9 @@ export async function apiGet(path, opts = {}) {
 }
 
 export async function apiPost(path, body, opts = {}) {
+  if (USE_MOCKS) {
+    return mockRequest('POST', path, body);
+  }
   const res = await fetch(url(path), {
     method: 'POST',
     headers: { ...DEFAULT_HEADERS, ...(opts.headers || {}) },
@@ -40,6 +49,9 @@ export async function apiPost(path, body, opts = {}) {
 }
 
 export async function apiPut(path, body, opts = {}) {
+  if (USE_MOCKS) {
+    return mockRequest('PUT', path, body);
+  }
   const res = await fetch(url(path), {
     method: 'PUT',
     headers: { ...DEFAULT_HEADERS, ...(opts.headers || {}) },
