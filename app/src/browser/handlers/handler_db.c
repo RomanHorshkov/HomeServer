@@ -134,7 +134,7 @@ static void http_response_from_db(HttpResponse* http_res, DB_response_t* db_res)
 
         if(db_res->header_count > HTTP_MAX_HEADERS_OUT)
         {
-            log_error("[handler_db] truncated headers %d→%d", db_res->header_count,
+            log_error("[handler_db] truncated headers %d→%d", (int)db_res->header_count,
                       HTTP_MAX_HEADERS_OUT);
         }
     }

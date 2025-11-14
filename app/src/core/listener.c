@@ -190,19 +190,19 @@ int listener_init(listener_t **listener_ptr, const char *port, pipeline_t *pipel
     /* Initialize memory */
     else if(init_memory(listener_ptr) != STATUS_SUCCESS)
     {
-        log_error("[listener] _init: memory initialization failed ", strerror(errno));
+        log_perror("[listener] _init: memory initialization failed");
     }
 
     /* Initialize communication pipeline */
     else if(init_pipeline(*listener_ptr, pipeline_ptr) != STATUS_SUCCESS)
     {
-        log_error("[listener] _init: pipeline initialization failed ", strerror(errno));
+        log_perror("[listener] _init: pipeline initialization failed");
     }
 
     /* Create and start the listener sockets */
     else if(init_listening_sockets(*listener_ptr, port) != STATUS_SUCCESS)
     {
-        log_error("[listener]: _init init_listening_sockets failed ", strerror(errno));
+        log_perror("[listener]: _init init_listening_sockets failed");
     }
 
     /* Initialize reactor */
@@ -229,7 +229,7 @@ int listener_init(listener_t **listener_ptr, const char *port, pipeline_t *pipel
         /* Register all listening sockets to reactor */
         else if(register_listening_sockets(*listener_ptr) != STATUS_SUCCESS)
         {
-            log_error("[listener]: _init register_listening_sockets failed", strerror(errno));
+            log_perror("[listener]: _init register_listening_sockets failed");
         }
 
         /* If everything succceded */
@@ -331,13 +331,13 @@ static int init_memory(listener_t **listener_ptr)
 
         else
         {
-            log_error("[listener] memory allocation failed calloc", strerror(errno));
+            log_perror("[listener] memory allocation failed calloc");
         }
     }
 
     else
     {
-        log_error("[listener] allocation failed, invalid input", strerror(errno));
+        log_perror("[listener] allocation failed, invalid input");
     }
 
     return res;
@@ -356,7 +356,7 @@ static int init_pipeline(listener_t *listener_ptr, pipeline_t *pipeline_ptr)
 
     else
     {
-        log_error("[listener] init_pipeline failed, invalid input", strerror(errno));
+        log_perror("[listener] init_pipeline failed, invalid input");
     }
 
     return res;
@@ -507,7 +507,7 @@ static int register_listening_sockets(listener_t *listener_ptr)
         }
         else
         {
-            log_error("[listener] init_epoll_instance socket OFF, continue", strerror(errno));
+            log_perror("[listener] init_epoll_instance socket OFF, continue");
         }
     }
 
@@ -592,7 +592,7 @@ static int handle_worker_event(int fd, fd_ctx_t *ctx)
 #ifdef DEBUG_MODE
         log_info(
             "[listener] read_worker_message Pipe event received, worker_msg "
-            "%ld, size %ld",
+            "%u, size %zu",
             worker_msg, sizeof(uint32_t));
 #endif /* DEBUG_MODE */
 

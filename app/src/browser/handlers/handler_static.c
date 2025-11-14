@@ -128,7 +128,7 @@ int handler_static(const HttpRequest *request, HttpResponse *response)
             else
             {
 #ifdef DEBUG_MODE
-                log_error("[handler static]: Failed to open file", requested_file_path);
+                log_error("[handler static]: Failed to open file %s", requested_file_path);
 #endif /* DEBUG_MODE */
             }
         }
