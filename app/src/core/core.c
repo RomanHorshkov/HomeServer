@@ -195,7 +195,7 @@ void server_run(void)
     pthread_create(&server.listener_thread, NULL, listener_run, server.listener);
     pthread_create(&server.worker_thread, NULL, worker_run, server.worker);
 #ifdef DEBUG_MODE
-    pthread_create(&server.control_thread, NULL, control_run, NULL);
+    // pthread_create(&server.control_thread, NULL, control_run, NULL);
 #endif /* DEBUG_MODE */
 
     /* wait threads */
