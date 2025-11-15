@@ -4,3 +4,6 @@
 [submodule "app/external/SPSCring"]
 	path = app/external/SPSCring
 	url = git@github.com:RomanHorshkov/SPSCring.git
+[submodule "HSFrontEnd"]
+	path = HSFrontEnd
+	url = git@github.com:RomanHorshkov/HSFrontEnd.git
