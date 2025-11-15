@@ -204,7 +204,10 @@ publish-contract:
 
 # Clean ---------------------------------------------------------------
 clean:
-	rm -rf $(BUILDDIR) frontend/dist frontend/node_modules
+	rm -rf $(BUILDDIR) \
+		frontend/dist frontend/node_modules \
+		HSFrontEnd/dist HSFrontEnd/node_modules \
+		HSFrontEnd/HSFrontEnd/dist HSFrontEnd/HSFrontEnd/node_modules
 	rm -f var/www/server.log var/www/map.json
 	@$(MAKE) -C $(APP_DIR)/external/DataBase clean || true
 

@@ -17,9 +17,13 @@ server.log
 compile_commands.json
 #Ignore icon file
 var/www/favicon.ico
-#Ignore frontend files
+#Ignore frontend files (legacy + new HSFrontEnd tree)
 frontend/dist
 frontend/node_modules
+HSFrontEnd/dist
+HSFrontEnd/node_modules
+HSFrontEnd/**/dist
+HSFrontEnd/**/node_modules
 
 
 var/www/map.json

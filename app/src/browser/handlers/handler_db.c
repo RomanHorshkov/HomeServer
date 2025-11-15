@@ -72,7 +72,21 @@ static inline int db_request_init_from_http(const HttpRequest* in, uint64_t now_
     out->remote_ip_be = remote_ip_be;
     out->remote_port_be = remote_port_be;
     out->method = in->method;
-    out->path = sv_c(in->path, HTTP_MAX_PATH_LEN);
+    const char* path = in->path;
+    static const char prefix[] = "/api/database/";
+    if(strncmp(path, prefix, sizeof(prefix) - 1) == 0)
+    {
+        path += sizeof(prefix) - 1;
+    }
+    else if(strncmp(path, "/api/database", strlen("/api/database")) == 0)
+    {
+        path += strlen("/api/database");
+    }
+    if(path[0] == '/')
+    {
+        path++;
+    }
+    out->path = sv_c(path, HTTP_MAX_PATH_LEN);
 
     int hc = (in->header_count < HTTP_MAX_HEADERS_IN) ? in->header_count : HTTP_MAX_HEADERS_IN;
     for(int i = 0; i < hc; ++i)
