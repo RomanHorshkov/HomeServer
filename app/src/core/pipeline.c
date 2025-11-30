@@ -10,8 +10,8 @@
 #include <unistd.h> /* fork(), close(), pipe(), read(), write(), getlogin(), getcwd(), system() etc. */
 
 #include "config_core.h"
-#include "socket_helper.h"
 #include "spsc_ring.h"
+#include "socket_helper.h"
 #include "emlog.h"
 
 #define LOG_TAG "srv_pipeline"
@@ -128,12 +128,6 @@ int pipeline_init(pipeline_t **pipeline_ptr)
     }
 
     /* Check ring health */
-    if(!spsc_ring_is_empty(ring_ptr))
-    {
-        EML_ERROR(LOG_TAG, "_init: newly created SPSC ring is not empty");
-        goto fail;
-    }
-
     pipeline.ring_ptr = ring_ptr;
 
     /* set return reference */
@@ -147,7 +141,7 @@ int pipeline_init(pipeline_t **pipeline_ptr)
 fail:
     if (ring_ptr)
     {
-        spsc_ring_destroy(&ring_ptr);
+    spsc_ring_destroy(&ring_ptr);
     }
 
     return res;
@@ -183,13 +177,14 @@ fail:
 
 int pipeline_pop(int *out_fd)
 {
-    return (status_t)spsc_ring_pop(pipeline.ring_ptr, &out_fd);
+    return (status_t)spsc_ring_pop(pipeline.ring_ptr, out_fd);
 }
 
-int pipeline_notify_worker_status_change(uint8_t status)
+int pipeline_notify_worker_status_change(worker_status_t status)
 {
     /* Send the worker status to the listener */
-    if(write(pipeline.pipe_fds[1], &status, sizeof(uint8_t)) != sizeof(uint8_t))
+    uint8_t st = (uint8_t)status;
+    if(write(pipeline.pipe_fds[1], &st, sizeof(uint8_t)) != sizeof(uint8_t))
     {
         EML_PERR(LOG_TAG, "_notify_worker_status_change: write failed");
         return STATUS_FAILURE;

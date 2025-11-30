@@ -14,6 +14,7 @@
 // #include "browser.h"
 
 #include "reactor.h"
+#include "spsc_ring.h"
 #include "socket_helper.h"
 #include "time_helper.h"
 
@@ -30,37 +31,6 @@
  * PRIVATE STUCTURED VARIABLES
  ****************************************************************************
  */
-
-typedef struct
-{
-    int fd;                     /* client socket fd */
-    fd_ctx_t *ctx;              /* fd context */
-    uint32_t last_activity;     /* last activity timestamp */
-    uint32_t request_count;     /* number of requests handled */
-} client_slot_t;
-
-struct worker_operator
-{
-    int id;
-    pthread_t thread;
-
-    /* Mailbox: dispatcher -> operator */
-    spsc_ring_t *ring;
-    int wakeup_fd;
-    fd_ctx_t *wakeup_ctx;
-
-    /* Event core */
-    reactor_t reactor;
-    int timer_fd;
-    uint32_t timer_frequency;
-
-    /* Clients */
-    client_slot_t clients[WORKER_MAX_CLIENTS];
-    size_t active_clients;
-
-    /* Status */
-    worker_status_t status;
-};
 
 /****************************************************************************
  * PRIVATE FUNCTION DECLARATIONS
@@ -341,7 +311,7 @@ static int _operator_add_client(worker_operator_t *op, int client_fd)
         return STATUS_FAILURE;
     }
 
-    op->clients[op->active_clients++] = (client_slot_t){
+    op->clients[op->active_clients++] = (worker_client_slot_t){
         .fd = client_fd,
         .ctx = ctx,
         .last_activity = (uint32_t)time_helper_get_now(),

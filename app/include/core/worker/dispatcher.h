@@ -4,8 +4,15 @@
 #include <stdint.h>
 
 #include "pipeline.h"
+#include "worker/operator.h"
 
-typedef struct worker_dispatcher worker_dispatcher_t;
+typedef struct worker_dispatcher
+{
+    pipeline_t *listener_pipeline;
+    worker_operator_t *operators;
+    size_t operator_count;
+    uint8_t cpu_count;
+} worker_dispatcher_t;
 
 int worker_dispatcher_init(worker_dispatcher_t *dispatcher,
                            pipeline_t *listener_pipeline,
