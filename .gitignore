@@ -8,7 +8,7 @@
 # Ignore for now utilities directory
 #/utils
 #Ignore build files
-build/
+build*
 # Ignore log files
 server.log
 # Ignore whole private directory

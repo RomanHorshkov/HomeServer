@@ -516,7 +516,7 @@ static int _operator_timer_init(worker_operator_t *op)
     timer_ctx->owner = op;
     timer_ctx->handler = _operator_handle_timer_event;
 
-    if(time_helper_set(op->timer_fd, SERVER_KEEPALIVE_TIMEOUT_NOT_ALONE, 0) == -1)
+    if(time_helper_set(op->timer_fd, OPERATOR_TIMER_IDLE_SEC, 0) == -1)
     {
         EML_PERR(LOG_TAG, "[op %d] time_helper_set failed", op->id);
         free(timer_ctx);

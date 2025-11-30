@@ -512,33 +512,12 @@ static int on_body(llhttp_t* parser, const char* at, size_t length)
             "bytes)",
             HTTP_MAX_BODY_RAM_CAPACITY);
 
-        /* drop any data we’d buffered so far */
-        free(req->body);
-        req->body = NULL;
-        req->body_len = 0;
-
         /* return non-zero to tell llhttp to stop parsing with error */
         return 1;
     }
 
-    /* Otherwise append into RAM buffer */
-
-    /* allocate or grow to exactly fit new size + null terminator */
-    char* new_buf = realloc(req->body, req->body_len + length + 1);
-    if(!new_buf)
-    {
-        EML_ERROR(LOG_TAG, "[http]: Failed to reallocate memory for request body");
-
-        /* Clean up on OOM */
-        free(req->body);
-        req->body = NULL;
-        req->body_len = 0;
-        return 1;
-    }
-
-    /* copy in the new chunk and update length */
-    memcpy(new_buf + req->body_len, at, length);
-    req->body = new_buf;
+    /* Otherwise append into preallocated buffer */
+    memcpy(req->body + req->body_len, at, length);
     req->body_len += length;
     req->body[req->body_len] = '\0';
 

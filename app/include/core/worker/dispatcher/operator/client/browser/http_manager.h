@@ -47,7 +47,7 @@ typedef struct
     char header_names[HTTP_MAX_HEADERS_IN][HTTP_MAX_HEADER_NAME_LEN];   /* Header names */
     char header_values[HTTP_MAX_HEADERS_IN][HTTP_MAX_HEADER_VALUE_LEN]; /* Header values */
     int header_count;                       /* Number of headers parsed */
-    char* body;                             /* Pointer to dynamically allocated request body */
+    char body[HTTP_MAX_BODY_RAM_CAPACITY];  /* Preallocated request body buffer */
     size_t body_len;                        /* Length of the body in bytes */
     HTTPConnectionPolicy connection_policy; /* Connection policy (keep-alive or close) */
 
