@@ -25,11 +25,6 @@
  ****************************************************************************
  */
 
-/**
- * @brief Opaque listener structure (defined in listener.c).
- */
-typedef struct listener listener_t;
-
 /****************************************************************************
  * PUBLIC FUNCTIONS DECLARATIONS
  ****************************************************************************
@@ -49,14 +44,13 @@ typedef struct listener listener_t;
  * @ref listener_run(). On failure, all resources are cleaned up and it is
  * safe for the caller to terminate.
  *
- * @param listener_ptr     Address of a pointer to a listener_t; will be allocated.
  * @param port             NUL-terminated string with the TCP port/service to bind.
  * @param pipe_write_fd    Pointer to the write end of the listener→worker pipe.
  *
  * @retval  0  Success.
  * @retval -1  Failure (see log for details).
  */
-int listener_init(listener_t **listener_ptr, const char *port, pipeline_t *pipeline_ptr);
+int listener_init(const char *port, pipeline_t *pipeline_ptr);
 
 /**
  * @brief Main listener thread function: accepts new connections and forwards them.
@@ -71,16 +65,5 @@ int listener_init(listener_t **listener_ptr, const char *port, pipeline_t *pipel
  * @return     NULL on exit.
  */
 void *listener_run(void *arg);
-
-/**
- * @brief Set the listener's atomic status flag (active/shutdown).
- *
- * This function is used by the core or control thread to signal the listener
- * to shut down gracefully.
- *
- * @param listener_ptr  Pointer to the listener instance.
- * @param status        New status value (e.g., SERVER_STATUS_ACTIVE or _SHUTDOWN).
- */
-void listener_set_status(listener_t *listener_ptr, int status);
 
 #endif /* SERVER_LISTENER_H */

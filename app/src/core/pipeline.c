@@ -9,11 +9,12 @@
 #include <sys/eventfd.h> /* eventfd(),  */
 #include <unistd.h> /* fork(), close(), pipe(), read(), write(), getlogin(), getcwd(), system() etc. */
 
+#include "config_core.h"
 #include "socket_helper.h"
 #include "spsc_ring.h"
-#include <emlog.h>
+#include "emlog.h"
 
-#define LOG_TAG "pipeline"
+#define LOG_TAG "srv_pipeline"
 
 /**
  * @file pipeline.c
@@ -61,7 +62,16 @@ struct pipeline
  * PRIVATE VARIABLES
  ****************************************************************************
  */
-/* None */
+
+/**
+ * @brief Singleton instance of the pipeline structure.
+ * 
+ * This variable holds the single instance of the pipeline used for communication
+ * between the listener and worker threads. It encapsulates the necessary file
+ * descriptors and the SPSC ring buffer for efficient data transfer.
+ */
+
+pipeline_t pipeline = {0};
 
 /****************************************************************************
  * PRIVATE FUNCTIONS PROTOTYPES
@@ -74,212 +84,140 @@ struct pipeline
  ****************************************************************************
  */
 
-int pipeline_init(pipeline_t **pipeline_ptr_ptr)
+int pipeline_init(pipeline_t **pipeline_ptr)
 {
     /* Result variable */
     int res = STATUS_FAILURE;
 
-    /* Check input */
-    if(pipeline_ptr_ptr == NULL)
+    /* Initialize the pipe between listener and worker */
+    if(pipe(pipeline.pipe_fds) == -1)
     {
-        EML_ERROR(LOG_TAG, "[pipeline] communication_init: invalid input");
+        EML_PERR(LOG_TAG, "_init: failed to create pipe");
+        goto fail;
     }
 
-    else
+    /* Set the pipe file descriptors to non-blocking */
+    if(pipe_socket_init(pipeline.pipe_fds) != STATUS_SUCCESS)
     {
-        /* Allocate memory for pipeline_t structure */
-        pipeline_t *new_pipeline_ptr = (pipeline_t *)calloc(1, sizeof(pipeline_t));
+        EML_ERROR(LOG_TAG, "_init: _socket_init failed.");
+        goto fail;
+    }
 
-        if(new_pipeline_ptr == NULL)
-        {
-            EML_ERROR(LOG_TAG, 
-                "[pipeline] communication_init: failed to allocate memory for "
-                "pipeline_t");
-        }
+    /* Create the wake up eventfd */
+    /**
+     * With EFD_SEMAPHORE:
+     * This changes the behavior of read():
+     * Each read() returns exactly 1, not the full counter.
+     * The internal counter is decremented by 1.
+     * It's perfect for semaphores: multiple waiters can all wake one-by-one.
+     * With EFD_NONBLOCK:
+     * read() fails with -1 and errno = EAGAIN if counter is 0
+     * write() fails with -1 and errno = EAGAIN if counter would overflow (very rare in
+     * practice)
+     */
+    pipeline.wakeup_fd = eventfd(0/*initial value for generic event channel*/, EFD_SEMAPHORE | EFD_NONBLOCK);
 
-        /* Initialize the pipe between listener and worker */
-        else if(pipe(new_pipeline_ptr->pipe_fds) == -1)
-        {
-            EML_ERROR(LOG_TAG, "[pipeline] pipe failed to create: %s", strerror(errno));
-        }
+    /* Create ring object */
+    spsc_ring_t *ring_ptr = spsc_ring_init(PIPELINE_SPSC_RING_CAPACITY);
 
-        /* Set the pipe file descriptors to non-blocking */
-        else if(pipe_socket_init(new_pipeline_ptr->pipe_fds) != STATUS_SUCCESS)
-        {
-            EML_ERROR(LOG_TAG, "[pipeline] pipe_socket_init failed.");
-        }
+    /* Check memory allocation */
+    if(ring_ptr == NULL)
+    {
+        EML_ERROR(LOG_TAG, "_init: failed to create SPSC ring");
+        goto fail;
+    }
 
-        else
-        {
-            /* Create the wake up eventfd */
-            /**
-             * With EFD_SEMAPHORE:
-             * This changes the behavior of read():
-             * Each read() returns exactly 1, not the full counter.
-             * The internal counter is decremented by 1.
-             * It's perfect for semaphores: multiple waiters can all wake one-by-one.
-             * With EFD_NONBLOCK:
-             * read() fails with -1 and errno = EAGAIN if counter is 0
-             * write() fails with -1 and errno = EAGAIN if counter would overflow (very rare in
-             * practice)
-             */
-            new_pipeline_ptr->wakeup_fd = eventfd(0, EFD_SEMAPHORE | EFD_NONBLOCK);
+    /* Check ring health */
+    if(!spsc_ring_is_empty(ring_ptr))
+    {
+        EML_ERROR(LOG_TAG, "_init: newly created SPSC ring is not empty");
+        goto fail;
+    }
 
-            /* Create ring object */
-            spsc_ring_t *ring_ptr = spsc_ring_init(SPSC_RING_CAPACITY);
+    pipeline.ring_ptr = ring_ptr;
 
-            /* Check memory allocation */
-            if(ring_ptr == NULL)
-            {
-                EML_ERROR(LOG_TAG, 
-                    "[pipeline] communication_init: failed to create SPSC ring "
-                    "buffer");
-            }
-            else
-            {
-                new_pipeline_ptr->ring_ptr = ring_ptr;
-                *pipeline_ptr_ptr = new_pipeline_ptr;
+    /* set return reference */
+    *pipeline_ptr = &pipeline;
+    return STATUS_SUCCESS;
 
-                res = STATUS_SUCCESS;
 #ifdef DEBUG_MODE
-                EML_INFO(LOG_TAG, "[pipeline] started correctly");
+    EML_INFO(LOG_TAG, "_init: pipeline initialized successfully");
 #endif
-            }
-        }
+
+fail:
+    if (ring_ptr)
+    {
+        spsc_ring_destroy(&ring_ptr);
     }
 
     return res;
 }
 
-int pipeline_push(pipeline_t *pipeline_ptr, const int client_fd)
+int pipeline_push(const int client_fd)
 {
-    /* Result variable */
-    int res = STATUS_FAILURE;
-
     /* Check inputs */
-    if(pipeline_ptr == NULL || pipeline_ptr->ring_ptr == NULL || client_fd < 0)
+    if(client_fd < 0)
     {
-        EML_ERROR(LOG_TAG, "[pipeline]: pipeline_push invalid input");
-    }
-
-    /* Check if ring has free space */
-    else if(spsc_ring_is_full(pipeline_ptr->ring_ptr))
-    {
-        EML_ERROR(LOG_TAG, 
-            "[pipeline]: pipeline_push spsc_ring_is_full, fd %d refused and "
-            "closed",
-            client_fd);
+        EML_ERROR(LOG_TAG, "_push invalid input");
+        goto fail;
     }
 
     /* Check if push on ring successful */
-    else if(spsc_ring_push(pipeline_ptr->ring_ptr, client_fd) != 0)
+    if(spsc_ring_push(pipeline.ring_ptr, client_fd))
     {
-        EML_ERROR(LOG_TAG, "[pipeline]: pipeline_push spsc_ring_push failed for fd %d", client_fd);
+        EML_ERROR(LOG_TAG, "_push spsc_ring_push failed for fd %d", client_fd);
+        goto fail;
     }
 
     /* Send a wake-up signal */
-    else
+    if(write(pipeline.wakeup_fd, &(uint64_t){1U}/* wakeup counter */, sizeof(uint64_t)) != sizeof(uint64_t))
     {
-        /* Set wakeup counter */
-        uint64_t inc = 1;
-
-        /* Check if successfully written */
-        if(write(pipeline_ptr->wakeup_fd, &inc, sizeof(uint64_t)) == sizeof(uint64_t))
-        {
-            /* Set return status */
-            res = STATUS_SUCCESS;
-        }
+        EML_PERR(LOG_TAG, "_push write to wakeup_fd failed");
+        goto fail;
     }
 
-    return res;
+    return STATUS_SUCCESS;
+fail:
+    return STATUS_FAILURE;
 }
 
-int pipeline_pop(pipeline_t *pipeline_ptr)
+int pipeline_pop(int *out_fd)
 {
-    /* Result variable */
-    int res = STATUS_FAILURE;
-
-    /* Check inputs */
-    if(pipeline_ptr == NULL || pipeline_ptr->ring_ptr == NULL)
-    {
-        EML_ERROR(LOG_TAG, "[pipeline]: pipeline_pop invalid input");
-    }
-
-    /* Check if ring has free space */
-    else if(spsc_ring_is_empty(pipeline_ptr->ring_ptr))
-    {
-        EML_ERROR(LOG_TAG, "[pipeline] pipeline_pop, spsc_ring_is_empty");
-    }
-
-    /* Check if push on ring successful */
-    else if(spsc_ring_pop(pipeline_ptr->ring_ptr, &res) != 0)
-    {
-        EML_ERROR(LOG_TAG, "[pipeline]: pipeline_pop, spsc_ring_pop failed");
-    }
-
-    return res;
+    return (status_t)spsc_ring_pop(pipeline.ring_ptr, &out_fd);
 }
 
-int pipeline_notify_worker_status_change(pipeline_t *pipeline, worker_status status)
+int pipeline_notify_worker_status_change(uint8_t status)
 {
-    /* Result variable */
-    int res = STATUS_FAILURE;
-
-    /* Check input */
-    if(pipeline == NULL)
+    /* Send the worker status to the listener */
+    if(write(pipeline.pipe_fds[1], &status, sizeof(uint8_t)) != sizeof(uint8_t))
     {
-        EML_ERROR(LOG_TAG, "[pipeline] pipeline_notify_worker_status_change: invalid input");
-    }
-
-    /* Send the status to the listener */
-    else if(write(pipeline->pipe_fds[1], &status, sizeof(uint32_t)) != sizeof(uint32_t))
-    {
-        EML_ERROR(LOG_TAG, "[pipeline] pipeline_notify_worker_status_change: write failed: %s",
-                  strerror(errno));
+        EML_PERR(LOG_TAG, "_notify_worker_status_change: write failed");
+        return STATUS_FAILURE;
     }
 
     /* If everything went ok */
-    else
-    {
 #ifdef DEBUG_MODE
-        EML_INFO(LOG_TAG, "[pipeline] updated listener about state change %d", (int)status);
+    EML_DBG(LOG_TAG, " updated listener about state change %d", (int)status);
 #endif /* DEBUG_MODE */
-        res = STATUS_SUCCESS;
-    }
-
-    return res;
+    return STATUS_SUCCESS;
 }
 
-int pipeline_get_wakeup_fd(pipeline_t *pipeline_ptr)
+int pipeline_get_wakeup_fd(void)
 {
-    if(pipeline_ptr)
-    {
-        return pipeline_ptr->wakeup_fd;
-    }
-    else
-    {
-        return -1;
-    }
+    return pipeline.wakeup_fd;
 }
 
-int pipeline_get_pipe_end_fd(pipeline_t *pipeline_ptr, int end)
+int pipeline_get_pipe_end_fd(int end)
 {
-    if(!pipeline_ptr || end < 0 || end > 1)
-    {
-        return -1;
-    }
-    else
-    {
-        return pipeline_ptr->pipe_fds[end];
-    }
+    return pipeline.pipe_fds[end];
 }
 
-void pipeline_destroy(pipeline_t **pipeline_ptr_ptr)
+void pipeline_destroy(void)
 {
-    spsc_ring_destroy(&(*pipeline_ptr_ptr)->ring_ptr);
-    socket_shutdown_and_close((*pipeline_ptr_ptr)->pipe_fds[0]);
-    socket_shutdown_and_close((*pipeline_ptr_ptr)->pipe_fds[1]);
-    socket_shutdown_and_close((*pipeline_ptr_ptr)->wakeup_fd);
+    spsc_ring_destroy(&pipeline.ring_ptr);
+    socket_shutdown_and_close(pipeline.pipe_fds[0]);
+    socket_shutdown_and_close(pipeline.pipe_fds[1]);
+    socket_shutdown_and_close(pipeline.wakeup_fd);
 }
 
 /****************************************************************************

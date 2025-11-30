@@ -12,7 +12,7 @@
  *
  * Usage:
  *   reactor_init(...)
- *   reactor_manage_fd(...)
+ *   _manage_fd(...)
  *   reactor_loop(...)
  *
  * Exit Codes:
@@ -34,33 +34,17 @@
 #include <sys/epoll.h>
 #include <unistd.h>
 
+#include "config_core.h" /* MAX_FAN_OUT_SOCKETS */
 #include "epoller.h"
-#include <emlog.h>
+#include "emlog.h"
 
-#define LOG_TAG "reactor"
+#define LOG_TAG "srv_reactor"
 
 /****************************************************************************
  * PRIVATE STRUCTURED VARIABLES
  ****************************************************************************
  */
-
-/**
- * @struct reactor
- * @brief Internal state of the event reactor.
- *
- * Stores epoll instance and per-event dispatch information.
- * Future extension includes tracking per-fd user context and callbacks.
- */
-
-/* The reactor’s internal structure – opaque to users */
-struct reactor
-{
-    /* reactor's epoll instance */
-    int epoll_fd;
-
-    /* epoll events for wait loop */
-    struct epoll_event *events;
-};
+/* None */
 
 /****************************************************************************
  * PRIVATE ENUMERATED VARIABLES
@@ -79,15 +63,15 @@ struct reactor
  ****************************************************************************
  */
 
-static int reactor_manage_fd(const reactor_t *reactor_ptr, int watch_fd, int operation,
-                             uint32_t events, fd_ctx_t *ctx);
+static int _manage_fd(const reactor_t *reactor_ptr, const int watch_fd, const int operation,
+                             const uint32_t events, fd_ctx_t *ctx);
 
 /****************************************************************************
  * PUBLIC FUNCTIONS DEFINITIONS
  ****************************************************************************
  */
 
-int reactor_init(reactor_t **reactor_ptr_ptr)
+int reactor_init(reactor_t *reactor_ptr, size_t max_events)
 {
     /* Result variable */
     int res = STATUS_FAILURE;
@@ -95,123 +79,49 @@ int reactor_init(reactor_t **reactor_ptr_ptr)
     /* Check input */
     if(!reactor_ptr_ptr)
     {
-        EML_ERROR(LOG_TAG, "[reactor] reactor_init wrong input");
+        EML_ERROR(LOG_TAG, "_init: invalid input");
+        goto fail;
     }
 
-    else
+    /* Initialize reactor's epoller */
+    reactor_ptr->epoll_fd = epoller_new();
+
+    if(reactor_ptr->epoll_fd <= 0)
     {
-        /* Allocate memory for new reactor */
-        reactor_t *new_reactor = calloc(1, sizeof(reactor_t));
-        if(!new_reactor)
-        {
-            EML_ERROR(LOG_TAG, "[reactor] reactor_init calloc failed");
-        }
-
-        else
-        {
-            /* Initialize reactor's epoll instance */
-            new_reactor->epoll_fd = epoller_new();
-
-            if(new_reactor->epoll_fd < 0)
-            {
-                EML_ERROR(LOG_TAG, "[reactor] epoll_new() failed %s", strerror(errno));
-                free(new_reactor);
-            }
-
-            else
-            {
-                /* Allocate the events buffer (one slot per possible registration) */
-                new_reactor->events = calloc(MAX_FAN_OUT_SOCKETS, sizeof(struct epoll_event));
-
-                if(new_reactor->events == NULL)
-                {
-                    EML_ERROR(LOG_TAG, "[reactor] calloc() events failed %s", strerror(errno));
-                    free(new_reactor->events);
-                    free(new_reactor);
-                }
-
-                else
-                {
-                    *reactor_ptr_ptr = new_reactor;
-                    res = STATUS_SUCCESS;
-                }
-            }
-        }
+        EML_PERR(LOG_TAG, "_init: epoller_new() failed");
+        goto fail;
     }
 
+    /* Allocate the events buffer (one slot per possible registration) */
+    reactor_ptr->events = calloc(max_events, sizeof(struct epoll_event));
+
+    if(!reactor_ptr->events)
+    {
+        EML_PERR(LOG_TAG, "_init: reactor events malloc failed");
+        epoller_shutdown(reactor_ptr->epoll_fd);
+        goto fail;
+    }
+
+#ifdef DEBUG_MODE
+    EML_DBG(LOG_TAG, "_init: reactor initialized successfully");
+#endif /* DEBUG_MODE */
+
+    return STATUS_SUCCESS;
+
+fail:
     return res;
 }
 
-/* VINCENZO S EXAMPLE */
-
-// int reactor_init2(reactor_t **reactor_ptr_ptr)
-// {
-//     /* Result variable */
-//     int res = STATUS_FAILURE;
-
-//     /* Check input */
-//     if(!reactor_ptr_ptr)
-//     {
-//         EML_ERROR(LOG_TAG, "[reactor] reactor_init wrong input");
-//         goto exit;
-//     }
-
-//     /* Allocate memory for new reactor */
-//     reactor_t *new_reactor = calloc(1, sizeof(reactor_t));
-//     if(!new_reactor)
-//     {
-//         EML_ERROR(LOG_TAG, "[reactor] reactor_init calloc failed");
-//         goto exit;
-//     }
-
-//     /* Initialize reactor's epoll instance */
-//     new_reactor->epoll_fd = epoller_new();
-
-//     if(new_reactor->epoll_fd < 0)
-//     {
-//         EML_ERROR(LOG_TAG, "[reactor] epoll_new() failed %s", strerror(errno));
-//         goto clean_reactor;
-//     }
-
-//     /* Allocate the events buffer (one slot per possible registration) */
-//     new_reactor->events = calloc(MAX_FAN_OUT_SOCKETS, sizeof(struct epoll_event));
-
-//     if(new_reactor->events == NULL)
-//     {
-//         EML_ERROR(LOG_TAG, "[reactor] calloc() events failed %s", strerror(errno));
-//         goto clean_events;
-//     }
-
-//     *reactor_ptr_ptr = new_reactor;
-//     res = STATUS_SUCCESS;
-
-//     return res;
-
-// clean_events:
-//     free(new_reactor->events);
-// clean_reactor:
-//     free(new_reactor);
-// exit:
-//     return res;
-// }
-
-int reactor_add_in(const reactor_t *reactor_ptr, int fd, fd_ctx_t *ctx)
+int reactor_add_in(const reactor_t *reactor_ptr, const int fd, const fd_ctx_t *ctx)
 {
-    int res = STATUS_FAILURE;
-    /* Result variable */
 
     if(!reactor_ptr || fd < 0 || !ctx)
     {
-        EML_ERROR(LOG_TAG, "[reactor] _add_in: invalid input");
+        EML_ERROR(LOG_TAG, "_add_in: invalid input");
+        return STATUS_FAILURE;
     }
-
-    else
-    {
-        res = reactor_manage_fd(reactor_ptr, fd, EPOLL_CTL_ADD, EPOLLIN, ctx);
-        EML_INFO(LOG_TAG, "[reactor] _add_in executed with status %d", res);
-    }
-
-    return res;
+    
+    return _manage_fd(reactor_ptr, fd, EPOLL_CTL_ADD, EPOLLIN, ctx);
 }
 
 int reactor_add_in_client(const reactor_t *reactor_ptr, int fd, fd_ctx_t *ctx)
@@ -226,7 +136,7 @@ int reactor_add_in_client(const reactor_t *reactor_ptr, int fd, fd_ctx_t *ctx)
 
     else
     {
-        res = reactor_manage_fd(reactor_ptr, fd, EPOLL_CTL_ADD,
+        res = _manage_fd(reactor_ptr, fd, EPOLL_CTL_ADD,
                                 EPOLLIN | EPOLLRDHUP | EPOLLHUP | EPOLLERR, ctx);
     }
 
@@ -240,12 +150,12 @@ int reactor_add_out(const reactor_t *reactor_ptr, int fd, fd_ctx_t *ctx)
 
     if(!reactor_ptr || fd < 0 || !ctx)
     {
-        EML_ERROR(LOG_TAG, "[reactor] reactor_manage_fd: invalid input");
+        EML_ERROR(LOG_TAG, "[reactor] _manage_fd: invalid input");
     }
 
     else
     {
-        res = reactor_manage_fd(reactor_ptr, fd, EPOLL_CTL_ADD, EPOLLOUT, ctx);
+        res = _manage_fd(reactor_ptr, fd, EPOLL_CTL_ADD, EPOLLOUT, ctx);
     }
 
     return res;
@@ -258,7 +168,7 @@ int reactor_mod(const reactor_t *reactor_ptr, int fd, uint32_t events, fd_ctx_t 
         EML_ERROR(LOG_TAG, "[reactor] mod: invalid input");
         return STATUS_FAILURE;
     }
-    return reactor_manage_fd(reactor_ptr, fd, EPOLL_CTL_MOD, events, ctx);
+    return _manage_fd(reactor_ptr, fd, EPOLL_CTL_MOD, events, ctx);
 }
 
 int reactor_del(const reactor_t *reactor_ptr, int fd)
@@ -268,7 +178,7 @@ int reactor_del(const reactor_t *reactor_ptr, int fd)
         EML_ERROR(LOG_TAG, "[reactor] del: invalid input");
         return STATUS_FAILURE;
     }
-    return reactor_manage_fd(reactor_ptr, fd, EPOLL_CTL_DEL, 0, NULL);
+    return _manage_fd(reactor_ptr, fd, EPOLL_CTL_DEL, 0, NULL);
 }
 
 int reactor_run(reactor_t *reactor_ptr, int *out_fd)
@@ -280,95 +190,71 @@ int reactor_run(reactor_t *reactor_ptr, int *out_fd)
     if(!reactor_ptr)
     {
         EML_ERROR(LOG_TAG, "[reactor] _run wrong input");
+        goto fail;
     }
-    else
+
+    /* Wait until some event comes */
+    int n = epoller_wait(reactor_ptr->epoll_fd, reactor_ptr->events);
+    if(n <= 0)
     {
-        /* Wait until some event comes */
-        int n = epoller_wait(reactor_ptr->epoll_fd, reactor_ptr->events);
-        if(n <= 0)
-        {
-            EML_ERROR(LOG_TAG, "[reactor] _run epoller_listen_events error %s", strerror(errno));
-        }
-
-        else
-        {
-            /* Dispatch each ready event */
-            for(int i = 0; i < n; i++)
-            {
-                /* Get the kernel-returned ptr saved at epoll ADD instance */
-                fd_ctx_t *ctx = (fd_ctx_t *)reactor_ptr->events[i].data.ptr;
-
-                /* Handle error/hangup/peer close events */
-                if(epoller_check_if_to_close(reactor_ptr->events[i].events))
-                {
-                    /* signal the fd to close */
-                    *out_fd = ctx->fd;
-#ifdef DEBUG_MODE
-                    EML_INFO(LOG_TAG, 
-                        "[reactor] reactor_run: epoll fd %d to close, "
-                        "continue.",
-                        ctx->fd);
-#endif
-                    res = STATUS_FAILURE;
-                    break;
-                }
-
-                else
-                {
-#ifdef DEBUG_MODE
-                    EML_INFO(LOG_TAG, "[reactor] reactor_run: calling fd %d handler", ctx->fd);
-#endif
-                    /* Call the handler */
-                    res = ctx->handler(ctx->fd, ctx);
-#ifdef DEBUG_MODE
-                    EML_INFO(LOG_TAG, 
-                        "[reactor] reactor_run: return after handler call res "
-                        "= %d",
-                        res);
-#endif
-                }
-            } /* for */
-        }
+        EML_ERROR(LOG_TAG, "epoller_wait error");
+        goto fail;
     }
+    
+    /* Dispatch each ready event */
+    for(int i = 0; i < n; i++)
+    {
+        /* Get the kernel-returned ptr saved at epoll ADD instance */
+        fd_ctx_t *ctx = (fd_ctx_t *)reactor_ptr->events[i].data.ptr;
+
+        /* Handle error/hangup/peer close events */
+        if(epoller_check_if_to_close(reactor_ptr->events[i].events))
+        {
+            /* signal the fd to close */
+            *out_fd = ctx->fd;
+#ifdef DEBUG_MODE
+            EML_DBG(LOG_TAG, "_run: epoll fd %d to close, continue.", ctx->fd);
+#endif
+            goto fail;
+        }
+
+#ifdef DEBUG_MODE
+        EML_INFO(LOG_TAG, "_run: calling fd %d handler", ctx->fd);
+#endif
+        /* Call the handler */
+        res = ctx->handler(ctx->fd, ctx);
+
+    } /* for */
 
     return res;
+fail:
+    return STATUS_FAILURE;
 }
 
-int reactor_shutdown(reactor_t **reactor_ptr_ptr)
+int reactor_shutdown(reactor_t *reactor_ptr)
 {
     /* Result variable */
     int res = STATUS_FAILURE;
 
-    if(!reactor_ptr_ptr || !(*reactor_ptr_ptr))
+    if(!reactor_ptr)
     {
-        EML_ERROR(LOG_TAG, "[reactor] shutdown: invalid input");
+        EML_ERROR(LOG_TAG, "_shutdown: invalid input");
+        goto fail;
     }
 
-    else
+    /* Close epoll instance */
+    if(epoller_shutdown(reactor_ptr->epoll_fd) < 0)
     {
-        reactor_t *reactor_ptr = *reactor_ptr_ptr;
-
-        /* Close epoll instance */
-        if(epoller_shutdown(reactor_ptr->epoll_fd) < 0)
-        {
-            EML_ERROR(LOG_TAG, "[reactor] shutdown: failed to close epoll fd (%s)", strerror(errno));
-        }
-
-        else
-        {
-            /* Free the events buffer */
-            free(reactor_ptr->events);
-
-            /* Free the reactor object */
-            free(reactor_ptr);
-
-            /* Nullify the caller's pointer */
-            *reactor_ptr_ptr = NULL;
-
-            res = STATUS_SUCCESS;
-        }
+        EML_PERR(LOG_TAG, "_shutdown: failed to close epoller fd");
+        goto fail;
     }
 
+    /* Free the events buffer */
+    free(reactor_ptr->events);
+
+    return STATUS_SUCCESS;
+
+fail:
     return res;
 }
 
@@ -377,27 +263,22 @@ int reactor_shutdown(reactor_t **reactor_ptr_ptr)
  ****************************************************************************
  */
 
-static int reactor_manage_fd(const reactor_t *reactor_ptr, int watch_fd, int operation,
+static int _manage_fd(const reactor_t *reactor_ptr, const int watch_fd, const int operation,
                              uint32_t events, fd_ctx_t *ctx)
 {
-    /* Result variable */
-    int res = STATUS_FAILURE;
-
-    if(!reactor_ptr || watch_fd < 0 || operation == 0)
+    if(operation == 0)
     {
-        EML_ERROR(LOG_TAG, "[reactor] manage_fd: bad args");
+        EML_ERROR(LOG_TAG, "[reactor] _manage_fd: invalid input, operation 0");
+        return STATUS_FAILURE;
     }
 
     /* 1. Let the kernel work first – if this fails don’t mutate state. */
-    else if(epoller_manage_fd(reactor_ptr->epoll_fd, watch_fd, operation, events, (void *)ctx) < 0)
+    if(epoller_manage_fd(reactor_ptr->epoll_fd, watch_fd, operation, events, (void *)ctx) < 0)
     {
-        EML_ERROR(LOG_TAG, "[reactor] manage_fd: epoll_manage_fd failed (%s)", strerror(errno));
+        EML_PERR(LOG_TAG, "_manage_fd: epoler failed");
+        return STATUS_FAILURE;
     }
 
-    else
-    {
-        res = STATUS_SUCCESS;
-    }
 
-    return res;
+    return STATUS_SUCCESS;
 }

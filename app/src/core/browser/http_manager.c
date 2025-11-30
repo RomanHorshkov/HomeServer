@@ -203,20 +203,23 @@ int http_manage_request(const char* recv_buf, const size_t buffer_len, HttpReque
     if(http_parse_request(recv_buf, buffer_len, request) != STATUS_SUCCESS)
     {
         EML_PERR(LOG_TAG, "[browser] parse failed");
-        return res;
+        goto fail;
     }
 
     /* Sanitize parsed HTTP reuest */
     if(sanitize_http_request(request) != STATUS_SUCCESS)
     {
         EML_PERR(LOG_TAG, "[browser] sanitize_http_request failed");
-        return res;
+        goto fail;
     }
 
     /* Determine connection policy based on headers */
     determine_connection_policy(request);
 
     return STATUS_SUCCESS;
+
+fail:
+    return res;
 }
 
 /****************************************************************************

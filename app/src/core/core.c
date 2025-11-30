@@ -52,13 +52,19 @@
  ****************************************************************************
  */
 
-#define LOG_TAG "core"
+#define LOG_TAG "srv_core"
 
 /****************************************************************************
  * PRIVATE STRUCTURED TYPES
  ****************************************************************************
  */
 
+ /**
+  * 
+  * idea: core possesses listener, worker, and pipeline.
+  * then, listener and worker gets pointer to pipeline from core during init.
+  * core also manages the threads for listener, worker.
+  */
 typedef struct
 {
     /* listener instance */
@@ -75,9 +81,6 @@ typedef struct
 
     /* worker thread */
     pthread_t worker_thread;
-
-    /* control thread */
-    pthread_t control_thread;
 
     // future: config_t *config, tls_t *tls, etc.
 } server_t;
@@ -101,22 +104,9 @@ static server_t server;
  ****************************************************************************
  */
 
-#ifdef DEBUG_MODE
-/**
- * @brief Control thread entry point: handles interactive server menu and shutdown.
- *
- * Presents a simple menu on the controlling terminal, allowing the operator
- * to inspect server state (listeners, clients, etc.) and to initiate a
- * graceful shutdown by typing 'q' + ENTER. This function is intended to be
- * run in a dedicated thread and blocks until shutdown is requested.
- *
- * @param arg  Unused (may be NULL).
- * @return     NULL on exit.
- */
-void *control_run(void *arg);
-#endif /* DEBUG_MODE */
-
 static void core_logger_bootstrap(void);
+
+static void _p_dbg_info_init(void);
 
 /****************************************************************************
  * PUBLIC FUNCTIONS DEFINITIONS
@@ -125,68 +115,45 @@ static void core_logger_bootstrap(void);
 
 int server_init(const char *port)
 {
-    /* return value */
-    int ret = STATUS_FAILURE;
-
 #ifdef DEBUG_MODE
-    // all this is a partial representation of the server's core folder and
-    // what is visible in it, from which user it is running, and the current working directory.
-    /* Print current user */
-    uid_t uid = geteuid();
-    const struct passwd *pw = getpwuid(uid);
-    if(pw)
-    {
-        printf("[CORE]: running as user: %s\n", pw->pw_name);
-    }
-    else
-    {
-        printf("[CORE]: running as user: UNKNOWN (uid=%d)\n", (int)uid);
-    }
-
-    /* Print current working directory */
-    char cwd[HTTP_MAX_PATH_LEN];
-    if(getcwd(cwd, sizeof(cwd)) != NULL) printf("[CORE]: cwd: %s\n", cwd);
-
-    /* List directory contents */
-    printf("[CORE]: ls -la:\n");
-    system("ls -la");
+    _p_dbg_info_init();
 #endif /* DEBUG_MODE */
-
+    
     core_logger_bootstrap();
-
-    /* Initialize the external database application */
-    if(db_app_init() != 0)
-    {
-        EML_ERROR(LOG_TAG, "db_app_init failed");
-        return -1;
-    }
 
     /* Initialize the pipeline between listener and worker */
     if(pipeline_init(&server.pipeline) != STATUS_SUCCESS)
     {
         EML_ERROR(LOG_TAG, "W <-> L pipeline communication_init failed.");
+        goto fail;
     }
 
     /* Initialize the listener with port, pipe read end, wakeup_fd, and ring */
-    else if(listener_init(&server.listener, port, server.pipeline) != STATUS_SUCCESS)
+    if(listener_init(&server.listener, port, server.pipeline) != STATUS_SUCCESS)
     {
         EML_PERR(LOG_TAG, "listener failed to init.");
+        goto fail;
     }
 
     /* Initialize the worker */
-    else if(worker_init(&server.worker, server.pipeline) != STATUS_SUCCESS)
+    if(worker_init(&server.worker, server.pipeline) != STATUS_SUCCESS)
     {
         EML_PERR(LOG_TAG, "worker failed to init.");
+        goto fail;
+    }
+
+    /* Initialize the external database application */
+    if(db_app_init() != 0)
+    {
+        EML_ERROR(LOG_TAG, "db_app_init failed");
+        goto fail;
     }
 
     /* Successful initialization */
-    else
-    {
-        EML_INFO(LOG_TAG, "🚀 C Server running on http://localhost:%s", port);
-        ret = STATUS_SUCCESS;
-    }
-
-    return ret;
+    EML_INFO(LOG_TAG, "🚀 C Server running on http://localhost:%s", port);
+    return STATUS_SUCCESS;
+fail:
+    return STATUS_FAILURE;
 }
 
 void server_run(void)
@@ -213,49 +180,6 @@ void server_run(void)
  ****************************************************************************
  */
 
-#ifdef DEBUG_MODE
-void *control_run(void *arg)
-{
-    (void)arg;  // Unused parameter
-
-    /* input from console */
-    char input[16];
-    while(1)
-    {
-        printf("\n--- Server Menu ---\n");
-        printf("1. Listeners\n");
-        printf("2. Clients\n");
-        printf("q. Shutdown\n");
-        printf("Select: ");
-        fflush(stdout);
-
-        if(fgets(input, sizeof(input), stdin) == NULL) continue;
-
-        if(input[0] == '1')
-        {
-            printf("Show listeners info here...\n");
-        }
-        else if(input[0] == '2')
-        {
-            printf("Show clients info here...\n");
-        }
-        else if(input[0] == 'q')
-        {
-            /* Set listener and worker status to shutdown */
-            worker_set_status(server.worker, WORKER_STATUS_SHUTDOWN);
-            listener_set_status(server.listener, LISTENER_STATUS_SHUTDOWN);
-            EML_INFO(LOG_TAG, "Control thread requested shutdown via console menu");
-            break;
-        }
-        else
-        {
-            printf("Unknown option.\n");
-        }
-    }
-    return NULL;
-}
-#endif /* DEBUG_MODE */
-
 static void core_logger_bootstrap(void)
 {
     static bool initialized = false;
@@ -273,4 +197,31 @@ static void core_logger_bootstrap(void)
 #endif
 
     initialized = true;
+}
+
+static void _p_dbg_info_init(void)
+{
+    
+    // all this is a partial representation of the server's core folder and
+    // what is visible in it, from which user it is running, and the current working directory.
+    /* Print current user */
+    uid_t uid = geteuid();
+    const struct passwd *pw = getpwuid(uid);
+    if(pw)
+    {
+        printf("[CORE]: running as user: %s\n", pw->pw_name);
+    }
+    else
+    {
+        printf("[CORE]: running as user: UNKNOWN (uid=%d)\n", (int)uid);
+    }
+
+    /* Print current working directory */
+    char cwd[HTTP_MAX_PATH_LEN];
+    if(getcwd(cwd, sizeof(cwd)) != NULL)
+        printf("[CORE]: cwd: %s\n", cwd);
+
+    /* List directory contents */
+    printf("[CORE]: ls -la:\n");
+    system("ls -la");
 }

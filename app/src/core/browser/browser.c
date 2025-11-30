@@ -102,51 +102,51 @@ int browser_manage_client_req(int fd)
 #ifdef DEBUG_MODE
         EML_INFO(LOG_TAG, "Peer closed connection (fd %d)", fd);
 #endif /* DEBUG_MODE */
+        goto fail;
     }
 
     /* If read() failed, log the error */
-    else if(n < 0)
+    if(n < 0)
     {
-        EML_ERROR(LOG_TAG, "read() error on fd %d: %s", fd, strerror(errno));
+        EML_PERR(LOG_TAG, "read() error on fd %d", fd);
+        goto fail;
     }
 
-    else
-    {
 #ifdef DEBUG_MODE
-        // EML_INFO(LOG_TAG, "[worker] Received from fd %d:\n%.*s", fd, (int)n, recv_buf);
+    EML_INFO(LOG_TAG, "received from fd %d:\n%.*s", fd, (int)n, recv_buf);
 #endif /* DEBUG_MODE */
 
-        /* manage http request */
-        if(http_manage_request(recv_buf, n, &request) != STATUS_SUCCESS)
-        {
-            EML_PERR(LOG_TAG, "http_manage_request failed");
-        }
-
-        /* Route request to generate HttpResponse (status, headers, body) */
-        else if(router_handle_request(&request, &response) != STATUS_SUCCESS)
-        {
-            EML_ERROR(LOG_TAG, "router_handle_request failed for fd %d", fd);
-        }
-
-        /* Send HTTP response over TCP (headers + binary body) */
-        else if(send_response(fd, &response) < 0)
-        {
-            EML_PERR(LOG_TAG, "send_response failed");
-
-            /* Free any heap buffer allocated by handler_static_page */
-            free((void *)response.body);
-        }
-
-        else
-        {
-            /* Set return variable to success */
-            res = STATUS_SUCCESS;
-
-            /* Free any heap buffer allocated by handler_static_page */
-            free((void *)response.body);
-        }
+    /* manage http request */
+    if(http_manage_request(recv_buf, n, &request) != STATUS_SUCCESS)
+    {
+        EML_PERR(LOG_TAG, "http_manage_request failed");
+        goto fail;
     }
 
+    /* Route request to generate HttpResponse (status, headers, body) */
+    if(router_handle_request(&request, &response) != STATUS_SUCCESS)
+    {
+        EML_ERROR(LOG_TAG, "router_handle_request failed for fd %d", fd);
+        goto fail;
+    }
+
+    /* Send HTTP response over TCP (headers + binary body) */
+    if(send_response(fd, &response) < 0)
+    {
+        EML_PERR(LOG_TAG, "send_response failed");
+
+        /* Free any heap buffer allocated by handler_static_page */
+        free((void *)response.body);
+        goto fail;
+    }
+
+    /* Free any heap buffer allocated by handler_static_page */
+    free((void *)response.body);
+    
+    /* Set return variable to success */
+    res = STATUS_SUCCESS;
+
+fail:
     return res;
 }
 
