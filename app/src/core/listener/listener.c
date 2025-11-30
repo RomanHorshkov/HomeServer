@@ -39,13 +39,13 @@
 #include "socket_helper.h"
 #include <emlog.h>
 
-#define LOG_TAG "srv_listener"
 
 /****************************************************************************
  * PRIVATE DEFINES
  ****************************************************************************
  */
-/* None */
+
+#define LOG_TAG "srv_listener"
 
 /****************************************************************************
  * PRIVATE STUCTURED VARIABLES

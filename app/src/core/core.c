@@ -45,7 +45,7 @@
 #include "router.h"
 #include "server_settings.h"
 #include "socket_helper.h"
-#include "worker.h"
+#include "worker/worker.h"
 
 /****************************************************************************
  * PRIVATE DEFINES
@@ -82,6 +82,9 @@ typedef struct
     /* worker thread */
     pthread_t worker_thread;
 
+    /* Detected CPU count for sizing worker/operator threads */
+    uint8_t cpu_count;
+
     // future: config_t *config, tls_t *tls, etc.
 } server_t;
 
@@ -104,7 +107,9 @@ static server_t server;
  ****************************************************************************
  */
 
-static void core_logger_bootstrap(void);
+static void _core_logger_bootstrap(void);
+
+static uint8_t _core_detect_cpu_count(void);
 
 static void _p_dbg_info_init(void);
 
@@ -119,7 +124,10 @@ int server_init(const char *port)
     _p_dbg_info_init();
 #endif /* DEBUG_MODE */
     
-    core_logger_bootstrap();
+    _core_logger_bootstrap();
+
+    /* Detect available CPUs and keep the value for thread sizing */
+    server.cpu_count = _core_detect_cpu_count();
 
     /* Initialize the pipeline between listener and worker */
     if(pipeline_init(&server.pipeline) != STATUS_SUCCESS)
@@ -136,7 +144,7 @@ int server_init(const char *port)
     }
 
     /* Initialize the worker */
-    if(worker_init(&server.worker, server.pipeline) != STATUS_SUCCESS)
+    if(worker_init(&server.worker, server.pipeline, server.cpu_count) != STATUS_SUCCESS)
     {
         EML_PERR(LOG_TAG, "worker failed to init.");
         goto fail;
@@ -161,16 +169,10 @@ void server_run(void)
     /* run threads */
     pthread_create(&server.listener_thread, NULL, listener_run, server.listener);
     pthread_create(&server.worker_thread, NULL, worker_run, server.worker);
-#ifdef DEBUG_MODE
-    // pthread_create(&server.control_thread, NULL, control_run, NULL);
-#endif /* DEBUG_MODE */
-
+    
     /* wait threads */
     pthread_join(server.listener_thread, NULL);
     pthread_join(server.worker_thread, NULL);
-#ifdef DEBUG_MODE
-    pthread_join(server.control_thread, NULL);
-#endif /* DEBUG_MODE */
 
     pipeline_destroy(&server.pipeline);
 }
@@ -180,7 +182,7 @@ void server_run(void)
  ****************************************************************************
  */
 
-static void core_logger_bootstrap(void)
+static void _core_logger_bootstrap(void)
 {
     static bool initialized = false;
     if(initialized) return;
@@ -197,6 +199,21 @@ static void core_logger_bootstrap(void)
 #endif
 
     initialized = true;
+}
+
+static uint8_t _core_detect_cpu_count(void)
+{
+    long cpus = sysconf(_SC_NPROCESSORS_ONLN);
+
+    EML_INFO(LOG_TAG, "Detected %d CPU%s available",
+             cpus, (cpus == 1) ? "" : "s");
+    if(cpus < 1 || cpus > 255)
+    {
+        EML_PERR(LOG_TAG, "sysconf(_SC_NPROCESSORS_ONLN) failed, defaulting to 1 CPU");
+        return 1;
+    }
+
+    return (uint8_t)cpus;
 }
 
 static void _p_dbg_info_init(void)
