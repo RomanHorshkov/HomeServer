@@ -7,7 +7,7 @@ It now serves **dynamic JSON APIs**, **rich client‑side pages**, a **build-not
 |------------|----------------------|
 | **True multithreading** | Dedicated *Listener*, *Worker* and optional *Ctrl* threads; hand‑off via an SPSC ring so **no mutexes needed**. |
 | **Edge‑triggered `epoll` everywhere** | One sys‑call per wake‑up, thousands of concurrent sockets, no busy‑polling. |
-| **Graceful admission control** | Hard cap (`MAX_CLIENTS`); worker flips to **FULL**, listener pauses all `accept4()` calls in real time. |
+| **Graceful admission control** | Hard cap (`WORKER_MAX_CLIENTS`); worker flips to **FULL**, listener pauses all `accept4()` calls in real time. |
 | **Lock‑free SPSC ring + `eventfd`** | Zero‑copy FD transfer from listener → worker; one 8‑byte signal wakes the consumer. |
 | **HTTP/1.1 spec‑grade parsing** | Static‑linked 🏎 **[llhttp]** state‑machine (zero allocations, ~3 kB hot path). |
 | **JSON encoding/decoding** | Static‑linked **[cJSON]** (MIT licence) for REST endpoints and on‑disk manifests. |
@@ -111,7 +111,7 @@ sequenceDiagram
 2. **Back‑pressure**
 
    * Worker tracks `active_connections_no`.
-   * When it crosses `MAX_CLIENTS`, the worker sends `WORKER_STATUS_FULL` through the pipe (write end is EPOLLOUT‑armed, one‑shot).
+   * When it crosses `WORKER_MAX_CLIENTS`, the worker sends `WORKER_STATUS_FULL` through the pipe (write end is EPOLLOUT‑armed, one‑shot).
    * Listener reads the pipe, sees the `FULL` flag, and **removes** all listen FDs from epoll (`pause_listening`).
    * As soon as the worker drops below the threshold, it writes `WORKER_STATUS_ACTIVE`, and the listener **re‑adds** the listen FDs (`resume_listening`).
 
@@ -120,7 +120,7 @@ sequenceDiagram
 3. **Keep‑alive / idle timeout**
 
    * Single `timerfd` in the worker ticks every 10 s while at least one client is connected, or every 60 s when the worker is idle.
-   * On each tick the worker scans its `connections[]`; sockets idle longer than `CLIENT_TIMEOUT_S` are closed gracefully (`shutdown → epoll DEL → close`).
+   * On each tick the worker scans its `connections[]`; sockets idle longer than `WORKER_CLIENT_TIMEOUT_SHORT` are closed gracefully (`shutdown → epoll DEL → close`).
 
 ### Why this matters
 
@@ -153,9 +153,9 @@ This design enables a tiny, epoll-only micro‑HTTP server to comfortably scale 
 
 | Symbol                    | Meaning                           | Default   |
 | ------------------------- | --------------------------------- | --------- |
-| `MAX_LISTENERS`           | Listening sockets (IPv4 + IPv6)   | **2**     |
-| `MAX_CLIENTS`             | Simultaneous clients (epoll)      | **1024**  |
-| `MAX_PENDING_CONNECTIONS` | `listen()` backlog                | **8**     |
+| `SERVER_CORE_MAX_LISTENING_SOCKETS`           | Listening sockets (IPv4 + IPv6)   | **2**     |
+| `WORKER_MAX_CLIENTS`             | Simultaneous clients (epoll)      | **1024**  |
+| `SERVER_CORE_MAX_PENDING_SOCKETS_PER_LISTENER` | `listen()` backlog                | **8**     |
 | `SERVER_LOOP_SLEEP_USEC`  | Main loop pause between polls     | **10 s**  |
 
 ---
@@ -315,7 +315,7 @@ For each item you will find **the underlying cause**, **the practical impact/a
 | **Pipe buffer overflow** | If the worker thread is slow or blocked, the listener may fill the pipe buffer and lose client FDs. **Mitigation:** Monitor pipe usage, consider backpressure or a bounded queue. |
 | **Resource leaks on thread exit** | If a thread exits abnormally, sockets or memory may not be freed. **Mitigation:** Ensure all cleanup paths are robust; use thread join and error logging. |
 | **Unvalidated input in APIs** | JSON and file APIs may not validate all user input (e.g. path, query params). **Mitigation:** Strictly validate and sanitize all user input. |
-| **Denial-of-service via many connections** | If `MAX_CLIENTS` is too high or not enforced, a flood of connections can exhaust memory or file descriptors. **Mitigation:** Enforce connection caps, monitor resource usage, and consider per-IP limits. |
+| **Denial-of-service via many connections** | If `WORKER_MAX_CLIENTS` is too high or not enforced, a flood of connections can exhaust memory or file descriptors. **Mitigation:** Enforce connection caps, monitor resource usage, and consider per-IP limits. |
 | **Log injection** | If user input is logged without sanitization, attackers can inject fake log lines. **Mitigation:** Sanitize or escape user input before logging. |
 
 ---
@@ -501,7 +501,7 @@ flowchart TD
 flowchart TD
     cm[[client_manager]]
 
-    cm --> connections["connection_t connections[MAX_CLIENTS]"]
+    cm --> connections["connection_t connections[WORKER_MAX_CLIENTS]"]
     cm --> count["size_t active_connections"]
 
     subgraph Connection
@@ -536,7 +536,7 @@ flowchart TD
 
     reactor_struct --> epoll_fd["int epoll_fd"]
     reactor_struct --> events["epoll_event *epoll_events"]
-    reactor_struct --> registers["register_t registers[MAX_CLIENTS + PIPELINE_MAX_SOCKETS]"]
+    reactor_struct --> registers["register_t registers[WORKER_MAX_CLIENTS + PIPELINE_MAX_SOCKETS]"]
     reactor_struct --> register_count["uint active_registers"]
 
     subgraph RegisterEntry
@@ -654,8 +654,8 @@ stateDiagram-v2
     ACTIVE: ACTIVE\naccept allowed
     FULL:   FULL\naccept paused
 
-    ACTIVE --> FULL : worker > MAX_CLIENTS
-    FULL --> ACTIVE : worker <= MAX_CLIENTS-1
+    ACTIVE --> FULL : worker > WORKER_MAX_CLIENTS
+    FULL --> ACTIVE : worker <= WORKER_MAX_CLIENTS-1
 ```
 
 ---

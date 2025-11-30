@@ -23,12 +23,6 @@
  * PUBLIC STRUCTURED VARIABLES DECLARATIONS
  ****************************************************************************
  */
-
-/**
- * @brief Opaque worker structure (defined in worker.c).
- */
-typedef struct worker worker_t;
-
 /****************************************************************************
  * PUBLIC FUNCTIONS DECLARATIONS
  ****************************************************************************

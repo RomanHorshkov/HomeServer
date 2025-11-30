@@ -11,7 +11,7 @@
 #include "server_settings.h"
 #include <emlog.h>
 
-#define LOG_TAG "epoller"
+#define LOG_TAG "srv_epoller"
 
 /** epoll event
  * The event argument describes the object linked to the file descriptor fd.  The struct
@@ -51,21 +51,13 @@ int epoller_wait(int epoll_fd, struct epoll_event *out_events)
     int n = epoll_wait(epoll_fd, out_events, MAX_FAN_OUT_SOCKETS, -1);
     if(n < 0)
     {
-        if(errno == EINTR)
-        {
-            EML_INFO(LOG_TAG, "[reactor] epoll_listen_events interrupted by signal EINTR: %s",
-                     strerror(errno));
-        }
-        else
-        {
-            EML_ERROR(LOG_TAG, "[reactor] epoll_listen_events error: %s", strerror(errno));
-        }
+        EML_PERR(LOG_TAG, "epoll_wait interrupted");
     }
 
     return n;
 }
 
-int epoller_manage_fd(int epoll_fd, int target_fd, int operation, uint32_t event, void *data)
+int epoller_manage_fd(const int epoll_fd, const int target_fd, const int operation, const uint32_t event, void *data)
 {
     if(epoll_fd < 0 || target_fd < 0) return -EINVAL;
 
@@ -78,15 +70,13 @@ int epoller_manage_fd(int epoll_fd, int target_fd, int operation, uint32_t event
 
             if(data == NULL)
             {
-                EML_ERROR(LOG_TAG, 
-                    "[epoller] _manage_fd with NULL data, epoll_fd %d, "
+                EML_ERROR(LOG_TAG, "_manage_fd with NULL data, epoll_fd %d, "
                     "target_fd %d, op %d",
                     epoll_fd, target_fd, operation);
             }
             else
             {
-                EML_INFO(LOG_TAG, 
-                    "[epoller] _manage_fd with data, epoll_fd %d, target_fd "
+                EML_INFO(LOG_TAG, "_manage_fd with data, epoll_fd %d, target_fd "
                     "%d, op %d",
                     epoll_fd, target_fd, operation);
                 ev.events = event;
@@ -98,8 +88,7 @@ int epoller_manage_fd(int epoll_fd, int target_fd, int operation, uint32_t event
         case EPOLL_CTL_DEL:
         default:
             /* Explicit the DEL operation */
-            EML_INFO(LOG_TAG, 
-                "[epoller] _manage_fd Deleting, epoll_fd %d, target_fd %d, op "
+            EML_INFO(LOG_TAG, "_manage_fd Deleting, epoll_fd %d, target_fd %d, op "
                 "%d",
                 epoll_fd, target_fd, operation);
             return epoll_ctl(epoll_fd, EPOLL_CTL_DEL, target_fd, NULL) ? -errno : 0;

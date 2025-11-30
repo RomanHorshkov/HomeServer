@@ -33,20 +33,41 @@ typedef struct fd_ctx_s fd_ctx_t;
 
 typedef int (*fd_callback_fn)(int fd, fd_ctx_t *ctx);
 
+/**
+ * @brief File descriptor context structure.
+ */
 struct fd_ctx_s
 {
-    int fd;
-    // fd_type_e type;
+    int fd;                 /* file descriptor */
     void *owner;            /* listener_t*, worker_t*, connection_t* */
     fd_callback_fn handler; /* function to call on event */
     uint32_t events;        /* current mask */
 };
 
 /****************************************************************************
- * PUBLIC STRUCTURED VARIABLES DEFINITIONS
+ * PUBLIC STRUCTURED VARIABLES
  ****************************************************************************
  */
-typedef struct reactor reactor_t;
+
+/**
+ * @struct reactor
+ * @brief Internal state of the event reactor.
+ *
+ * Stores epoll instance and per-event dispatch information.
+ * Future extension includes tracking per-fd user context and callbacks.
+ */
+
+/* The reactor’s internal structure – opaque to users */
+typedef struct
+{
+    /* reactor's epoll instance */
+    int epoll_fd;
+
+    /* epoll events for wait loop */
+    struct epoll_event *events;
+
+} reactor_t;
+
 
 /****************************************************************************
  * PUBLIC FUNCTIONS DECLARATIONS
@@ -59,12 +80,13 @@ typedef struct reactor reactor_t;
  * to handle file descriptor event registration.
  *
  * @param reactor_ptr  Pointer to an allocated reactor_t structure.
+ * @param max_events   Maximum number of events.
  * @retval  0  Success.
  * @retval -1  Failure to initialize (e.g., epoll_create failure).
  */
-int reactor_init(reactor_t **reactor_ptr_ptr);
+int reactor_init(reactor_t *reactor_ptr, size_t max_events);
 
-int reactor_add_in(const reactor_t *reactor_ptr, int fd, fd_ctx_t *ctx);
+int reactor_add_in(const reactor_t *reactor_ptr, const int fd, const fd_ctx_t *ctx);
 
 int reactor_add_in_client(const reactor_t *reactor_ptr, int fd, fd_ctx_t *ctx);
 
@@ -116,11 +138,10 @@ int reactor_run(reactor_t *reactor_ptr, int *out_fd);
  * Closes the internal epoll file descriptor and frees the event buffer and
  * reactor structure itself.
  *
- * @param reactor_ptr_ptr Pointer to the reactor instance pointer (double pointer).
- *                        After shutdown, *reactor_ptr_ptr will be set to NULL.
+ * @param reactor_ptr Pointer to the reactor instance.
  * @retval 0  Success.
  * @retval -1 Failure (invalid input).
  */
-int reactor_shutdown(reactor_t **reactor_ptr_ptr);
+int reactor_shutdown(reactor_t *reactor_ptr);
 
 #endif /* SERVER_REACTOR_H */

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ---------------------------------------------------------------------
-# firestorm.sh – Aggressive test to validate server MAX_CLIENTS limit
+# firestorm.sh – Aggressive test to validate server WORKER_MAX_CLIENTS limit
 #
 # Strategy:
 #  1. Fire 1024 simultaneous connections using GNU parallel.
@@ -56,4 +56,3 @@ else
   log "Too many connections accepted. Test FAIL."
   exit 1
 fi
-

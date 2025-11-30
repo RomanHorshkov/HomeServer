@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # -----------------------------------------------------------------------------
-# exceed_max_clients.sh  ──  Verify that the server enforces MAX_CLIENTS (100)
+# exceed_WORKER_MAX_CLIENTS.sh  ──  Verify that the server enforces WORKER_MAX_CLIENTS (100)
 #
 # Strategy
 # ========
