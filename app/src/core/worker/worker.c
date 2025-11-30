@@ -6,7 +6,7 @@
 
 #include <emlog.h>
 
-#include "worker/dispatcher.h"
+#include "worker/dispatcher/dispatcher.h"
 
 #define LOG_TAG "srv_worker"
 
