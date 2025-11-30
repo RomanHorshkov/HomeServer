@@ -17,12 +17,15 @@
 #ifndef SERVER_WORKER_H
 #define SERVER_WORKER_H
 
+#include <stdint.h>
 #include "pipeline.h" /* pipeline */
 
 /****************************************************************************
- * PUBLIC STRUCTURED VARIABLES DECLARATIONS
+ * PUBLIC TYPES
  ****************************************************************************
  */
+typedef struct worker worker_t;
+
 /****************************************************************************
  * PUBLIC FUNCTIONS DECLARATIONS
  ****************************************************************************
@@ -39,13 +42,14 @@
  * @ref worker_run(). On failure, all resources are cleaned up and it is
  * safe for the caller to terminate.
  *
- * @param worker_ptr_ptr    Address of a pointer to a worker_t; will be allocated.
- * @param pipeline_ptr      Pointer to the communication pipeline with listener.
+ * @param worker_ptr_ptr      Address of a pointer to a worker_t; will be allocated.
+ * @param pipeline_ptr        Pointer to the communication pipeline with listener.
+ * @param available_cpu_count CPU count detected at startup (used to size operators).
  *
  * @retval  0  Success.
  * @retval -1  Failure (see log for details).
  */
-int worker_init(worker_t **worker_ptr_ptr, pipeline_t *pipeline_ptr);
+int worker_init(worker_t **worker_ptr_ptr, pipeline_t *pipeline_ptr, uint8_t available_cpu_count);
 
 /**
  * @brief Main worker thread function: manages all active client sockets.
@@ -63,14 +67,10 @@ int worker_init(worker_t **worker_ptr_ptr, pipeline_t *pipeline_ptr);
 void *worker_run(void *arg);
 
 /**
- * @brief Set the worker's status flag (active/shutdown).
+ * @brief Release worker resources and owned threads.
  *
- * This function is used by the core or control thread to signal the worker
- * to shut down gracefully.
- *
- * @param worker_ptr  Pointer to the worker instance.
- * @param status      New status value (e.g., SERVER_STATUS_ACTIVE or _SHUTDOWN).
+ * @param worker_ptr Pointer to the worker instance.
  */
-int worker_set_status(worker_t *worker_ptr, worker_status status);
+void worker_destroy(worker_t *worker_ptr);
 
 #endif /* SERVER_WORKER_H */
