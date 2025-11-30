@@ -40,6 +40,28 @@ set(SPSCRING_BUILD_STATIC ON CACHE BOOL "" FORCE)
 add_subdirectory(app/external/SPSCring/app)
 
 # -----------------------------------------------------------------------------
+# llhttp (prebuilt)
+# -----------------------------------------------------------------------------
+function(add_prebuilt_static target include_dir lib_path)
+    if(NOT EXISTS "${lib_path}")
+        message(FATAL_ERROR "Missing prebuilt library: ${lib_path}")
+    endif()
+    add_library(${target} STATIC IMPORTED GLOBAL)
+    set_target_properties(
+        ${target}
+        PROPERTIES
+            IMPORTED_LOCATION "${lib_path}"
+            INTERFACE_INCLUDE_DIRECTORIES "${include_dir}"
+    )
+endfunction()
+
+add_prebuilt_static(
+    llhttp
+    ${CMAKE_SOURCE_DIR}/app/external/llhttp
+    ${CMAKE_SOURCE_DIR}/app/external/llhttp/libllhttp.a
+)
+
+# -----------------------------------------------------------------------------
 # Contract header (generated from contract/manifest.json, mirrors Makefile rule)
 # -----------------------------------------------------------------------------
 set(CONTRACT_MANIFEST ${CMAKE_SOURCE_DIR}/contract/manifest.json)
@@ -65,9 +87,9 @@ set(SERVER_SOURCES
     ${CMAKE_SOURCE_DIR}/app/src/core/pipeline.c
     ${CMAKE_SOURCE_DIR}/app/src/core/listener/listener.c
     ${CMAKE_SOURCE_DIR}/app/src/core/worker/worker.c
-    ${CMAKE_SOURCE_DIR}/app/src/core/worker/dispatcher.c
-    ${CMAKE_SOURCE_DIR}/app/src/core/worker/operator.c
-    ${CMAKE_SOURCE_DIR}/app/src/core/worker/client.c
+    ${CMAKE_SOURCE_DIR}/app/src/core/worker/dispatcher/dispatcher.c
+    ${CMAKE_SOURCE_DIR}/app/src/core/worker/dispatcher/operator/operator.c
+    ${CMAKE_SOURCE_DIR}/app/src/core/worker/dispatcher/operator/client/client.c
     ${CMAKE_SOURCE_DIR}/app/src/utils/socket_helper.c
     ${CMAKE_SOURCE_DIR}/app/src/utils/epoller.c
     ${CMAKE_SOURCE_DIR}/app/src/utils/time_helper.c
@@ -79,8 +101,13 @@ set(SERVER_INCLUDE_DIRS
     ${CMAKE_SOURCE_DIR}/app/include/core/listener
     ${CMAKE_SOURCE_DIR}/app/include/utils
     ${CMAKE_SOURCE_DIR}/app/include/core/worker
+    ${CMAKE_SOURCE_DIR}/app/include/core/worker/dispatcher
+    ${CMAKE_SOURCE_DIR}/app/include/core/worker/dispatcher/operator
+    ${CMAKE_SOURCE_DIR}/app/include/core/worker/dispatcher/operator/client
+    ${CMAKE_SOURCE_DIR}/app/include/core/worker/dispatcher/operator/client/browser
     ${CMAKE_SOURCE_DIR}/app/external/EMlog/app/include
     ${CMAKE_SOURCE_DIR}/app/external/SPSCring/app/include
+    ${CMAKE_SOURCE_DIR}/app/external/llhttp
 )
 
 # -----------------------------------------------------------------------------
@@ -100,6 +127,7 @@ target_link_libraries(
     PRIVATE
         emlog_shared
         spsc_ring_static
+        llhttp
         Threads::Threads
 )
 target_compile_options(

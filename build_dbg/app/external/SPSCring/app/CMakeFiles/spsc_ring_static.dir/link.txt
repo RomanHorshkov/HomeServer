@@ -1,2 +1,0 @@
-/usr/bin/ar qc ../../../../lib/libspsc_ring.a CMakeFiles/spsc_ring_obj.dir/src/spsc_ring.c.o
-/usr/bin/ranlib ../../../../lib/libspsc_ring.a

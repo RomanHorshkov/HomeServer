@@ -87,10 +87,12 @@ int epoller_manage_fd(const int epoll_fd, const int target_fd, const int operati
 
         case EPOLL_CTL_DEL:
         default:
+#ifdef DEBUG_MODE
             /* Explicit the DEL operation */
             EML_INFO(LOG_TAG, "_manage_fd Deleting, epoll_fd %d, target_fd %d, op "
                 "%d",
                 epoll_fd, target_fd, operation);
+#endif
             return epoll_ctl(epoll_fd, EPOLL_CTL_DEL, target_fd, NULL) ? -errno : 0;
     }
 }
