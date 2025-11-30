@@ -50,9 +50,6 @@ int main(int argc, char *argv[])
     /* Run the server */
     else
     {
-#ifdef DEBUG_MODE
-        printf("Server starting on port %s...", argv[1]);
-#endif /* DEBUG_MODE */
         server_run();
     }
 

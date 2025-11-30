@@ -82,11 +82,17 @@ typedef enum
 /* Max clients amount */
 #define WORKER_MAX_CLIENTS 64U
 
-/* Client short timeout [s] */
-#define WORKER_CLIENT_TIMEOUT_SHORT 5
+/* Client short timeout [s]: applied before first activity (initial request) */
+#define WORKER_CLIENT_TIMEOUT_SHORT 5U
 
-/* Client long timeout [s] */
-#define WORKER_CLIENT_TIMEOUT_LONG 30
+/* Client long timeout [s]: applied after the first successful activity */
+#define WORKER_CLIENT_TIMEOUT_LONG 30U
+
+/* Operator timer tick while clients are present [s] */
+#define OPERATOR_TIMER_ACTIVE_SEC 5U
+
+/* Operator timer tick when idle [s] */
+#define OPERATOR_TIMER_IDLE_SEC 60U
 
 
 

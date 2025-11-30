@@ -67,6 +67,7 @@ set(SERVER_SOURCES
     ${CMAKE_SOURCE_DIR}/app/src/core/worker/worker.c
     ${CMAKE_SOURCE_DIR}/app/src/core/worker/dispatcher.c
     ${CMAKE_SOURCE_DIR}/app/src/core/worker/operator.c
+    ${CMAKE_SOURCE_DIR}/app/src/core/worker/client.c
     ${CMAKE_SOURCE_DIR}/app/src/utils/socket_helper.c
     ${CMAKE_SOURCE_DIR}/app/src/utils/epoller.c
     ${CMAKE_SOURCE_DIR}/app/src/utils/time_helper.c

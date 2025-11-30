@@ -8,17 +8,18 @@
 #include "config_core.h"
 #include "spsc_ring.h"
 #include "reactor.h"
+#include "worker/client.h"
 
 typedef struct worker_operator worker_operator_t;
 typedef struct fd_ctx_s fd_ctx_t;
 
-typedef struct
+struct worker_client_slot
 {
     int fd;                     /* client socket fd */
     fd_ctx_t *ctx;              /* fd context */
     uint32_t last_activity;     /* last activity timestamp */
     uint32_t request_count;     /* number of requests handled */
-} worker_client_slot_t;
+};
 
 struct worker_operator
 {
