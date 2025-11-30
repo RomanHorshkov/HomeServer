@@ -12,14 +12,6 @@
 
 #define LOG_TAG "srv_wrkr_dsptchr"
 
-struct worker_dispatcher
-{
-    pipeline_t *listener_pipeline;
-    worker_operator_t *operators;
-    size_t operator_count;
-    uint8_t cpu_count;
-};
-
 static size_t _compute_operator_count(uint8_t cpu_count)
 {
     /* Reserve one CPU for listener and one for dispatcher when possible */

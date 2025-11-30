@@ -25,39 +25,12 @@ set(CMAKE_BUILD_RPATH "${CMAKE_BINARY_DIR}/lib")
 find_package(Threads REQUIRED)
 
 # -----------------------------------------------------------------------------
-# External database (build only the static lib, ensure vendored deps ready)
+# Logging dependency (EMlog)
 # -----------------------------------------------------------------------------
-set(DB_BUILD_SERVER OFF CACHE BOOL "" FORCE)
-set(DB_BUILD_CLI OFF CACHE BOOL "" FORCE)
-set(DB_BUILD_TESTS OFF CACHE BOOL "" FORCE)
-add_subdirectory(app/external/DataBase)
-
-# -----------------------------------------------------------------------------
-# Prebuilt helper libraries (llhttp, cjson, spsc_ring)
-# -----------------------------------------------------------------------------
-function(add_prebuilt_static target include_dir lib_path)
-    if(NOT EXISTS "${lib_path}")
-        message(FATAL_ERROR "Missing prebuilt library: ${lib_path}")
-    endif()
-    add_library(${target} STATIC IMPORTED GLOBAL)
-    set_target_properties(
-        ${target}
-        PROPERTIES
-            IMPORTED_LOCATION "${lib_path}"
-            INTERFACE_INCLUDE_DIRECTORIES "${include_dir}"
-    )
-endfunction()
-
-add_prebuilt_static(
-    llhttp
-    ${CMAKE_SOURCE_DIR}/app/external/llhttp
-    ${CMAKE_SOURCE_DIR}/app/external/llhttp/libllhttp.a
-)
-add_prebuilt_static(
-    cjson
-    ${CMAKE_SOURCE_DIR}/app/external/cjson
-    ${CMAKE_SOURCE_DIR}/app/external/cjson/libcjson.a
-)
+set(EMLOG_BUILD_STATIC OFF CACHE BOOL "" FORCE)
+set(EMLOG_BUILD_SHARED ON CACHE BOOL "" FORCE)
+set(EMLOG_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+add_subdirectory(app/external/EMlog)
 
 # -----------------------------------------------------------------------------
 # SPSC ring submodule
@@ -85,45 +58,29 @@ add_custom_target(contract_header DEPENDS ${CONTRACT_HEADER})
 # -----------------------------------------------------------------------------
 # Server sources / include paths
 # -----------------------------------------------------------------------------
-file(
-    GLOB_RECURSE
-    SERVER_SOURCES
-    CONFIGURE_DEPENDS
-    ${CMAKE_SOURCE_DIR}/app/src/*.c
+set(SERVER_SOURCES
+    ${CMAKE_SOURCE_DIR}/app/src/main.c
+    ${CMAKE_SOURCE_DIR}/app/src/core/core.c
+    ${CMAKE_SOURCE_DIR}/app/src/core/reactor.c
+    ${CMAKE_SOURCE_DIR}/app/src/core/pipeline.c
+    ${CMAKE_SOURCE_DIR}/app/src/core/listener/listener.c
+    ${CMAKE_SOURCE_DIR}/app/src/core/worker/worker.c
+    ${CMAKE_SOURCE_DIR}/app/src/core/worker/dispatcher.c
+    ${CMAKE_SOURCE_DIR}/app/src/core/worker/operator.c
+    ${CMAKE_SOURCE_DIR}/app/src/utils/socket_helper.c
+    ${CMAKE_SOURCE_DIR}/app/src/utils/epoller.c
+    ${CMAKE_SOURCE_DIR}/app/src/utils/time_helper.c
 )
-if(SERVER_SOURCES STREQUAL "")
-    message(FATAL_ERROR "No sources discovered under app/src")
-endif()
 
-set(APP_INCLUDE_ROOT ${CMAKE_SOURCE_DIR}/app/include)
-file(GLOB_RECURSE SERVER_HEADER_PATHS RELATIVE ${APP_INCLUDE_ROOT} ${APP_INCLUDE_ROOT}/*.h)
-set(SERVER_INCLUDE_DIRS ${APP_INCLUDE_ROOT})
-foreach(header ${SERVER_HEADER_PATHS})
-    get_filename_component(dir ${header} DIRECTORY)
-    if(NOT dir OR dir STREQUAL ".")
-        list(APPEND SERVER_INCLUDE_DIRS ${APP_INCLUDE_ROOT})
-    else()
-        list(APPEND SERVER_INCLUDE_DIRS ${APP_INCLUDE_ROOT}/${dir})
-    endif()
-endforeach()
-list(REMOVE_DUPLICATES SERVER_INCLUDE_DIRS)
-
-list(
-    APPEND SERVER_INCLUDE_DIRS
-        ${CMAKE_SOURCE_DIR}/app/external/llhttp
-        ${CMAKE_SOURCE_DIR}/app/external/cjson
-        ${CMAKE_SOURCE_DIR}/app/external/SPSCring/app/include
-        ${CMAKE_SOURCE_DIR}/app/external/DataBase/app/include
-        ${CMAKE_SOURCE_DIR}/app/external/DataBase/app/external/UUID7/include
+set(SERVER_INCLUDE_DIRS
+    ${CMAKE_SOURCE_DIR}/app/include
+    ${CMAKE_SOURCE_DIR}/app/include/core
+    ${CMAKE_SOURCE_DIR}/app/include/core/listener
+    ${CMAKE_SOURCE_DIR}/app/include/utils
+    ${CMAKE_SOURCE_DIR}/app/include/core/worker
+    ${CMAKE_SOURCE_DIR}/app/external/EMlog/app/include
+    ${CMAKE_SOURCE_DIR}/app/external/SPSCring/app/include
 )
-if(EXISTS ${CMAKE_SOURCE_DIR}/app/external/DataBase/app/external/EMlog/app/include/emlog.h)
-    list(APPEND SERVER_INCLUDE_DIRS
-         ${CMAKE_SOURCE_DIR}/app/external/DataBase/app/external/EMlog/app/include)
-elseif(EXISTS ${CMAKE_SOURCE_DIR}/app/external/DataBase/app/external/EMlog/include/emlog.h)
-    list(APPEND SERVER_INCLUDE_DIRS
-         ${CMAKE_SOURCE_DIR}/app/external/DataBase/app/external/EMlog/include)
-endif()
-list(REMOVE_DUPLICATES SERVER_INCLUDE_DIRS)
 
 # -----------------------------------------------------------------------------
 # Server target
@@ -140,10 +97,7 @@ set_target_properties(
 target_link_libraries(
     server
     PRIVATE
-        db_app::static
         emlog_shared
-        llhttp
-        cjson
         spsc_ring_static
         Threads::Threads
 )

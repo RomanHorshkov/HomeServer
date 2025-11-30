@@ -7,3 +7,6 @@
 [submodule "HSFrontEnd"]
 	path = HSFrontEnd
 	url = git@github.com:RomanHorshkov/HSFrontEnd.git
+[submodule "app/external/EMlog"]
+	path = app/external/EMlog
+	url = git@github.com:RomanHorshkov/EMlog.git

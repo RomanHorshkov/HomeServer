@@ -39,10 +39,8 @@
 #include <unistd.h> /* fork(), close(), pipe(), read(), write(), getlogin(), getcwd(), system() etc. */
 
 #include <emlog.h>
-#include "db_app/db_app.h"
-#include "listener.h"
+#include "listener/listener.h"
 #include "pipeline.h"
-#include "router.h"
 #include "server_settings.h"
 #include "socket_helper.h"
 #include "worker/worker.h"
@@ -67,9 +65,6 @@
   */
 typedef struct
 {
-    /* listener instance */
-    listener_t *listener;
-
     /* worker instance */
     worker_t *worker;
 
@@ -111,7 +106,9 @@ static void _core_logger_bootstrap(void);
 
 static uint8_t _core_detect_cpu_count(void);
 
+#ifdef DEBUG_MODE
 static void _p_dbg_info_init(void);
+#endif
 
 /****************************************************************************
  * PUBLIC FUNCTIONS DEFINITIONS
@@ -136,8 +133,8 @@ int server_init(const char *port)
         goto fail;
     }
 
-    /* Initialize the listener with port, pipe read end, wakeup_fd, and ring */
-    if(listener_init(&server.listener, port, server.pipeline) != STATUS_SUCCESS)
+    /* Initialize the listener */
+    if(listener_init(port, server.pipeline) != STATUS_SUCCESS)
     {
         EML_PERR(LOG_TAG, "listener failed to init.");
         goto fail;
@@ -147,13 +144,6 @@ int server_init(const char *port)
     if(worker_init(&server.worker, server.pipeline, server.cpu_count) != STATUS_SUCCESS)
     {
         EML_PERR(LOG_TAG, "worker failed to init.");
-        goto fail;
-    }
-
-    /* Initialize the external database application */
-    if(db_app_init() != 0)
-    {
-        EML_ERROR(LOG_TAG, "db_app_init failed");
         goto fail;
     }
 
@@ -167,14 +157,14 @@ fail:
 void server_run(void)
 {
     /* run threads */
-    pthread_create(&server.listener_thread, NULL, listener_run, server.listener);
+    pthread_create(&server.listener_thread, NULL, listener_run, NULL);
     pthread_create(&server.worker_thread, NULL, worker_run, server.worker);
     
     /* wait threads */
     pthread_join(server.listener_thread, NULL);
     pthread_join(server.worker_thread, NULL);
 
-    pipeline_destroy(&server.pipeline);
+    pipeline_destroy();
 }
 
 /****************************************************************************
@@ -205,7 +195,7 @@ static uint8_t _core_detect_cpu_count(void)
 {
     long cpus = sysconf(_SC_NPROCESSORS_ONLN);
 
-    EML_INFO(LOG_TAG, "Detected %d CPU%s available",
+    EML_INFO(LOG_TAG, "Detected %ld CPU%s available",
              cpus, (cpus == 1) ? "" : "s");
     if(cpus < 1 || cpus > 255)
     {
@@ -216,6 +206,7 @@ static uint8_t _core_detect_cpu_count(void)
     return (uint8_t)cpus;
 }
 
+#ifdef DEBUG_MODE
 static void _p_dbg_info_init(void)
 {
     
@@ -242,3 +233,4 @@ static void _p_dbg_info_init(void)
     printf("[CORE]: ls -la:\n");
     system("ls -la");
 }
+#endif

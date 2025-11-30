@@ -77,7 +77,7 @@ int reactor_init(reactor_t *reactor_ptr, size_t max_events)
     int res = STATUS_FAILURE;
 
     /* Check input */
-    if(!reactor_ptr_ptr)
+    if(!reactor_ptr)
     {
         EML_ERROR(LOG_TAG, "_init: invalid input");
         goto fail;
@@ -112,7 +112,7 @@ fail:
     return res;
 }
 
-int reactor_add_in(const reactor_t *reactor_ptr, const int fd, const fd_ctx_t *ctx)
+int reactor_add_in(const reactor_t *reactor_ptr, const int fd, fd_ctx_t *ctx)
 {
 
     if(!reactor_ptr || fd < 0 || !ctx)

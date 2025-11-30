@@ -6,6 +6,7 @@
  ****************************************************************************
  */
 #include <stdint.h>
+#include <stddef.h>
 
 #include "server_settings.h"
 
@@ -86,7 +87,7 @@ typedef struct
  */
 int reactor_init(reactor_t *reactor_ptr, size_t max_events);
 
-int reactor_add_in(const reactor_t *reactor_ptr, const int fd, const fd_ctx_t *ctx);
+int reactor_add_in(const reactor_t *reactor_ptr, const int fd, fd_ctx_t *ctx);
 
 int reactor_add_in_client(const reactor_t *reactor_ptr, int fd, fd_ctx_t *ctx);
 
