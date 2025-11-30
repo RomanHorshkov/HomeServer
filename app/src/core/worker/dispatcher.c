@@ -55,6 +55,11 @@ int worker_dispatcher_init(worker_dispatcher_t *dispatcher,
             EML_ERROR(LOG_TAG, "init: operator %zu init failed", i);
             goto fail;
         }
+        if(worker_operator_start(&dispatcher->operators[i]) != STATUS_SUCCESS)
+        {
+            EML_ERROR(LOG_TAG, "init: operator %zu start failed", i);
+            goto fail;
+        }
     }
 
     EML_INFO(LOG_TAG, "Dispatcher ready with %zu operator%s (cpus=%u)",
@@ -95,13 +100,39 @@ void *worker_dispatcher_thread(void *arg)
         return NULL;
     }
 
-    /* TODO: consume listener pipeline and dispatch to operators */
-    EML_INFO(LOG_TAG, "dispatcher thread started (placeholder loop)");
+    EML_INFO(LOG_TAG, "dispatcher thread started");
+
+    size_t rr = 0;
 
     for(;;)
     {
-        /* Placeholder idle loop until dispatch logic is wired */
-        sleep(1);
+        int client_fd = -1;
+        while(pipeline_pop(&client_fd) == STATUS_SUCCESS)
+        {
+            size_t idx = rr % dispatcher->operator_count;
+            worker_operator_t *op = &dispatcher->operators[idx];
+            rr++;
+
+#ifdef DEBUG_MODE
+            EML_DBG(LOG_TAG, "[dispatch] fd %d -> op %zu", client_fd, idx);
+#endif
+
+            spsc_ring_t *ring = worker_operator_get_ring(op);
+            if(!ring || spsc_ring_push(ring, client_fd) != 0)
+            {
+                EML_ERROR(LOG_TAG, "failed to enqueue fd %d to operator %zu", client_fd, idx);
+                close(client_fd);
+                continue;
+            }
+
+            int wake_fd = worker_operator_get_wakeup_fd(op);
+            if(write(wake_fd, &(uint64_t){1U}, sizeof(uint64_t)) != sizeof(uint64_t))
+            {
+                EML_PERR(LOG_TAG, "failed to wake operator %zu", idx);
+            }
+        }
+
+        usleep(1000);
     }
 
     return NULL;

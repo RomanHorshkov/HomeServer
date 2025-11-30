@@ -1,0 +1,14 @@
+/home/roman/HomeServer/build_dbg/CMakeFiles/contract_header.dir
+/home/roman/HomeServer/build_dbg/CMakeFiles/server.dir
+/home/roman/HomeServer/build_dbg/CMakeFiles/edit_cache.dir
+/home/roman/HomeServer/build_dbg/CMakeFiles/rebuild_cache.dir
+/home/roman/HomeServer/build_dbg/app/external/EMlog/CMakeFiles/edit_cache.dir
+/home/roman/HomeServer/build_dbg/app/external/EMlog/CMakeFiles/rebuild_cache.dir
+/home/roman/HomeServer/build_dbg/app/external/EMlog/app/CMakeFiles/emlog_obj.dir
+/home/roman/HomeServer/build_dbg/app/external/EMlog/app/CMakeFiles/emlog_shared.dir
+/home/roman/HomeServer/build_dbg/app/external/EMlog/app/CMakeFiles/edit_cache.dir
+/home/roman/HomeServer/build_dbg/app/external/EMlog/app/CMakeFiles/rebuild_cache.dir
+/home/roman/HomeServer/build_dbg/app/external/SPSCring/app/CMakeFiles/spsc_ring_obj.dir
+/home/roman/HomeServer/build_dbg/app/external/SPSCring/app/CMakeFiles/spsc_ring_static.dir
+/home/roman/HomeServer/build_dbg/app/external/SPSCring/app/CMakeFiles/edit_cache.dir
+/home/roman/HomeServer/build_dbg/app/external/SPSCring/app/CMakeFiles/rebuild_cache.dir

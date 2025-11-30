@@ -11,8 +11,7 @@
 
 #include <emlog.h>
 
-// #include "browser.h"
-
+#include "worker/client.h"
 #include "reactor.h"
 #include "spsc_ring.h"
 #include "socket_helper.h"
@@ -43,6 +42,9 @@ static int _operator_add_client(worker_operator_t *op, int client_fd);
 static int _operator_remove_client(worker_operator_t *op, int client_fd);
 static int _operator_timer_init(worker_operator_t *op);
 static void _operator_timer_update(worker_operator_t *op);
+static void _operator_check_timeouts(worker_operator_t *op);
+static void _operator_set_timer(worker_operator_t *op, uint32_t freq);
+static void _operator_check_timeouts(worker_operator_t *op);
 
 /****************************************************************************
  * PUBLIC FUNCTION DEFINITIONS
@@ -239,7 +241,8 @@ static int _operator_handle_wakeup_event(int fd, fd_ctx_t *ctx)
     while(spsc_ring_pop(op->ring, &client_fd) == 0)
     {
 #ifdef DEBUG_MODE
-        EML_DBG(LOG_TAG, "[op %d] wakeup: dispatching fd %d", op->id, client_fd);
+        EML_DBG(LOG_TAG, "[op %d tid %lu] wakeup: dispatching fd %d",
+                op->id, (unsigned long)pthread_self(), client_fd);
 #endif /* DEBUG_MODE */
         if(_operator_add_client(op, client_fd) != STATUS_SUCCESS)
         {
@@ -259,12 +262,38 @@ static int _operator_handle_wakeup_event(int fd, fd_ctx_t *ctx)
 
 static int _operator_handle_client_event(int fd, fd_ctx_t *ctx)
 {
-    (void)ctx;
+    worker_operator_t *op = NULL;
 #ifdef DEBUG_MODE
-    EML_DBG(LOG_TAG, "client event fd %d, calling browser now.", fd);
+    op = ctx ? (worker_operator_t *)ctx->owner : NULL;
+    EML_DBG(LOG_TAG, "[op %d tid %lu] client event fd %d, calling client_handle",
+            op ? op->id : -1, (unsigned long)pthread_self(), fd);
 #endif /* DEBUG_MODE */
-    /* TODO: re-enable browser_manage_client_req when wired */
-    (void)fd;
+    if(!ctx || !ctx->owner)
+    {
+        return STATUS_FAILURE;
+    }
+    op = (worker_operator_t *)ctx->owner;
+
+    /* Find the client slot */
+    worker_client_slot_t *slot = NULL;
+    for(size_t i = 0; i < op->active_clients; ++i)
+    {
+        if(op->clients[i].fd == fd)
+        {
+            slot = &op->clients[i];
+            break;
+        }
+    }
+    if(!slot)
+    {
+        return STATUS_FAILURE;
+    }
+
+    int res = client_handle(op, slot);
+    if(res != STATUS_SUCCESS)
+    {
+        _operator_remove_client(op, fd);
+    }
     return STATUS_SUCCESS;
 }
 
@@ -279,6 +308,7 @@ static int _operator_handle_timer_event(int fd, fd_ctx_t *ctx)
     }
 
     _operator_timer_update(op);
+    _operator_check_timeouts(op);
     return STATUS_SUCCESS;
 }
 
@@ -300,6 +330,7 @@ static int _operator_add_client(worker_operator_t *op, int client_fd)
         EML_PERR(LOG_TAG, "[op %d] calloc ctx failed for fd %d", op->id, client_fd);
         return STATUS_FAILURE;
     }
+
     ctx->fd = client_fd;
     ctx->owner = op;
     ctx->handler = _operator_handle_client_event;
@@ -315,12 +346,18 @@ static int _operator_add_client(worker_operator_t *op, int client_fd)
         .fd = client_fd,
         .ctx = ctx,
         .last_activity = (uint32_t)time_helper_get_now(),
-        .request_count = 1,
+        .request_count = 0,
     };
 
 #ifdef DEBUG_MODE
-    EML_DBG(LOG_TAG, "[op %d] added client fd %d (active=%zu)", op->id, client_fd, op->active_clients);
+    EML_DBG(LOG_TAG, "[op %d tid %lu] added client fd %d (active=%zu)",
+            op->id, (unsigned long)pthread_self(), client_fd, op->active_clients);
 #endif /* DEBUG_MODE */
+
+    if(op->active_clients == 1)
+    {
+        _operator_set_timer(op, OPERATOR_TIMER_ACTIVE_SEC);
+    }
 
     if(op->active_clients >= WORKER_MAX_CLIENTS)
     {
@@ -366,6 +403,11 @@ static int _operator_remove_client(worker_operator_t *op, int client_fd)
 #ifdef DEBUG_MODE
     EML_DBG(LOG_TAG, "[op %d] removed client fd %d (active=%zu)", op->id, client_fd, op->active_clients);
 #endif /* DEBUG_MODE */
+
+    if(op->active_clients == 0)
+    {
+        _operator_set_timer(op, OPERATOR_TIMER_IDLE_SEC);
+    }
 
     if(op->status == WORKER_STATUS_FULL && op->active_clients < WORKER_MAX_CLIENTS)
     {
@@ -415,25 +457,54 @@ static int _operator_timer_init(worker_operator_t *op)
         return STATUS_FAILURE;
     }
 
-    op->timer_frequency = SERVER_KEEPALIVE_TIMEOUT_NOT_ALONE;
+    op->timer_frequency = OPERATOR_TIMER_IDLE_SEC;
     return STATUS_SUCCESS;
 }
 
 static void _operator_timer_update(worker_operator_t *op)
 {
-    if(op->active_clients > 0 && op->timer_frequency != SERVER_KEEPALIVE_TIMEOUT_NOT_ALONE)
+    if(op->active_clients > 0)
     {
-        time_helper_set(op->timer_fd, (uint32_t)SERVER_KEEPALIVE_TIMEOUT_NOT_ALONE, 0);
-        op->timer_frequency = SERVER_KEEPALIVE_TIMEOUT_NOT_ALONE;
+        _operator_set_timer(op, OPERATOR_TIMER_ACTIVE_SEC);
     }
-    else if(op->active_clients == 0 && op->timer_frequency != SERVER_KEEPALIVE_TIMEOUT_ALONE)
+    else
     {
-        time_helper_set(op->timer_fd, (uint32_t)SERVER_KEEPALIVE_TIMEOUT_ALONE, 0);
-        op->timer_frequency = SERVER_KEEPALIVE_TIMEOUT_ALONE;
+        _operator_set_timer(op, OPERATOR_TIMER_IDLE_SEC);
     }
 
 #ifdef DEBUG_MODE
     EML_DBG(LOG_TAG, "[op %d] timer update (freq=%u, active=%zu)",
             op->id, op->timer_frequency, op->active_clients);
 #endif /* DEBUG_MODE */
+}
+
+static void _operator_check_timeouts(worker_operator_t *op)
+{
+    uint32_t now = (uint32_t)time_helper_get_now();
+    for(size_t i = 0; i < op->active_clients;)
+    {
+        worker_client_slot_t *c = &op->clients[i];
+        uint32_t timeout = (c->request_count == 0) ? WORKER_CLIENT_TIMEOUT_SHORT
+                                                   : WORKER_CLIENT_TIMEOUT_LONG;
+        if((now - c->last_activity) > timeout)
+        {
+#ifdef DEBUG_MODE
+            EML_DBG(LOG_TAG, "[op %d] closing idle fd %d (last=%u, now=%u, to=%u)",
+                    op->id, c->fd, c->last_activity, now, timeout);
+#endif
+            int fd = c->fd;
+            _operator_remove_client(op, fd);
+            /* removal compacts array; do not increment i */
+            continue;
+        }
+        i++;
+    }
+}
+
+static void _operator_set_timer(worker_operator_t *op, uint32_t freq)
+{
+    if(op->timer_fd < 0) return;
+    if(op->timer_frequency == freq) return;
+    time_helper_set(op->timer_fd, freq, 0);
+    op->timer_frequency = freq;
 }

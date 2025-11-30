@@ -219,7 +219,7 @@ int reactor_run(reactor_t *reactor_ptr, int *out_fd)
         }
 
 #ifdef DEBUG_MODE
-        EML_INFO(LOG_TAG, "_run: calling fd %d handler", ctx->fd);
+        EML_DBG(LOG_TAG, "_run: calling fd %d handler", ctx->fd);
 #endif
         /* Call the handler */
         res = ctx->handler(ctx->fd, ctx);

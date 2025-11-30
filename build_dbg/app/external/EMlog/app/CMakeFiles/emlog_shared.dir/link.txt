@@ -1,0 +1,1 @@
+/usr/bin/cc -fPIC -g -shared -Wl,-soname,libemlog.so.1 -o ../../../../lib/libemlog.so.1.0.0 CMakeFiles/emlog_obj.dir/src/emlog.c.o  -Wl,-rpath,/home/roman/HomeServer/build_dbg/lib 
