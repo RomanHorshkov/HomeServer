@@ -209,7 +209,7 @@ clean:
 		HSFrontEnd/dist HSFrontEnd/node_modules \
 		HSFrontEnd/HSFrontEnd/dist HSFrontEnd/HSFrontEnd/node_modules
 	rm -f var/www/server.log var/www/map.json
-	@$(MAKE) -C $(APP_DIR)/external/DataBase clean || true
+	@$(MAKE) -C $(APP_DIR)/external/DB_app clean || true
 
 # Auto-generated dependency files ------------------------------------
 -include $(DEPS)
@@ -230,13 +230,15 @@ help:
 
 # External Database project settings
 DB_MODE ?= release
-DB_DIR := $(APP_DIR)/external/DataBase
+DB_DIR := $(APP_DIR)/external/DB_app
 DB_BUILD_DIR := $(DB_DIR)
 DB_INC := $(DB_DIR)/app/include
-DB_LIB := $(DB_DIR)/build/$(DB_MODE)/lib/libdb.a
-DB_UUID7_LIB := $(DB_DIR)/app/external/UUID7/build/libuuid7.a
-DB_YYJSON_LIB := $(DB_DIR)/app/external/yyjson/libyyjson.a
-DB_EMLOG_LIB := $(DB_DIR)/app/external/EMlog/libemlog.a
+DB_APP_LIB := $(DB_DIR)/build_dbg/lib/libdb_app.a
+DB_CORE_LIB := $(DB_DIR)/build_dbg/lib/libdb_core.a
+DB_LIB := $(DB_APP_LIB) $(DB_CORE_LIB)
+DB_UUID7_LIB := $(DB_DIR)/build_dbg/lib/libuuid7.a
+DB_YYJSON_LIB := $(DB_DIR)/build_dbg/lib/libyyjson.a
+DB_EMLOG_LIB := $(DB_DIR)/build_dbg/lib/libemlog.so
 DB_EMLOG_INC := $(DB_DIR)/app/external/EMlog/app/include
 
 # Additional static archives produced by the DB project that must be linked
@@ -269,13 +271,16 @@ LDLIBS += -pthread $(DB_EXTRA_LIBS)
 # Build Database library before main targets:
 # 'all' should depend on db library; if your existing all target differs, add db build as prerequisite.
 .PHONY: db-lib
-db-lib: $(DB_LIB)
+db-lib: $(DB_APP_LIB)
 
-$(DB_LIB):
-	@echo "Building external Database project in $(DB_DIR) [MODE=$(DB_MODE)]"
-	$(MAKE) -C $(DB_BUILD_DIR) MODE=$(DB_MODE) lib
-	@if [ ! -f $(DB_LIB) ]; then \
-		echo "ERROR: Database library $(DB_LIB) not found after building $(DB_BUILD_DIR)"; \
+$(DB_APP_LIB):
+	@echo "Expecting prebuilt DB_app libraries in $(DB_DIR)/build_dbg"
+	@if [ ! -f $(DB_APP_LIB) ]; then \
+		echo "ERROR: Database library $(DB_APP_LIB) not found"; \
+		exit 1; \
+	fi
+	@if [ -f $(DB_CORE_LIB) ]; then :; else \
+		echo "ERROR: Expected DB core static library $(DB_CORE_LIB)"; \
 		exit 1; \
 	fi
 	@if [ -f $(DB_UUID7_LIB) ]; then :; else \

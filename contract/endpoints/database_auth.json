@@ -7,5 +7,5 @@
   "produce": ["application/json"],
   "requestSchema": "../schemas/database.auth.placeholder.json",
   "responseSchema": "../schemas/database.auth.placeholder.json",
-  "notes": "Server forwards to the DataBase app router. For exact payloads, methods, and errors, see app/external/DataBase/openapi/openapi.yaml in the DataBase subproject."
+  "notes": "Server forwards to the DB_app router. For exact payloads, methods, and errors, see app/external/DB_app/openapi/openapi.yaml in the DB_app subproject."
 }
