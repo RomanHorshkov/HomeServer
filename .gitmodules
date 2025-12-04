@@ -10,3 +10,6 @@
 [submodule "app/external/EMlog"]
 	path = app/external/EMlog
 	url = git@github.com:RomanHorshkov/EMlog.git
+[submodule "app/external/DB_app"]
+	path = app/external/DB_app
+	url = git@github.com:RomanHorshkov/DB_app.git
