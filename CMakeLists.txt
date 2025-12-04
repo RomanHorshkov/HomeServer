@@ -90,6 +90,13 @@ set(SERVER_SOURCES
     ${CMAKE_SOURCE_DIR}/app/src/core/worker/dispatcher/dispatcher.c
     ${CMAKE_SOURCE_DIR}/app/src/core/worker/dispatcher/operator/operator.c
     ${CMAKE_SOURCE_DIR}/app/src/core/worker/dispatcher/operator/client/client.c
+    ${CMAKE_SOURCE_DIR}/app/src/core/worker/dispatcher/operator/client/browser/http_manager.c
+    ${CMAKE_SOURCE_DIR}/app/src/core/worker/dispatcher/operator/client/browser/router/router.c
+    ${CMAKE_SOURCE_DIR}/app/src/core/worker/dispatcher/operator/client/browser/router/route_register.c
+    ${CMAKE_SOURCE_DIR}/app/src/core/worker/dispatcher/operator/client/browser/handlers/handler_db.c
+    ${CMAKE_SOURCE_DIR}/app/src/core/worker/dispatcher/operator/client/browser/handlers/handler_static.c
+    ${CMAKE_SOURCE_DIR}/app/src/core/worker/dispatcher/operator/client/browser/handlers/handler_utils.c
+    ${CMAKE_SOURCE_DIR}/app/src/core/worker/dispatcher/operator/client/browser/handlers/handler_whoami.c
     ${CMAKE_SOURCE_DIR}/app/src/utils/socket_helper.c
     ${CMAKE_SOURCE_DIR}/app/src/utils/epoller.c
     ${CMAKE_SOURCE_DIR}/app/src/utils/time_helper.c
@@ -105,10 +112,60 @@ set(SERVER_INCLUDE_DIRS
     ${CMAKE_SOURCE_DIR}/app/include/core/worker/dispatcher/operator
     ${CMAKE_SOURCE_DIR}/app/include/core/worker/dispatcher/operator/client
     ${CMAKE_SOURCE_DIR}/app/include/core/worker/dispatcher/operator/client/browser
+    ${CMAKE_SOURCE_DIR}/app/include/core/worker/dispatcher/operator/client/browser/router
+    ${CMAKE_SOURCE_DIR}/app/include/core/worker/dispatcher/operator/client/browser/handlers
+    ${CMAKE_SOURCE_DIR}/app/external/DataBase/app/include
+    ${CMAKE_SOURCE_DIR}/app/external/DataBase/app/external/yyjson
+    ${CMAKE_SOURCE_DIR}/app/external/DataBase/app/external/UUID7/include
     ${CMAKE_SOURCE_DIR}/app/external/EMlog/app/include
     ${CMAKE_SOURCE_DIR}/app/external/SPSCring/app/include
     ${CMAKE_SOURCE_DIR}/app/external/llhttp
 )
+
+# Pull in all nested DataBase include folders so headers like db_config.h resolve.
+file(GLOB_RECURSE DB_APP_INCLUDE_CANDIDATES LIST_DIRECTORIES true
+     ${CMAKE_SOURCE_DIR}/app/external/DataBase/app/include/*)
+set(DB_APP_INCLUDE_DIRS "")
+foreach(path ${DB_APP_INCLUDE_CANDIDATES})
+    if(IS_DIRECTORY ${path})
+        list(APPEND DB_APP_INCLUDE_DIRS ${path})
+    endif()
+endforeach()
+list(REMOVE_DUPLICATES DB_APP_INCLUDE_DIRS)
+list(APPEND SERVER_INCLUDE_DIRS ${DB_APP_INCLUDE_DIRS})
+
+# Prebuilt DataBase libraries (debug tree)
+set(DB_PREBUILT_LIB_DIR ${CMAKE_SOURCE_DIR}/app/external/DataBase/build_dbg/lib)
+if(NOT EXISTS ${DB_PREBUILT_LIB_DIR}/libdb_app.a)
+    message(FATAL_ERROR "Missing prebuilt db_app.a in ${DB_PREBUILT_LIB_DIR}; build the DataBase project (debug) first.")
+endif()
+add_library(db_app_prebuilt STATIC IMPORTED GLOBAL)
+set_target_properties(db_app_prebuilt PROPERTIES
+    IMPORTED_LOCATION ${DB_PREBUILT_LIB_DIR}/libdb_app.a
+    INTERFACE_INCLUDE_DIRECTORIES "${CMAKE_SOURCE_DIR}/app/external/DataBase/app/include"
+)
+add_library(db_core_prebuilt STATIC IMPORTED GLOBAL)
+set_target_properties(db_core_prebuilt PROPERTIES
+    IMPORTED_LOCATION ${DB_PREBUILT_LIB_DIR}/libdb_core.a
+)
+add_library(uuid7_prebuilt STATIC IMPORTED GLOBAL)
+set_target_properties(uuid7_prebuilt PROPERTIES
+    IMPORTED_LOCATION ${DB_PREBUILT_LIB_DIR}/libuuid7.a
+)
+add_library(yyjson_prebuilt STATIC IMPORTED GLOBAL)
+set_target_properties(yyjson_prebuilt PROPERTIES
+    IMPORTED_LOCATION ${DB_PREBUILT_LIB_DIR}/libyyjson.a
+)
+
+find_package(OpenSSL REQUIRED COMPONENTS Crypto)
+find_library(LMDB_LIBRARY NAMES lmdb)
+if(NOT LMDB_LIBRARY)
+    message(FATAL_ERROR "Unable to locate lmdb library")
+endif()
+find_library(SODIUM_LIBRARY NAMES sodium)
+if(NOT SODIUM_LIBRARY)
+    message(FATAL_ERROR "Unable to locate libsodium")
+endif()
 
 # -----------------------------------------------------------------------------
 # Server target
@@ -128,6 +185,13 @@ target_link_libraries(
         emlog_shared
         spsc_ring_static
         llhttp
+        db_app_prebuilt
+        db_core_prebuilt
+        uuid7_prebuilt
+        yyjson_prebuilt
+        OpenSSL::Crypto
+        ${LMDB_LIBRARY}
+        ${SODIUM_LIBRARY}
         Threads::Threads
 )
 target_compile_options(
@@ -142,7 +206,7 @@ target_compile_options(
 )
 target_compile_definitions(server PRIVATE _POSIX_C_SOURCE=200809L)
 if(CMAKE_BUILD_TYPE STREQUAL "Debug")
-    target_compile_definitions(server PRIVATE DEBUG_MODE)
+    target_compile_definitions(server PRIVATE DEBUG_MODE MODE_DEBUG)
 else()
     target_compile_definitions(server PRIVATE NDEBUG)
 endif()

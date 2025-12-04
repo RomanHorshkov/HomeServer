@@ -16,7 +16,6 @@
 #include <string.h>   /* strcmp, strcpy, strerror, strstr, strdup */
 #include <sys/stat.h> /* stat, struct stat */
 
-#include "cJSON.h"
 #include "contract_version.h" /* CONTRACT_VERSION */
 #include "handlers_interface.h"
 #include "http_manager.h" /* HttpRequest, HttpResponse */
@@ -112,7 +111,5 @@ void send_500(HttpResponse *response);
  * @return MIME type string (e.g., "text/html").
  */
 const char *guess_mime_type(const char *path);
-
-int validate_whoami_shape(const cJSON *root);
 
 #endif /* SERVER_BROWSER_HANDLER_WHOAMI_H */

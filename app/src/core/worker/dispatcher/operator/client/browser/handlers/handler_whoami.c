@@ -22,6 +22,7 @@
 #include <time.h>     /* gmtime_r(), strftime() */
 
 #include "handlers_int.h"
+#include "yyjson.h"
 #include <emlog.h>
 
 #define LOG_TAG "handler_whoami"
@@ -59,82 +60,73 @@ int handler_whoami(const HttpRequest *req, HttpResponse *res)
 {
     /*-----------------------------------------------------------------------
      * (1)  Compute an ISO‑8601 timestamp with milliseconds.                 *
-     *      Use gettimeofday() for µs resolution, convert to UTC, then       *
-     *      format as “YYYY‑MM‑DDThh:mm:ss.mmmZ“.                            *
      *---------------------------------------------------------------------*/
+    struct timeval tv;
+    struct tm      tm;
+    char           timestr[32];
 
-    static struct tm tm;      /* broken‑down UTC    */
-    static char timestr[32];  /*  “YYYY-MM-DDThh:mm:ss” */
-    static struct timeval tv; /* wall‑clock with µs */
-
-    gmtime_r(&tv.tv_sec, &tm); /* thread‑safe gmtime */
-    gettimeofday(&tv, NULL);   /* POSIX; never fails */
+    gettimeofday(&tv, NULL);
+    gmtime_r(&tv.tv_sec, &tm);
     strftime(timestr, sizeof timestr, "%Y-%m-%dT%H:%M:%S", &tm);
 
-    char iso_time[32]; /* final “…mmmZ” string */
+    char iso_time[32];
+    int  len = snprintf(iso_time,
+                        sizeof iso_time,
+                        "%s.%03ldZ",
+                        timestr,
+                        tv.tv_usec / 1000L); /* µs → ms */
 
-    int len =
-        snprintf(iso_time, sizeof iso_time, "%s.%03ldZ", timestr, tv.tv_usec / 1000L); /* µs → ms */
-
-    /* Check for buffer overrun */
     if(len < 0 || len >= (int)sizeof iso_time)
     {
-        /* Fallback – keep only the seconds part (better than truncation)   */
         strncpy(iso_time, timestr, sizeof iso_time - 1);
         iso_time[sizeof iso_time - 1] = '\0';
     }
 
     /*-----------------------------------------------------------------------
-     * (2)  Build the JSON structure using cJSON.                           *
+     * (2)  Build the JSON structure using yyjson.                           *
      *---------------------------------------------------------------------*/
-    cJSON *root = cJSON_CreateObject();
-
-    /* "path":   "/api/whoami" */
-    cJSON_AddStringToObject(root, "path", req->path);
-
-    /* API contrct version */
-    cJSON_AddStringToObject(root, "contract_version", CONTRACT_VERSION);
-
-    /* server time */
-    cJSON_AddStringToObject(root, "server_time", iso_time);
-
-    /* "method": "GET" */
-    cJSON_AddStringToObject(root, "method", http_method_to_string(req->method));
-
-    /* nested object */
-    cJSON *hdrs = cJSON_AddObjectToObject(root, "headers");
-
-    /* copy every header */
-    for(int i = 0; i < req->header_count; ++i)
+    yyjson_mut_doc *doc = yyjson_mut_doc_new(NULL);
+    if(!doc)
     {
-        cJSON_AddStringToObject(hdrs, req->header_names[i], /* key   */
-                                req->header_values[i]);     /* value */
-    }
-
-    if(validate_whoami_shape(root) != 0)
-    {
-        EML_ERROR(LOG_TAG, "schema shape check failed");
-        cJSON_Delete(root);
         send_500(res);
         return -1;
     }
 
-    char *body = cJSON_PrintUnformatted(root); /* compact JSON string */
-    cJSON_Delete(root);                        /* free DOM tree       */
+    yyjson_mut_val *root = yyjson_mut_obj(doc);
+    yyjson_mut_doc_set_root(doc, root);
+
+    yyjson_mut_obj_add_str(doc, root, "path", req->path);
+    yyjson_mut_obj_add_str(doc, root, "contract_version", CONTRACT_VERSION);
+    yyjson_mut_obj_add_str(doc, root, "server_time", iso_time);
+    yyjson_mut_obj_add_str(doc, root, "method", http_method_to_string(req->method));
+
+    yyjson_mut_val *hdrs = yyjson_mut_obj(doc);
+    yyjson_mut_obj_add_val(doc, root, "headers", hdrs);
+    for(int i = 0; i < req->header_count; ++i)
+    {
+        yyjson_mut_obj_add_str(doc, hdrs, req->header_names[i], req->header_values[i]);
+    }
+
+    size_t body_len = 0;
+    char  *body = yyjson_mut_write(doc, 0, &body_len);
+    yyjson_mut_doc_free(doc);
+    if(!body)
+    {
+        send_500(res);
+        return -1;
+    }
 
     /*-----------------------------------------------------------------------
      * (3)  Populate the HttpResponse structure for the caller.             *
      *---------------------------------------------------------------------*/
-    res->status_code = 200;                 /* HTTP 200 OK              */
-    res->status_text = "OK";                /* reason phrase            */
-    res->content_type = "application/json"; /* MIME type                */
-    res->body = body;                       /* transfer ownership       */
-    res->body_length = strlen(body);        /* cache len for sender     */
+    res->status_code = 200;
+    res->status_text = "OK";
+    res->content_type = "application/json";
+    res->body = body;
+    res->body_length = body_len;
+    res->body_owned = 1;
 
-    /* Optional: add a response header to HTTP layer will serialize */
-    // http_response_add_header(res, "X-Contract-Version", CONTRACT_VERSION);
-
-    return 0; /* success                  */
+    return 0;
 }
 
 REGISTER_ROUTE("/api/whoami", handler_whoami)

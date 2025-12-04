@@ -23,7 +23,8 @@
 
 #include <emlog.h>
 
-#include "worker/dispatcher/operator/operator.h"
+#include "app_interface.h"
+#include "operator.h"
 
 #define LOG_TAG "srv_wrkr_dsptchr"
 
@@ -90,6 +91,7 @@ int worker_dispatcher_init(worker_dispatcher_t *dispatcher,
     dispatcher->listener_pipeline = listener_pipeline;
     dispatcher->cpu_count = cpu_count;
     dispatcher->operator_count = _compute_operator_count(cpu_count);
+    dispatcher->db_initialized = 0;
 
     dispatcher->operators = calloc(dispatcher->operator_count, sizeof(worker_operator_t));
     if(!dispatcher->operators)
@@ -97,6 +99,13 @@ int worker_dispatcher_init(worker_dispatcher_t *dispatcher,
         EML_PERR(LOG_TAG, "init: operators alloc failed");
         return STATUS_FAILURE;
     }
+
+    if(db_app_init((uint8_t)dispatcher->operator_count) != 0)
+    {
+        EML_ERROR(LOG_TAG, "init: db_app_init failed");
+        goto fail;
+    }
+    dispatcher->db_initialized = 1;
 
     for(size_t i = 0; i < dispatcher->operator_count; ++i)
     {
@@ -138,6 +147,11 @@ void worker_dispatcher_shutdown(worker_dispatcher_t *dispatcher)
         }
         free(dispatcher->operators);
         dispatcher->operators = NULL;
+    }
+    if(dispatcher->db_initialized)
+    {
+        db_app_shutdown();
+        dispatcher->db_initialized = 0;
     }
 }
 

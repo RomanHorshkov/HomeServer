@@ -10,7 +10,7 @@
 
 #define _GNU_SOURCE
 
-#include "worker/dispatcher/operator/operator.h"
+#include "operator.h"
 
 #include <errno.h>
 #include <stdint.h>
@@ -21,7 +21,7 @@
 
 #include <emlog.h>
 
-#include "worker/dispatcher/operator/client/client.h"
+#include "client.h"
 #include "reactor.h"
 #include "spsc_ring.h"
 #include "socket_helper.h"
@@ -246,6 +246,11 @@ void *worker_operator_thread(void *arg)
     {
         close(op->clients[i].fd);
         free(op->clients[i].ctx);
+        if(op->clients[i].http.parser.data)
+        {
+            free(op->clients[i].http.parser.data);
+            op->clients[i].http.parser.data = NULL;
+        }
     }
 
     reactor_shutdown(&op->reactor);
@@ -393,9 +398,9 @@ static int _operator_add_client(worker_operator_t *op, int client_fd)
     memset(slot, 0, sizeof(*slot));
 
     /* init per-client http parser */
-    if(client_http_init(&slot->http) != STATUS_SUCCESS)
+    if(http_parser_init(&slot->http) != STATUS_SUCCESS)
     {
-        EML_ERROR(LOG_TAG, "[op %d] client_http_init failed for fd %d", op->id, client_fd);
+        EML_ERROR(LOG_TAG, "[op %d] http_parser_init failed for fd %d", op->id, client_fd);
         free(ctx);
         return STATUS_FAILURE;
     }
@@ -460,6 +465,11 @@ static int _operator_remove_client(worker_operator_t *op, int client_fd)
 
     close(op->clients[idx].fd);
     free(op->clients[idx].ctx);
+    if(op->clients[idx].http.parser.data)
+    {
+        free(op->clients[idx].http.parser.data);
+        op->clients[idx].http.parser.data = NULL;
+    }
 
     /* Compact array */
     for(size_t j = idx + 1; j < op->active_clients; ++j)

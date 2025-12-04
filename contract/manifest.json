@@ -2,9 +2,15 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "id": "urn:roman:contract:manifest",
   "name": "HomeServer API Contract",
-  "version": "2025-08-14.1",
+  "version": "2025-09-02.0",
   "endpoints": [
-    { "id": "whoami", "path": "/api/whoami", "method": "GET", "responseSchema": "schemas/whoami.response.json" }
+    { "id": "whoami", "path": "/api/whoami", "method": "GET", "responseSchema": "schemas/whoami.response.json" },
+    {
+      "id": "database",
+      "path": "/api/app/*",
+      "method": "POST",
+      "requestSchema": "schemas/database.auth.placeholder.json",
+      "responseSchema": "schemas/database.auth.placeholder.json"
+    }
   ]
 }
-
