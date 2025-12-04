@@ -8,7 +8,7 @@
 #include <strings.h>
 #include <time.h>
 
-#include "db_app/db_app.h"
+#include "app_interface.h"
 #include "handlers_int.h"
 #include "http_manager.h"
 #include "utils_interface.h"
@@ -21,7 +21,6 @@
  ****************************************************************************/
 
 static inline int db_request_init_from_http(const HttpRequest* in, uint64_t now_epoch,
-                                            uint32_t remote_ip_be, uint16_t remote_port_be,
                                             db_hdr_kv_t* headers_out, DB_request_t* out);
 static void http_response_from_db(HttpResponse* http_res, DB_response_t* db_res);
 static void cleanup_db_response(DB_response_t* db_res);
@@ -43,7 +42,7 @@ int handler_database(const HttpRequest* req, HttpResponse* res)
     db_hdr_kv_t hdr_views[HTTP_MAX_HEADERS_IN];
     DB_request_t db_req;
 
-    if(db_request_init_from_http(req, time(NULL), 0, 0, hdr_views, &db_req) != 0)
+    if(db_request_init_from_http(req, time(NULL), hdr_views, &db_req) != 0)
     {
         send_400(res);
         return -1;
@@ -54,6 +53,7 @@ int handler_database(const HttpRequest* req, HttpResponse* res)
 
     db_app_status_t status = db_app_run(&db_req, &db_res);
     http_response_from_db(res, &db_res);
+    res->body_owned = 1;
 
     return (status == DB_APP_OK) ? 0 : -1;
 }
@@ -63,24 +63,25 @@ int handler_database(const HttpRequest* req, HttpResponse* res)
  ****************************************************************************/
 
 static inline int db_request_init_from_http(const HttpRequest* in, uint64_t now_epoch,
-                                            uint32_t remote_ip_be, uint16_t remote_port_be,
                                             db_hdr_kv_t* headers_out, DB_request_t* out)
 {
     if(!in || !headers_out || !out) return -1;
 
+    memset(out, 0, sizeof(*out));
     out->now_epoch = now_epoch;
-    out->remote_ip_be = remote_ip_be;
-    out->remote_port_be = remote_port_be;
+    out->remote_ip_be = in->remote_ip_be;
+    out->remote_port_be = in->remote_port_be;
+    out->thread_id = in->thread_id;
     out->method = in->method;
     const char* path = in->path;
-    static const char prefix[] = "/api/database/";
+    static const char prefix[] = "/api/app/";
     if(strncmp(path, prefix, sizeof(prefix) - 1) == 0)
     {
         path += sizeof(prefix) - 1;
     }
-    else if(strncmp(path, "/api/database", strlen("/api/database")) == 0)
+    else if(strncmp(path, "/api/app", strlen("/api/app")) == 0)
     {
-        path += strlen("/api/database");
+        path += strlen("/api/app");
     }
     if(path[0] == '/')
     {
@@ -126,6 +127,7 @@ static void http_response_from_db(HttpResponse* http_res, DB_response_t* db_res)
     {
         http_res->body = db_res->body;
         http_res->body_length = db_res->body_len;
+        http_res->body_owned = 1;
         db_res->body = NULL;
         db_res->body_len = 0;
     }
@@ -133,6 +135,7 @@ static void http_response_from_db(HttpResponse* http_res, DB_response_t* db_res)
     {
         http_res->body = NULL;
         http_res->body_length = 0;
+        http_res->body_owned = 0;
     }
 
     http_res->header_count = 0;
@@ -240,4 +243,4 @@ static const char* http_reason_phrase(int status)
 /****************************************************************************
  * ROUTE REGISTRATION
  ****************************************************************************/
-REGISTER_ROUTE("/api/database", handler_database)
+REGISTER_ROUTE("/api/app", handler_database)

@@ -122,6 +122,7 @@ int handler_static(const HttpRequest *request, HttpResponse *response)
                         response->content_type = guess_mime_type(requested_file_path);
                         response->body = body;
                         response->body_length = (size_t)size;
+                        response->body_owned = 1;
                         res = STATUS_SUCCESS;
                     }
                 }

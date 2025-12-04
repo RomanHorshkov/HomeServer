@@ -136,12 +136,12 @@ int browser_manage_client_req(int fd)
         EML_PERR(LOG_TAG, "send_response failed");
 
         /* Free any heap buffer allocated by handler_static_page */
-        free((void *)response.body);
+        if(response.body_owned && response.body) free((void *)response.body);
         goto fail;
     }
 
     /* Free any heap buffer allocated by handler_static_page */
-    free((void *)response.body);
+    if(response.body_owned && response.body) free((void *)response.body);
     
     /* Set return variable to success */
     res = STATUS_SUCCESS;

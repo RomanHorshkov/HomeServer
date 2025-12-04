@@ -107,6 +107,11 @@ static int on_header_value(llhttp_t* parser, const char* at, size_t length);
 static int on_body(llhttp_t* parser, const char* at, size_t length);
 
 /**
+ * @brief llhttp callback: called when a message completes.
+ */
+static int on_message_complete(llhttp_t* parser);
+
+/**
  * @brief llhttp callback: called when the HTTP method is parsed.
  *
  * Converts the parsed method string to an enum and stores it in the request.
@@ -296,6 +301,58 @@ static int http_parse_request(const char* buffer, const size_t buffer_len, HttpR
     }
 
     return res;
+}
+
+int http_parser_init(http_parser_t *pstate)
+{
+    if(!pstate) return STATUS_FAILURE;
+    memset(pstate, 0, sizeof(*pstate));
+
+    llhttp_settings_init(&pstate->settings);
+    pstate->settings.on_url = on_url;
+    pstate->settings.on_method = on_method;
+    pstate->settings.on_header_field = on_header_field;
+    pstate->settings.on_header_value = on_header_value;
+    pstate->settings.on_body = on_body;
+    pstate->settings.on_message_complete = on_message_complete;
+
+    llhttp_init(&pstate->parser, HTTP_REQUEST, &pstate->settings);
+
+    /* attach context */
+    LlhttpParserContext *ctx = calloc(1, sizeof(*ctx));
+    if(!ctx) return STATUS_FAILURE;
+    ctx->req = &pstate->req;
+    pstate->parser.data = ctx;
+
+    return STATUS_SUCCESS;
+}
+
+void http_parser_reset(http_parser_t *pstate)
+{
+    if(!pstate) return;
+    LlhttpParserContext *ctx = (LlhttpParserContext *)pstate->parser.data;
+    if(ctx)
+    {
+        memset(ctx->current_field, 0, sizeof(ctx->current_field));
+        memset(ctx->current_value, 0, sizeof(ctx->current_value));
+        ctx->in_header_field = 1;
+    }
+    memset(&pstate->req, 0, sizeof(pstate->req));
+    pstate->req.body_len = 0;
+    pstate->req.message_complete = 0;
+    llhttp_reset(&pstate->parser);
+}
+
+int http_parser_execute(http_parser_t *pstate, const char *buf, size_t len)
+{
+    if(!pstate || !buf) return STATUS_FAILURE;
+    llhttp_errno_t err = llhttp_execute(&pstate->parser, buf, len);
+    if(err != HPE_OK)
+    {
+        EML_ERROR(LOG_TAG, "[http]: llhttp parse error: %s", llhttp_errno_name(err));
+        return STATUS_FAILURE;
+    }
+    return STATUS_SUCCESS;
 }
 
 static int validate_http_path(const char* path)
@@ -510,7 +567,7 @@ static int on_body(llhttp_t* parser, const char* at, size_t length)
         EML_ERROR(LOG_TAG, 
             "[http]: Request body exceeds HTTP_MAX_BODY_RAM_CAPACITY (%d "
             "bytes)",
-            HTTP_MAX_BODY_RAM_CAPACITY);
+            (int)HTTP_MAX_BODY_RAM_CAPACITY);
 
         /* return non-zero to tell llhttp to stop parsing with error */
         return 1;
@@ -529,6 +586,14 @@ static int on_method(llhttp_t* parser, const char* at, size_t length)
 {
     LlhttpParserContext* ctx = (LlhttpParserContext*)parser->data;
     ctx->req->method = parse_http_method(at, length);
+    return 0;
+}
+
+static int on_message_complete(llhttp_t* parser)
+{
+    LlhttpParserContext* ctx = (LlhttpParserContext*)parser->data;
+    if(!ctx) return 0;
+    ctx->req->message_complete = 1;
     return 0;
 }
 

@@ -26,8 +26,8 @@
 #include <sys/stat.h>  // stat, S_ISDIR, S_ISREG
 #include <unistd.h>    // access
 
-#include "cJSON.h"
 #include "handlers_interface.h"
+#include "handlers_int.h"
 #include "route_register.h"
 #include <emlog.h>
 
@@ -127,13 +127,14 @@ static int call_api_handler(const HttpRequest *request, HttpResponse *response)
     /* Return variable */
     int res = STATUS_FAILURE;
 
-    size_t count = -1;
+    size_t count = 0;
     const route_t *table = router_get_table(&count);
 
     /* Check if any api have been registered */
     if(count <= 0)
     {
         EML_ERROR(LOG_TAG, "[router] no entries in api table");
+        if(response) send_404(response);
         return res;
     }
 
@@ -160,6 +161,11 @@ static int call_api_handler(const HttpRequest *request, HttpResponse *response)
 
             break;
         }
+    }
+
+    if(res != STATUS_SUCCESS && response && response->status_code == 0)
+    {
+        send_404(response);
     }
 
     return res;

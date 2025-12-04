@@ -1,147 +1,75 @@
+/**
+ * @file client.c
+ * @brief Per‑connection I/O and HTTP parsing loop executed inside an operator.
+ *
+ * Each operator holds an array of client slots. When epoll marks a socket
+ * readable the operator invokes ::client_handle() which performs a bounded
+ * recv()/parse loop:
+ *   1. Read as much as fits in the slot buffer (non‑blocking).
+ *   2. Feed bytes to the HTTP parser (llhttp wrapper) maintaining incremental state.
+ *   3. On complete message: log request metadata, reset parser, and (currently)
+ *      request connection closure (placeholder until routing layer integration).
+ *
+ * Design notes:
+ * - Lock‑free: no shared state is mutated outside the owning operator thread.
+ * - Backpressure: returns STATUS_SUCCESS when socket would block so reactor
+ *   can yield; STATUS_FAILURE signals disposal (EOF / parse error / policy).
+ * - Parser reset: we reset after a full message to support pipelining later;
+ *   close-on-first-request is a temporary simplification.
+ */
 #define _GNU_SOURCE
 
-#include "worker/dispatcher/operator/client/client.h"
+#include "client.h"
 
 #include <errno.h>
-#include <inttypes.h>
+#include <netinet/in.h>
+#include <stdlib.h>
 #include <string.h>
 #include <sys/socket.h>
 #include <unistd.h>
+#include <stdio.h>
 
 #include <emlog.h>
 
-#include "worker/dispatcher/operator/operator.h"
+#include "http_manager.h"
+#include "operator.h"
+#include "router.h"
 #include "time_helper.h"
-#include "worker/dispatcher/operator/client/browser/http_manager.h"
 
 #define LOG_TAG "srv_client"
 
-static int _on_url(llhttp_t *parser, const char *at, size_t length);
-static int _on_message_complete(llhttp_t *parser);
-static int _on_header_field(llhttp_t *parser, const char *at, size_t length);
-static int _on_header_value(llhttp_t *parser, const char *at, size_t length);
-static int _on_body(llhttp_t *parser, const char *at, size_t length);
-static int _on_method(llhttp_t *parser, const char *at, size_t length);
+static void _populate_transport_meta(worker_operator_t *op, worker_client_slot_t *slot);
+static int _send_response(int fd, const HttpRequest *req, const HttpResponse *resp);
+static ssize_t _send_all(int fd, const void *buf, size_t len);
+static void _free_response_body(HttpResponse *resp);
+static void _fill_500(HttpResponse *resp);
 
-int client_http_init(client_http_state_t *st)
-{
-    if(!st) return STATUS_FAILURE;
-    memset(st, 0, sizeof(*st));
-    llhttp_settings_init(&st->settings);
-    st->settings.on_url = _on_url;
-    st->settings.on_header_field = _on_header_field;
-    st->settings.on_header_value = _on_header_value;
-    st->settings.on_message_complete = _on_message_complete;
-    st->settings.on_body = _on_body;
-    st->settings.on_method = _on_method;
-    llhttp_init(&st->parser, HTTP_REQUEST, &st->settings);
-    st->parser.data = st;
-    st->method = HTTP_METHOD_UNKNOWN;
-    memset(&st->req, 0, sizeof(st->req));
-    return STATUS_SUCCESS;
-}
-
-static int _on_url(llhttp_t *parser, const char *at, size_t length)
-{
-    client_http_state_t *st = (client_http_state_t *)parser->data;
-    if(!st) return 0;
-    size_t copy = length;
-    if(copy >= sizeof(st->url)) copy = sizeof(st->url) - 1;
-    memcpy(st->url, at, copy);
-    st->url[copy] = '\0';
-    st->method = (http_method_t)parser->method;
-    return 0;
-}
-
-static int _on_body(llhttp_t *parser, const char *at, size_t length)
-{
-    (void)at;
-    client_http_state_t *st = (client_http_state_t *)parser->data;
-    if(!st) return 0;
-    st->body_bytes += length;
-    return 0;
-}
-
-static int _on_message_complete(llhttp_t *parser)
-{
-    client_http_state_t *st = (client_http_state_t *)parser->data;
-    if(!st) return 0;
-    /* store last header if pending */
-    if(st->current_field[0] && st->req.header_count < HTTP_MAX_HEADERS_IN)
-    {
-        int i = st->req.header_count++;
-        size_t name_len = strnlen(st->current_field, HTTP_MAX_HEADER_NAME_LEN - 1);
-        memcpy(st->req.header_names[i], st->current_field, name_len);
-        st->req.header_names[i][name_len] = '\0';
-
-        size_t value_len = strnlen(st->current_value, HTTP_MAX_HEADER_VALUE_LEN - 1);
-        memcpy(st->req.header_values[i], st->current_value, value_len);
-        st->req.header_values[i][value_len] = '\0';
-    }
-
-    st->message_complete = 1;
-    return 0;
-}
-
-static int _on_header_field(llhttp_t *parser, const char *at, size_t length)
-{
-    client_http_state_t *st = (client_http_state_t *)parser->data;
-    if(!st) return 0;
-
-    /* if switching from value to new field, store previous header */
-    if(st->current_field[0] && st->in_header_field == 0 &&
-       st->req.header_count < HTTP_MAX_HEADERS_IN)
-    {
-        int i = st->req.header_count++;
-        size_t name_len = strnlen(st->current_field, HTTP_MAX_HEADER_NAME_LEN - 1);
-        memcpy(st->req.header_names[i], st->current_field, name_len);
-        st->req.header_names[i][name_len] = '\0';
-
-        size_t value_len = strnlen(st->current_value, HTTP_MAX_HEADER_VALUE_LEN - 1);
-        memcpy(st->req.header_values[i], st->current_value, value_len);
-        st->req.header_values[i][value_len] = '\0';
-    }
-
-    size_t copy = length;
-    if(copy >= sizeof(st->current_field)) copy = sizeof(st->current_field) - 1;
-    memcpy(st->current_field, at, copy);
-    st->current_field[copy] = '\0';
-    st->in_header_field = 1;
-    return 0;
-}
-
-static int _on_header_value(llhttp_t *parser, const char *at, size_t length)
-{
-    client_http_state_t *st = (client_http_state_t *)parser->data;
-    if(!st) return 0;
-    size_t copy = length;
-    if(copy >= sizeof(st->current_value)) copy = sizeof(st->current_value) - 1;
-    memcpy(st->current_value, at, copy);
-    st->current_value[copy] = '\0';
-    st->in_header_field = 0;
-    return 0;
-}
-
-static int _on_method(llhttp_t *parser, const char *at, size_t length)
-{
-    (void)at;
-    (void)length;
-    client_http_state_t *st = (client_http_state_t *)parser->data;
-    if(!st) return 0;
-    st->method = (http_method_t)parser->method;
-    return 0;
-}
-
+/**
+ * @brief Drain a readable client socket and advance HTTP parsing state.
+ *
+ * Loop semantics:
+ *   - Continues reading while recv() yields positive byte counts.
+ *   - Stops with STATUS_SUCCESS on EAGAIN/EWOULDBLOCK/EINTR (socket will remain).
+ *   - Returns STATUS_FAILURE on EOF, fatal recv error, or HTTP parse failure.
+ *   - On complete HTTP request: logs details, resets parser, and returns
+ *     STATUS_FAILURE (current policy: close after one request).
+ *
+ * Timing/accounting:
+ *   - Updates slot->last_activity with coarse millisecond timestamp.
+ *   - Increments slot->request_count for timeout heuristics.
+ *
+ * @param op   Owning operator (unused today; placeholder for future routing).
+ * @param slot Client slot containing parser state and buffers.
+ * @return STATUS_SUCCESS to keep connection; STATUS_FAILURE to drop it.
+ */
 int client_handle(worker_operator_t *op, worker_client_slot_t *slot)
 {
     (void)op;
     if(!slot) return STATUS_FAILURE;
 
-    char buf[HTTP_RECEIVE_BUFFER_LEN];
-
     for(;;)
     {
-        ssize_t n = recv(slot->fd, buf, sizeof(buf), 0);
+        ssize_t n = recv(slot->fd, slot->recv_buf, sizeof(slot->recv_buf), 0);
         if(n > 0)
         {
 #ifdef DEBUG_MODE
@@ -149,25 +77,19 @@ int client_handle(worker_operator_t *op, worker_client_slot_t *slot)
 #endif
             slot->last_activity = (uint32_t)time_helper_get_now();
             slot->request_count++;
-            enum llhttp_errno err = llhttp_execute(&slot->http.parser, buf, (size_t)n);
-            if(err != HPE_OK)
+            if(http_parser_execute(&slot->http, slot->recv_buf, (size_t)n) != STATUS_SUCCESS)
             {
-                EML_ERROR(LOG_TAG, "llhttp error on fd %d: %s (%s)",
-                          slot->fd,
-                          llhttp_errno_name(err),
-                          llhttp_get_error_reason(&slot->http.parser));
+                EML_ERROR(LOG_TAG, "HTTP parse failed on fd %d", slot->fd);
                 return STATUS_FAILURE;
             }
 
-            if(slot->http.message_complete)
+            if(slot->http.req.message_complete)
             {
-                const char *m = http_method_to_string((http_method_t)slot->http.parser.method);
-                EML_INFO(LOG_TAG, "fd %d HTTP %s %s body_bytes=%" PRIu64,
+                EML_INFO(LOG_TAG, "fd %d HTTP %s %s body_len=%zu",
                          slot->fd,
-                         m ? m : "UNKNOWN",
-                         slot->http.url,
-                         slot->http.body_bytes);
-
+                         http_method_to_string(slot->http.req.method),
+                         slot->http.req.path,
+                         slot->http.req.body_len);
 #ifdef DEBUG_MODE
                 EML_DBG(LOG_TAG, "fd %d headers (%d):", slot->fd, slot->http.req.header_count);
                 for(int i = 0; i < slot->http.req.header_count; ++i)
@@ -177,7 +99,32 @@ int client_handle(worker_operator_t *op, worker_client_slot_t *slot)
                             slot->http.req.header_values[i]);
                 }
 #endif
-                return STATUS_FAILURE; /* close after one request for now */
+
+                HttpResponse response;
+                memset(&response, 0, sizeof(response));
+
+                _populate_transport_meta(op, slot);
+
+                int route_rc = router_handle_request(&slot->http.req, &response);
+                if(route_rc != STATUS_SUCCESS && response.status_code == 0)
+                {
+                    EML_ERROR(LOG_TAG, "router_handle_request failed for fd %d", slot->fd);
+                    _fill_500(&response);
+                }
+
+                if(_send_response(slot->fd, &slot->http.req, &response) != STATUS_SUCCESS)
+                {
+                    _free_response_body(&response);
+                    return STATUS_FAILURE;
+                }
+
+                _free_response_body(&response);
+                http_parser_reset(&slot->http);
+                if(slot->http.req.connection_policy == HTTP_CONNECTION_CLOSE)
+                {
+                    return STATUS_FAILURE; /* close after reply */
+                }
+                return STATUS_SUCCESS; /* keep alive */
             }
             continue;
         }
@@ -196,4 +143,119 @@ int client_handle(worker_operator_t *op, worker_client_slot_t *slot)
             return STATUS_FAILURE;
         }
     }
+}
+
+static void _populate_transport_meta(worker_operator_t *op, worker_client_slot_t *slot)
+{
+    if(!op || !slot) return;
+
+    HttpRequest *req = &slot->http.req;
+    req->thread_id = (uint8_t)op->id;
+
+    struct sockaddr_storage ss;
+    socklen_t slen = sizeof(ss);
+    if(getpeername(slot->fd, (struct sockaddr *)&ss, &slen) == 0 && ss.ss_family == AF_INET)
+    {
+        const struct sockaddr_in *sin = (const struct sockaddr_in *)&ss;
+        req->remote_ip_be = sin->sin_addr.s_addr;
+        req->remote_port_be = sin->sin_port;
+    }
+    else
+    {
+        req->remote_ip_be = 0;
+        req->remote_port_be = 0;
+    }
+}
+
+static int _send_response(int fd, const HttpRequest *req, const HttpResponse *resp)
+{
+    if(!resp) return STATUS_FAILURE;
+
+    const int status = resp->status_code ? resp->status_code : 500;
+    const char *reason = resp->status_text ? resp->status_text : "OK";
+    const char *ctype = resp->content_type ? resp->content_type : "application/octet-stream";
+    const char *conn =
+        (req && req->connection_policy == HTTP_CONNECTION_CLOSE) ? "close" : "keep-alive";
+
+    char hdr_buf[2048];
+    size_t offset = 0;
+
+    int written = snprintf(hdr_buf, sizeof(hdr_buf),
+                           "HTTP/1.1 %d %s\r\n"
+                           "Content-Type: %s\r\n"
+                           "Content-Length: %zu\r\n",
+                           status,
+                           reason,
+                           ctype,
+                           resp->body ? resp->body_length : 0);
+    if(written < 0 || (size_t)written >= sizeof(hdr_buf)) return STATUS_FAILURE;
+    offset = (size_t)written;
+
+    for(int i = 0; i < resp->header_count; ++i)
+    {
+        written = snprintf(hdr_buf + offset,
+                           sizeof(hdr_buf) - offset,
+                           "%s: %s\r\n",
+                           resp->header_names[i],
+                           resp->header_values[i]);
+        if(written < 0 || (size_t)written >= sizeof(hdr_buf) - offset) return STATUS_FAILURE;
+        offset += (size_t)written;
+    }
+
+    written = snprintf(hdr_buf + offset,
+                       sizeof(hdr_buf) - offset,
+                       "Connection: %s\r\n\r\n",
+                       conn);
+    if(written < 0 || (size_t)written >= sizeof(hdr_buf) - offset) return STATUS_FAILURE;
+    offset += (size_t)written;
+
+    if(_send_all(fd, hdr_buf, offset) < 0) return STATUS_FAILURE;
+    if(resp->body && resp->body_length > 0)
+    {
+        if(_send_all(fd, resp->body, resp->body_length) < 0) return STATUS_FAILURE;
+    }
+
+    return STATUS_SUCCESS;
+}
+
+static ssize_t _send_all(int fd, const void *buf, size_t len)
+{
+    const char *ptr = (const char *)buf;
+    size_t total = 0;
+
+    while(total < len)
+    {
+        ssize_t sent = send(fd, ptr + total, len - total, 0);
+        if(sent < 0)
+        {
+            if(errno == EINTR) continue;
+            return -1;
+        }
+        total += (size_t)sent;
+    }
+
+    return (ssize_t)total;
+}
+
+static void _free_response_body(HttpResponse *resp)
+{
+    if(!resp) return;
+    if(resp->body_owned && resp->body)
+    {
+        free(resp->body);
+    }
+    resp->body = NULL;
+    resp->body_length = 0;
+    resp->body_owned = 0;
+}
+
+static void _fill_500(HttpResponse *resp)
+{
+    if(!resp) return;
+    resp->status_code = 500;
+    resp->status_text = "Internal Server Error";
+    resp->content_type = "text/html";
+    resp->body = "<html><body><h1>500 Internal Server Error</h1></body></html>";
+    resp->body_length = strlen(resp->body);
+    resp->body_owned = 0;
 }
