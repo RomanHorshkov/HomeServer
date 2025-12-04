@@ -37,4 +37,3 @@ var/www/map.json
 cmake-build/
 cmake-out/
 db/
-Personal/
