@@ -84,7 +84,7 @@ LDFLAGS  += \
 LDLIBS_APP = -lllhttp -lcjson -lspsc_ring
 
 # DB lib + its deps (order matters; group avoids --as-needed surprises)
-LDLIBS_DB  = -Wl,--start-group $(DB_LIB) $(LMDB_LIBS) $(OPENSSL_LIBS) $(SODIUM_LIBS) -Wl,--end-group
+LDLIBS_DB  = -Wl,--whole-archive $(DB_LIB) -Wl,--no-whole-archive -Wl,--start-group $(LMDB_LIBS) $(OPENSSL_LIBS) $(SODIUM_LIBS) -Wl,--end-group
 
 LDLIBS = $(LDLIBS_APP) $(LDLIBS_DB)
 

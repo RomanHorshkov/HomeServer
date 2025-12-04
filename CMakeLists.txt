@@ -185,10 +185,12 @@ target_link_libraries(
         emlog_shared
         spsc_ring_static
         llhttp
+        "-Wl,--whole-archive"
         db_app_prebuilt
         db_core_prebuilt
         uuid7_prebuilt
         yyjson_prebuilt
+        "-Wl,--no-whole-archive"
         OpenSSL::Crypto
         ${LMDB_LIBRARY}
         ${SODIUM_LIBRARY}
