@@ -281,7 +281,7 @@ static int http_parse_request(const char* buffer, const size_t buffer_len, HttpR
 
     if(err != HPE_OK)
     {
-        EML_ERROR(LOG_TAG, "[http]: llhttp parse error: %s", llhttp_errno_name(err));
+        EML_ERROR(LOG_TAG, "llhttp parse error: %s", llhttp_errno_name(err));
     }
 
     else
@@ -290,12 +290,12 @@ static int http_parse_request(const char* buffer, const size_t buffer_len, HttpR
         res = STATUS_SUCCESS;
 
 #ifdef DEBUG_MODE
-        EML_INFO(LOG_TAG, "[http]: parse request: METHOD: %s, PATH: %s, HEADERS: %d",
+        EML_INFO(LOG_TAG, "parse request: METHOD: %s, PATH: %s, HEADERS: %d",
                  http_method_to_string(req->method), req->path, req->header_count);
-        // EML_INFO(LOG_TAG, "[http]: Parsed %d headers:", req->header_count);
+        // EML_INFO(LOG_TAG, "Parsed %d headers:", req->header_count);
         // for(int i = 0; i < req->header_count; ++i)
         // {
-        //     EML_INFO(LOG_TAG, "[http]: %s: %s\n", req->header_names[i], req->header_values[i]);
+        //     EML_INFO(LOG_TAG, "%s: %s\n", req->header_names[i], req->header_values[i]);
         // }
 #endif /* DEBUG_MODE */
     }
@@ -349,7 +349,7 @@ int http_parser_execute(http_parser_t *pstate, const char *buf, size_t len)
     llhttp_errno_t err = llhttp_execute(&pstate->parser, buf, len);
     if(err != HPE_OK)
     {
-        EML_ERROR(LOG_TAG, "[http]: llhttp parse error: %s", llhttp_errno_name(err));
+        EML_ERROR(LOG_TAG, "llhttp parse error: %s", llhttp_errno_name(err));
         return STATUS_FAILURE;
     }
     return STATUS_SUCCESS;
@@ -363,19 +363,19 @@ static int validate_http_path(const char* path)
     /* Check input */
     if(!path || path[0] == '\0')
     {
-        EML_ERROR(LOG_TAG, "[http]: Request path is empty");
+        EML_ERROR(LOG_TAG, "Request path is empty");
     }
 
     /* Check for path traversal attempts (any ".." in the path) */
     else if(strstr(path, "..") || strstr(path, "./"))
     {
-        EML_ERROR(LOG_TAG, "[http]: Path traversal attempt detected: %s", path);
+        EML_ERROR(LOG_TAG, "Path traversal attempt detected: %s", path);
     }
 
     /* Check if path starts with . or ./ */
     else if(path[0] == '.' && (path[1] == '\0' || path[1] == '/'))
     {
-        EML_ERROR(LOG_TAG, "[http]: Path starts with '.': %s", path);
+        EML_ERROR(LOG_TAG, "Path starts with '.': %s", path);
     }
 
     /* Check for dangerous or suspicious characters */
@@ -391,7 +391,7 @@ static int validate_http_path(const char* path)
             /* Check for control characters, null byte, or suspicious characters */
             if(c < 0x20 || c == 0x7F)
             {
-                EML_ERROR(LOG_TAG, "[http]: Path contains control or null character %s", path);
+                EML_ERROR(LOG_TAG, "Path contains control or null character %s", path);
                 res = STATUS_FAILURE;
                 break;
             }
@@ -400,7 +400,7 @@ static int validate_http_path(const char* path)
             else if(!(isalnum(c) || c == '/' || c == '-' || c == '_' || c == '.' || c == '~' ||
                       c == '?' || c == '=' || c == '&' || c == '+' || c == '%'))
             {
-                EML_ERROR(LOG_TAG, "[http]: Path contains suspicious character %s", path);
+                EML_ERROR(LOG_TAG, "Path contains suspicious character %s", path);
                 res = STATUS_FAILURE;
                 break;
             }
@@ -415,12 +415,12 @@ static int validate_http_header_name(const char* hname)
 {
     if(!hname)
     {
-        EML_ERROR(LOG_TAG, "[http]: Null header name");
+        EML_ERROR(LOG_TAG, "Null header name");
         return STATUS_FAILURE;
     }
     if(strlen(hname) >= HTTP_MAX_HEADER_NAME_LEN)
     {
-        EML_ERROR(LOG_TAG, "[http]: Header name too long: %s", hname);
+        EML_ERROR(LOG_TAG, "Header name too long: %s", hname);
         return STATUS_FAILURE;
     }
     for(size_t j = 0; j < strlen(hname); ++j)
@@ -428,7 +428,7 @@ static int validate_http_header_name(const char* hname)
         unsigned char c = (unsigned char)hname[j];
         if(c < 0x20 || c == 0x7F)
         {
-            EML_ERROR(LOG_TAG, "[http]: Header name contains control or null character: %s", hname);
+            EML_ERROR(LOG_TAG, "Header name contains control or null character: %s", hname);
             return STATUS_FAILURE;
         }
     }
@@ -439,12 +439,12 @@ static int validate_http_header_value(const char* hval, const char* hname)
 {
     if(!hval)
     {
-        EML_ERROR(LOG_TAG, "[http]: Null header value (%s)", hname ? hname : "<unknown>");
+        EML_ERROR(LOG_TAG, "Null header value (%s)", hname ? hname : "<unknown>");
         return STATUS_FAILURE;
     }
     if(strlen(hval) >= HTTP_MAX_HEADER_VALUE_LEN)
     {
-        EML_ERROR(LOG_TAG, "[http]: Header value too long (%s)", hname ? hname : "<unknown>");
+        EML_ERROR(LOG_TAG, "Header value too long (%s)", hname ? hname : "<unknown>");
         return STATUS_FAILURE;
     }
     for(size_t j = 0; j < strlen(hval); ++j)
@@ -452,7 +452,7 @@ static int validate_http_header_value(const char* hval, const char* hname)
         unsigned char c = (unsigned char)hval[j];
         if(c < 0x20 || c == 0x7F)
         {
-            EML_ERROR(LOG_TAG, "[http]: Header value contains control or null character (%s)",
+            EML_ERROR(LOG_TAG, "Header value contains control or null character (%s)",
                       hname ? hname : "<unknown>");
             return STATUS_FAILURE;
         }
@@ -468,25 +468,25 @@ static int sanitize_http_request(HttpRequest* req)
     /* Check for null pointers */
     if(!req)
     {
-        EML_ERROR(LOG_TAG, "[http]: Null pointer argument to sanitize_http_request");
+        EML_ERROR(LOG_TAG, "Null pointer argument to sanitize_http_request");
     }
 
     /* Validate the request path */
     else if(validate_http_path(req->path) != STATUS_SUCCESS)
     {
-        EML_ERROR(LOG_TAG, "[http]: Validate path failed: %s", req->path);
+        EML_ERROR(LOG_TAG, "Validate path failed: %s", req->path);
     }
 
     /* Ensure the method is valid */
     else if(req->method == HTTP_METHOD_UNKNOWN)
     {
-        EML_ERROR(LOG_TAG, "[http]: Invalid HTTP method HTTP_METHOD_UNKNOWN");
+        EML_ERROR(LOG_TAG, "Invalid HTTP method HTTP_METHOD_UNKNOWN");
     }
 
     /* Ensure headers are within limits */
     else if(req->header_count > HTTP_MAX_HEADERS_IN)
     {
-        EML_ERROR(LOG_TAG, "[http]: Too many headers");
+        EML_ERROR(LOG_TAG, "Too many headers");
         return STATUS_FAILURE;
     }
 
@@ -501,20 +501,20 @@ static int sanitize_http_request(HttpRequest* req)
             const char* hval = req->header_values[i];
             if(validate_http_header_name(hname) != STATUS_SUCCESS)
             {
-                EML_ERROR(LOG_TAG, "[http]: Invalid header name: %s", hname);
+                EML_ERROR(LOG_TAG, "Invalid header name: %s", hname);
                 res = STATUS_FAILURE;
                 break;
             };
             if(validate_http_header_value(hval, hname) != STATUS_SUCCESS)
             {
-                EML_ERROR(LOG_TAG, "[http]: Invalid header value: %s", hval);
+                EML_ERROR(LOG_TAG, "Invalid header value: %s", hval);
                 res = STATUS_FAILURE;
                 break;
             }
         }
 
 #ifdef DEBUG_MODE
-        EML_INFO(LOG_TAG, "[http]: sanitizeD request: METHOD: %s, PATH: %s",
+        EML_INFO(LOG_TAG, "sanitizeD request: METHOD: %s, PATH: %s",
                  http_method_to_string(req->method), req->path);
 #endif /* DEBUG_MODE */
     }
@@ -565,7 +565,7 @@ static int on_body(llhttp_t* parser, const char* at, size_t length)
     if(req->body_len + length > HTTP_MAX_BODY_RAM_CAPACITY)
     {
         EML_ERROR(LOG_TAG, 
-            "[http]: Request body exceeds HTTP_MAX_BODY_RAM_CAPACITY (%d "
+            "Request body exceeds HTTP_MAX_BODY_RAM_CAPACITY (%d "
             "bytes)",
             (int)HTTP_MAX_BODY_RAM_CAPACITY);
 
@@ -604,7 +604,7 @@ static http_method_t parse_http_method(const char* at, size_t length)
 
     if(length > HTTP_MAX_METHOD_LEN)
     {
-        EML_ERROR(LOG_TAG, "[http]: HTTP method too long");
+        EML_ERROR(LOG_TAG, "HTTP method too long");
     }
     else if(length == 3 && strncmp(at, "GET", 3) == 0)
         method = HTTP_METHOD_GET;
