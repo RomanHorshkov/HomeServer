@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "urn:roman:contract:schemas:database.auth.placeholder",
   "title": "Database Auth Proxy Payload",
-  "description": "Proxy to the DataBase app auth surface. See app/external/DataBase/openapi/openapi.yaml for the authoritative request/response schemas.",
+  "description": "Proxy to the DB_app auth surface. See app/external/DB_app/openapi/openapi.yaml for the authoritative request/response schemas.",
   "type": "object",
   "additionalProperties": true
 }

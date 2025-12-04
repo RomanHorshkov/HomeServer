@@ -114,17 +114,17 @@ set(SERVER_INCLUDE_DIRS
     ${CMAKE_SOURCE_DIR}/app/include/core/worker/dispatcher/operator/client/browser
     ${CMAKE_SOURCE_DIR}/app/include/core/worker/dispatcher/operator/client/browser/router
     ${CMAKE_SOURCE_DIR}/app/include/core/worker/dispatcher/operator/client/browser/handlers
-    ${CMAKE_SOURCE_DIR}/app/external/DataBase/app/include
-    ${CMAKE_SOURCE_DIR}/app/external/DataBase/app/external/yyjson
-    ${CMAKE_SOURCE_DIR}/app/external/DataBase/app/external/UUID7/include
+    ${CMAKE_SOURCE_DIR}/app/external/DB_app/app/include
+    ${CMAKE_SOURCE_DIR}/app/external/DB_app/app/external/yyjson
+    ${CMAKE_SOURCE_DIR}/app/external/DB_app/app/external/UUID7/include
     ${CMAKE_SOURCE_DIR}/app/external/EMlog/app/include
     ${CMAKE_SOURCE_DIR}/app/external/SPSCring/app/include
     ${CMAKE_SOURCE_DIR}/app/external/llhttp
 )
 
-# Pull in all nested DataBase include folders so headers like db_config.h resolve.
+# Pull in all nested DB_app include folders so headers like db_config.h resolve.
 file(GLOB_RECURSE DB_APP_INCLUDE_CANDIDATES LIST_DIRECTORIES true
-     ${CMAKE_SOURCE_DIR}/app/external/DataBase/app/include/*)
+     ${CMAKE_SOURCE_DIR}/app/external/DB_app/app/include/*)
 set(DB_APP_INCLUDE_DIRS "")
 foreach(path ${DB_APP_INCLUDE_CANDIDATES})
     if(IS_DIRECTORY ${path})
@@ -134,15 +134,15 @@ endforeach()
 list(REMOVE_DUPLICATES DB_APP_INCLUDE_DIRS)
 list(APPEND SERVER_INCLUDE_DIRS ${DB_APP_INCLUDE_DIRS})
 
-# Prebuilt DataBase libraries (debug tree)
-set(DB_PREBUILT_LIB_DIR ${CMAKE_SOURCE_DIR}/app/external/DataBase/build_dbg/lib)
+# Prebuilt DB_app libraries (debug tree)
+set(DB_PREBUILT_LIB_DIR ${CMAKE_SOURCE_DIR}/app/external/DB_app/build_dbg/lib)
 if(NOT EXISTS ${DB_PREBUILT_LIB_DIR}/libdb_app.a)
-    message(FATAL_ERROR "Missing prebuilt db_app.a in ${DB_PREBUILT_LIB_DIR}; build the DataBase project (debug) first.")
+    message(FATAL_ERROR "Missing prebuilt db_app.a in ${DB_PREBUILT_LIB_DIR}; build the DB_app project (debug) first.")
 endif()
 add_library(db_app_prebuilt STATIC IMPORTED GLOBAL)
 set_target_properties(db_app_prebuilt PROPERTIES
     IMPORTED_LOCATION ${DB_PREBUILT_LIB_DIR}/libdb_app.a
-    INTERFACE_INCLUDE_DIRECTORIES "${CMAKE_SOURCE_DIR}/app/external/DataBase/app/include"
+    INTERFACE_INCLUDE_DIRECTORIES "${CMAKE_SOURCE_DIR}/app/external/DB_app/app/include"
 )
 add_library(db_core_prebuilt STATIC IMPORTED GLOBAL)
 set_target_properties(db_core_prebuilt PROPERTIES
