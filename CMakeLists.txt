@@ -135,9 +135,16 @@ list(REMOVE_DUPLICATES DB_APP_INCLUDE_DIRS)
 list(APPEND SERVER_INCLUDE_DIRS ${DB_APP_INCLUDE_DIRS})
 
 # Prebuilt DB_app libraries (debug tree)
-set(DB_PREBUILT_LIB_DIR ${CMAKE_SOURCE_DIR}/app/external/DB_app/build_dbg/lib)
+set(DB_PREBUILT_LIB_DIR $ENV{DB_APP_PREBUILT_DIR})
+if(NOT DB_PREBUILT_LIB_DIR)
+    set(DB_PREBUILT_LIB_DIR ${CMAKE_SOURCE_DIR}/app/external/DB_app/build_user_dbg/lib)
+endif()
 if(NOT EXISTS ${DB_PREBUILT_LIB_DIR}/libdb_app.a)
-    message(FATAL_ERROR "Missing prebuilt db_app.a in ${DB_PREBUILT_LIB_DIR}; build the DB_app project (debug) first.")
+    # Fallback for legacy build path (may be read-only if produced by sudo; prefer build_user_dbg).
+    set(DB_PREBUILT_LIB_DIR ${CMAKE_SOURCE_DIR}/app/external/DB_app/build_dbg/lib)
+endif()
+if(NOT EXISTS ${DB_PREBUILT_LIB_DIR}/libdb_app.a)
+    message(FATAL_ERROR "Missing prebuilt db_app.a in ${DB_PREBUILT_LIB_DIR}; build the DB_app project (debug) first (export DB_APP_PREBUILT_DIR to override).")
 endif()
 add_library(db_app_prebuilt STATIC IMPORTED GLOBAL)
 set_target_properties(db_app_prebuilt PROPERTIES
