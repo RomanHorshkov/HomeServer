@@ -45,28 +45,67 @@
  * PRIVATE FUNCTION DECLARATIONS
  ****************************************************************************
  */
+
+/**
+ * @brief Reactor callback for the wakeup eventfd. Drains the eventfd and
+ *        dequeues all pending client FDs from the SPSC ring, registering
+ *        them with the operator reactor.
+ */
 static int _operator_handle_wakeup_event(int fd, fd_ctx_t *ctx);
+
+/**
+ * @brief Reactor callback for client sockets. Delegates to client handler.
+ */
 static int _operator_handle_client_event(int fd, fd_ctx_t *ctx);
+
+/**
+ * @brief Reactor callback for timer ticks. Adjusts timer cadence and
+ *        closes idle clients that exceeded their timeout.
+ */
 static int _operator_handle_timer_event(int fd, fd_ctx_t *ctx);
+
+/**
+ * @brief Register a new client socket with the operator reactor.
+ *        Updates @c active_count with relaxed atomics.
+ */
 static int _operator_add_client(worker_operator_t *op, int client_fd);
+
+/**
+ * @brief Unregister and close a client socket. Compacts the slot array and
+ *        decrements @c active_count with relaxed atomics.
+ */
 static int _operator_remove_client(worker_operator_t *op, int client_fd);
+
+/**
+ * @brief Start and register the wakeup eventfd to the operator reactor.
+ */
+static int _operator_wakeup_init(worker_operator_t *op);
+
+/**
+ * @brief Initialize timerfd and add it to the reactor.
+ */
 static int _operator_timer_init(worker_operator_t *op);
+
+/**
+ * @brief Switch timer cadence between idle and active based on load.
+ */
 static void _operator_timer_update(worker_operator_t *op);
+
+/**
+ * @brief Close clients that exceeded per‑client inactivity timeouts.
+ */
 static void _operator_check_timeouts(worker_operator_t *op);
+
+/**
+ * @brief Arm timerfd with a new frequency if it changed.
+ */
 static void _operator_set_timer(worker_operator_t *op, uint32_t freq);
-static void _operator_check_timeouts(worker_operator_t *op);
 
 /****************************************************************************
  * PUBLIC FUNCTION DEFINITIONS
  ****************************************************************************
  */
 
-/**
- * @brief Initialize operator state (ring, wakeup, counters).
- * @param op Operator object to initialize.
- * @param id Stable operator identifier for logs/metrics.
- * @return STATUS_SUCCESS on success, STATUS_FAILURE on error.
- */
 int worker_operator_init(worker_operator_t *op, int id)
 {
     if(op == NULL)
@@ -75,7 +114,7 @@ int worker_operator_init(worker_operator_t *op, int id)
         return STATUS_FAILURE;
     }
 
-    memset(op, 0, sizeof(*op));
+    /* Set  */
     op->id = id;
     op->status = WORKER_STATUS_INACTIVE;
     op->wakeup_fd = -1;
@@ -99,48 +138,51 @@ int worker_operator_init(worker_operator_t *op, int id)
         return STATUS_FAILURE;
     }
 
-    return STATUS_SUCCESS;
-}
-
-/**
- * @brief Retrieve the operator wakeup eventfd used by the dispatcher.
- */
-int worker_operator_get_wakeup_fd(const worker_operator_t *op)
-{
-    return op ? op->wakeup_fd : -1;
-}
-
-/**
- * @brief Retrieve the SPSC mailbox ring used to enqueue new client FDs.
- */
-spsc_ring_t *worker_operator_get_ring(worker_operator_t *op)
-{
-    return op ? op->ring : NULL;
-}
-
-/**
- * @brief Start the operator thread and its reactor loop.
- */
-int worker_operator_start(worker_operator_t *op)
-{
-    if(op == NULL)
-    {
-        EML_ERROR(LOG_TAG, "start: invalid input");
-        return STATUS_FAILURE;
-    }
-
+    /* Create the operator thread */
     if(pthread_create(&op->thread, NULL, worker_operator_thread, op) != 0)
     {
         EML_PERR(LOG_TAG, "start: pthread_create failed");
         return STATUS_FAILURE;
     }
+    
+    /* Initialize operator's reactor */
+    if(reactor_init(&op->reactor, (size_t)MAX_FAN_OUT_SOCKETS) != STATUS_SUCCESS)
+    {
+        EML_PERR(LOG_TAG, "[op %d] reactor_init failed", op->id);
+        return STATUS_FAILURE;
+    }
+
+    /* Start and register timer fd to reactor */
+    if(_operator_timer_init(op) != STATUS_SUCCESS)
+    {
+        EML_ERROR(LOG_TAG, "[op %d] timer init failed", op->id);
+        reactor_shutdown(&op->reactor);
+        return STATUS_FAILURE;
+    }
+
+    /* Start and register wakeup fd to reactor */
+    if(_operator_wakeup_init(op) != STATUS_SUCCESS)
+    {
+        EML_ERROR(LOG_TAG, "[op %d] wakeup init failed", op->id);
+        reactor_shutdown(&op->reactor);
+        return STATUS_FAILURE;
+    }
+    
+    op->status = WORKER_STATUS_ACTIVE;
 
     return STATUS_SUCCESS;
 }
 
-/**
- * @brief Stop the operator thread and release kernel/user resources.
- */
+int worker_operator_get_wakeup_fd(const worker_operator_t *op)
+{
+    return op ? op->wakeup_fd : -1;
+}
+
+spsc_ring_t *worker_operator_get_ring(worker_operator_t *op)
+{
+    return op ? op->ring : NULL;
+}
+
 void worker_operator_shutdown(worker_operator_t *op)
 {
     if(op == NULL)
@@ -189,45 +231,15 @@ void *worker_operator_thread(void *arg)
 
     EML_INFO(LOG_TAG, "[op %d] thread starting", op->id);
 
-    if(reactor_init(&op->reactor, (size_t)MAX_FAN_OUT_SOCKETS) != STATUS_SUCCESS)
-    {
-        EML_PERR(LOG_TAG, "[op %d] reactor_init failed", op->id);
-        return NULL;
-    }
-
-    if(_operator_timer_init(op) != STATUS_SUCCESS)
-    {
-        EML_ERROR(LOG_TAG, "[op %d] timer init failed", op->id);
-        reactor_shutdown(&op->reactor);
-        return NULL;
-    }
-
-    /* Register wakeup fd */
-    fd_ctx_t *wakeup_ctx = calloc(1, sizeof(*wakeup_ctx));
-    if(!wakeup_ctx)
-    {
-        EML_PERR(LOG_TAG, "[op %d] calloc wakeup_ctx failed", op->id);
-        reactor_shutdown(&op->reactor);
-        close(op->timer_fd);
-        return NULL;
-    }
-    wakeup_ctx->fd = op->wakeup_fd;
-    wakeup_ctx->owner = op;
-    wakeup_ctx->handler = _operator_handle_wakeup_event;
-    if(reactor_add_in(&op->reactor, op->wakeup_fd, wakeup_ctx) != STATUS_SUCCESS)
-    {
-        EML_PERR(LOG_TAG, "[op %d] reactor_add_in wakeup failed", op->id);
-        free(wakeup_ctx);
-        reactor_shutdown(&op->reactor);
-        close(op->timer_fd);
-        return NULL;
-    }
-    op->wakeup_ctx = wakeup_ctx;
-    op->status = WORKER_STATUS_ACTIVE;
-
     /* Main loop */
+    /**
+     * Run while ACTIVE or FULL.
+     * FULL will not receive new clients, reject if requested by worker,
+     * and will just proceed with active clients until a slot frees up.
+     */
     while(op->status == WORKER_STATUS_ACTIVE || op->status == WORKER_STATUS_FULL)
     {
+        /* Reactor loops over epoll fds, calling the registered handler */
         int out_fd = -1;
         if(reactor_run(&op->reactor, &out_fd) != STATUS_SUCCESS)
         {
@@ -272,11 +284,6 @@ void *worker_operator_thread(void *arg)
  ****************************************************************************
  */
 
-/**
- * @brief Reactor callback for the wakeup eventfd. Drains the eventfd and
- *        dequeues all pending client FDs from the SPSC ring, registering
- *        them with the operator reactor.
- */
 static int _operator_handle_wakeup_event(int fd, fd_ctx_t *ctx)
 {
     worker_operator_t *op = (worker_operator_t *)ctx->owner;
@@ -307,9 +314,6 @@ static int _operator_handle_wakeup_event(int fd, fd_ctx_t *ctx)
     return STATUS_SUCCESS;
 }
 
-/**
- * @brief Reactor callback for client sockets. Delegates to client handler.
- */
 static int _operator_handle_client_event(int fd, fd_ctx_t *ctx)
 {
     worker_operator_t *op = NULL;
@@ -347,10 +351,6 @@ static int _operator_handle_client_event(int fd, fd_ctx_t *ctx)
     return STATUS_SUCCESS;
 }
 
-/**
- * @brief Reactor callback for timer ticks. Adjusts timer cadence and
- *        closes idle clients that exceeded their timeout.
- */
 static int _operator_handle_timer_event(int fd, fd_ctx_t *ctx)
 {
     worker_operator_t *op = (worker_operator_t *)ctx->owner;
@@ -366,10 +366,6 @@ static int _operator_handle_timer_event(int fd, fd_ctx_t *ctx)
     return STATUS_SUCCESS;
 }
 
-/**
- * @brief Register a new client socket with the operator reactor.
- *        Updates @c active_count with relaxed atomics.
- */
 static int _operator_add_client(worker_operator_t *op, int client_fd)
 {
     if(op->active_clients >= WORKER_MAX_CLIENTS)
@@ -436,10 +432,6 @@ static int _operator_add_client(worker_operator_t *op, int client_fd)
     return STATUS_SUCCESS;
 }
 
-/**
- * @brief Unregister and close a client socket. Compacts the slot array and
- *        decrements @c active_count with relaxed atomics.
- */
 static int _operator_remove_client(worker_operator_t *op, int client_fd)
 {
     size_t idx = SIZE_MAX;
@@ -501,9 +493,31 @@ static int _operator_remove_client(worker_operator_t *op, int client_fd)
     return STATUS_SUCCESS;
 }
 
-/**
- * @brief Initialize timerfd and add it to the reactor.
- */
+static int _operator_wakeup_init(worker_operator_t *op)
+{
+
+    fd_ctx_t *wakeup_ctx = calloc(1, sizeof(*wakeup_ctx));
+    if(!wakeup_ctx)
+    {
+        EML_PERR(LOG_TAG, "[op %d] calloc wakeup_ctx failed", op->id);
+        reactor_shutdown(&op->reactor);
+        close(op->timer_fd);
+        return NULL;
+    }
+    wakeup_ctx->fd = op->wakeup_fd;
+    wakeup_ctx->owner = op;
+    wakeup_ctx->handler = _operator_handle_wakeup_event;
+    if(reactor_add_in(&op->reactor, op->wakeup_fd, wakeup_ctx) != STATUS_SUCCESS)
+    {
+        EML_PERR(LOG_TAG, "[op %d] reactor_add_in wakeup failed", op->id);
+        free(wakeup_ctx);
+        reactor_shutdown(&op->reactor);
+        close(op->timer_fd);
+        return NULL;
+    }
+    op->wakeup_ctx = wakeup_ctx;
+}
+
 static int _operator_timer_init(worker_operator_t *op)
 {
     op->timer_fd = time_helper_init();
@@ -548,9 +562,6 @@ static int _operator_timer_init(worker_operator_t *op)
     return STATUS_SUCCESS;
 }
 
-/**
- * @brief Switch timer cadence between idle and active based on load.
- */
 static void _operator_timer_update(worker_operator_t *op)
 {
     if(op->active_clients > 0)
@@ -568,9 +579,6 @@ static void _operator_timer_update(worker_operator_t *op)
 #endif /* DEBUG_MODE */
 }
 
-/**
- * @brief Close clients that exceeded per‑client inactivity timeouts.
- */
 static void _operator_check_timeouts(worker_operator_t *op)
 {
     uint32_t now = (uint32_t)time_helper_get_now();
@@ -594,9 +602,6 @@ static void _operator_check_timeouts(worker_operator_t *op)
     }
 }
 
-/**
- * @brief Arm timerfd with a new frequency if it changed.
- */
 static void _operator_set_timer(worker_operator_t *op, uint32_t freq)
 {
     if(op->timer_fd < 0) return;

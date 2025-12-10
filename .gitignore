@@ -1,7 +1,5 @@
 #Ignore gitignore file
 .gitignore
-# Ignore clang-format file
-.clang-format
 /docs
 #ignore vs code files
 .vscode/

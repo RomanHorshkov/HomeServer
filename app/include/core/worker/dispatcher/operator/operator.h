@@ -59,11 +59,13 @@ struct worker_operator
     worker_status_t status;     /**< lifecycle state */
 };
 
-/** Initialize operator internals (ring, eventfd, counters). */
+/**
+ * @brief Initialize operator state (ring, wakeup, counters).
+ * @param op Operator object to initialize.
+ * @param id Stable operator identifier for logs/metrics.
+ * @return STATUS_SUCCESS on success, STATUS_FAILURE on error.
+ */
 int worker_operator_init(worker_operator_t *op, int id);
-
-/** Spawn operator thread. */
-int worker_operator_start(worker_operator_t *op);
 
 /** Stop operator thread and release resources. */
 void worker_operator_shutdown(worker_operator_t *op);

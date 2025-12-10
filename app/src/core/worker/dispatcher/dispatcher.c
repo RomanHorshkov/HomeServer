@@ -26,7 +26,20 @@
 #include "app_interface.h"
 #include "operator.h"
 
+/****************************************************************************
+ * PRIVATE DEFINES
+ ****************************************************************************
+ */
+
 #define LOG_TAG "srv_wrkr_dsptchr"
+
+#define BLIND_ASSIGNMENT_LIMIT_PERCENTAGE (WORKER_MAX_CLIENTS)/(10U) /* 10% load */
+
+
+/****************************************************************************
+ * PRIVATE FUNCTION DECLARATIONS
+ ****************************************************************************
+ */
 
 /**
  * @section balancer Lock-free operator selection strategy
@@ -66,15 +79,63 @@
 static size_t _compute_operator_count(uint8_t cpu_count)
 {
     /* Reserve one CPU for listener and one for dispatcher when possible */
-    if(cpu_count <= 1)
-    {
-        return 1;
-    }
     if(cpu_count <= 2)
     {
+        EML_INFO(LOG_TAG, "low CPU count (%u); using single operator", (unsigned)cpu_count);
         return 1;
     }
-    return (size_t)(cpu_count - 2);
+    EML_INFO(LOG_TAG, "detected %u CPUs; using %u operators",
+             (unsigned)cpu_count, (unsigned)(cpu_count - 2));
+    return (uint8_t)(cpu_count - 2);
+}
+
+/**
+ * @brief Select the least-loaded operator using relaxed atomics.
+ *
+ * Implements a fast path for lightly loaded operators below the blind assignment limit.
+ *
+ * @param dispatcher Dispatcher instance.
+ * @return Index of the selected operator.
+ */
+static worker_operator_t* _least_loaded_operator(worker_dispatcher_t *dispatcher)
+{
+
+    uint8_t best_idx = 0;
+    unsigned int best_load = WORKER_MAX_CLIENTS; /* start with max possible load */
+    for(uint8_t i = 0; i < dispatcher->operator_count; ++i)
+    {
+        unsigned int load = atomic_load_explicit(&dispatcher->operators[i].active_count,
+                                                    memory_order_relaxed);
+
+        /* when load is below the blind assignment limit just give it to the operator */
+        if(load < BLIND_ASSIGNMENT_LIMIT_PERCENTAGE)
+        {
+#ifdef DEBUG_MODE
+            EML_DBG(LOG_TAG, "[dispatch] selecting operator %u with load=%u (blind)",
+                     (unsigned)i, load);
+#endif
+            return &dispatcher->operators[i];
+        }
+
+        /* calculate min load over all operators */
+        if(load < best_load)
+        {
+#ifdef DEBUG_MODE
+            EML_DBG(LOG_TAG, "[dispatch] operator %u has new best load=%u",
+                     (unsigned)i, load);
+#endif
+            best_load = load;
+            best_idx = i;
+        }
+    }
+
+    if (best_load == WORKER_MAX_CLIENTS)
+    {
+        EML_ERROR(LOG_TAG, "all operators are at full capacity");
+        return NULL;
+    }
+
+    return &dispatcher->operators[best_idx];
 }
 
 int worker_dispatcher_init(worker_dispatcher_t *dispatcher,
@@ -93,19 +154,13 @@ int worker_dispatcher_init(worker_dispatcher_t *dispatcher,
     dispatcher->operator_count = _compute_operator_count(cpu_count);
     dispatcher->db_initialized = 0;
 
+    /* Allocate an operator for each available cpu */
     dispatcher->operators = calloc(dispatcher->operator_count, sizeof(worker_operator_t));
     if(!dispatcher->operators)
     {
         EML_PERR(LOG_TAG, "init: operators alloc failed");
         return STATUS_FAILURE;
     }
-
-    if(db_app_init((uint8_t)dispatcher->operator_count) != 0)
-    {
-        EML_ERROR(LOG_TAG, "init: db_app_init failed");
-        goto fail;
-    }
-    dispatcher->db_initialized = 1;
 
     for(size_t i = 0; i < dispatcher->operator_count; ++i)
     {
@@ -114,12 +169,15 @@ int worker_dispatcher_init(worker_dispatcher_t *dispatcher,
             EML_ERROR(LOG_TAG, "init: operator %zu init failed", i);
             goto fail;
         }
-        if(worker_operator_start(&dispatcher->operators[i]) != STATUS_SUCCESS)
-        {
-            EML_ERROR(LOG_TAG, "init: operator %zu start failed", i);
-            goto fail;
-        }
     }
+    EML_INFO(LOG_TAG, "Initialized %zu operators", dispatcher->operator_count);
+
+    if(db_app_init(dispatcher->operator_count) != 0)
+    {
+        EML_ERROR(LOG_TAG, "init: db_app_init failed");
+        goto fail;
+    }
+    dispatcher->db_initialized = 1;
 
     EML_INFO(LOG_TAG, "Dispatcher ready with %zu operator%s (cpus=%u)",
              dispatcher->operator_count,
@@ -168,52 +226,36 @@ void *worker_dispatcher_thread(void *arg)
 
     for(;;)
     {
+        /* At each loop pop all the new client FDs from the pipeline (added by listener) */
         int client_fd = -1;
         while(pipeline_pop(&client_fd) == STATUS_SUCCESS)
         {
-            /*
-             * Pick operator with zero load if any, otherwise minimum load.
-             * This is a lock‑free, approximate decision based on relaxed
-             * atomic reads of each operator's active_count.
-             */
-            size_t best_idx = 0;
-            unsigned int best_load = UINT_MAX;
-            for(size_t i = 0; i < dispatcher->operator_count; ++i)
+            /* Get least loaded operator */
+            worker_operator_t *op = _least_loaded_operator(dispatcher);
+            if (!op)
             {
-                unsigned int load = atomic_load_explicit(&dispatcher->operators[i].active_count,
-                                                         memory_order_relaxed);
-                if(load == 0)
-                {
-                    best_idx = i;
-                    best_load = 0;
-                    break;
-                }
-                if(load < best_load)
-                {
-                    best_load = load;
-                    best_idx = i;
-                }
-            }
-
-            worker_operator_t *op = &dispatcher->operators[best_idx];
-
-#ifdef DEBUG_MODE
-            EML_DBG(LOG_TAG, "[dispatch] fd %d -> op %zu (load=%u)", client_fd, best_idx, best_load);
-#endif
-
-            spsc_ring_t *ring = worker_operator_get_ring(op);
-            if(!ring || spsc_ring_push(ring, client_fd) != 0)
-            {
-                EML_ERROR(LOG_TAG, "failed to enqueue fd %d to operator %zu", client_fd, best_idx);
+                EML_ERROR(LOG_TAG, "failed to get least loaded operator");
                 close(client_fd);
                 continue;
             }
 
+            /* Push client's fd to the operator's ring */
+            spsc_ring_t *ring = worker_operator_get_ring(op);
+            if(!ring || spsc_ring_push(ring, client_fd) != 0)
+            {
+                EML_ERROR(LOG_TAG, "failed getting operator ring or ring full, closing fd %d", client_fd);
+                close(client_fd);
+                continue;
+            }
+
+            /* Signal to operator a new client's fd presence on the ring */
             int wake_fd = worker_operator_get_wakeup_fd(op);
             if(write(wake_fd, &(uint64_t){1U}, sizeof(uint64_t)) != sizeof(uint64_t))
             {
-                EML_PERR(LOG_TAG, "failed to wake operator %zu", best_idx);
+                EML_PERR(LOG_TAG, "dispatcher: write to wakeup fd %d failed", wake_fd);
+                /* continue anyway, operator will eventually notice the new fd */
             }
+
         }
 
         usleep(1000);
