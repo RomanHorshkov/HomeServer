@@ -164,6 +164,7 @@ void server_run(void)
     pthread_join(server.listener_thread, NULL);
     pthread_join(server.worker_thread, NULL);
 
+    worker_destroy(server.worker);
     pipeline_destroy();
 }
 

@@ -23,7 +23,7 @@ typedef struct worker_dispatcher
 {
     pipeline_t *listener_pipeline; /**< Accepted client source pipeline */
     worker_operator_t *operators;  /**< Operator pool */
-    size_t operator_count;         /**< Pool size */
+    uint8_t operator_count;         /**< Pool size */
     uint8_t cpu_count;             /**< Host CPU count */
     int db_initialized;            /**< db_app_init successfully completed */
 } worker_dispatcher_t;

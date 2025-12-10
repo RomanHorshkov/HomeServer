@@ -1,16 +1,16 @@
 #define _GNU_SOURCE
 
-#include "worker/worker.h"
+#include "worker.h"
 
 #include <stdlib.h>
 
-#include <emlog.h>
+#include "emlog.h"
 
-#include "worker/dispatcher/dispatcher.h"
+#include "dispatcher.h"
 
 #define LOG_TAG "srv_worker"
 
-struct worker
+struct worker // worker_t
 {
     worker_dispatcher_t *dispatcher;
 };
@@ -24,6 +24,7 @@ int worker_init(worker_t **worker_ptr_ptr, pipeline_t *pipeline_ptr, uint8_t ava
         return STATUS_FAILURE;
     }
 
+    /* Allocate worker */
     worker_t *worker_ptr = calloc(1, sizeof(*worker_ptr));
     if(!worker_ptr)
     {
@@ -31,6 +32,7 @@ int worker_init(worker_t **worker_ptr_ptr, pipeline_t *pipeline_ptr, uint8_t ava
         return STATUS_FAILURE;
     }
 
+    /* Allocate worker's dispatcher */
     worker_ptr->dispatcher = calloc(1, sizeof(*worker_ptr->dispatcher));
     if(!worker_ptr->dispatcher)
     {
@@ -39,6 +41,7 @@ int worker_init(worker_t **worker_ptr_ptr, pipeline_t *pipeline_ptr, uint8_t ava
         return STATUS_FAILURE;
     }
 
+    /* Initialize dispatcher */
     if(worker_dispatcher_init(worker_ptr->dispatcher, pipeline_ptr, available_cpu_count) != STATUS_SUCCESS)
     {
         EML_ERROR(LOG_TAG, "worker_init: dispatcher init failed");
