@@ -18,7 +18,7 @@
 
 #include "contract_version.h" /* CONTRACT_VERSION */
 #include "handlers_interface.h"
-#include "http_manager.h" /* HttpRequest, HttpResponse */
+#include "http_manager.h" /* Http_request_t, HttpResponse */
 #include "route_register.h"
 
 /****************************************************************************

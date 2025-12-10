@@ -46,7 +46,7 @@
  ****************************************************************************
  */
 
-int handler_static(const HttpRequest *request, HttpResponse *response)
+int handler_static(const Http_request_t *request, HttpResponse *response)
 {
     /* return value */
     int res = STATUS_FAILURE;

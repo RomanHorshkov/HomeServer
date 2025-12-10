@@ -8,7 +8,7 @@
  *   - The HTTP method and path
  *   - All request headers echoed back
  *
- * This handler receives a parsed HttpRequest and fills a fresh HttpResponse.
+ * This handler receives a parsed Http_request_t and fills a fresh HttpResponse.
  * No socket I/O is performed here; the caller is responsible for network
  * transmission and memory cleanup.
  *
@@ -56,7 +56,7 @@
  ****************************************************************************
  */
 
-int handler_whoami(const HttpRequest *req, HttpResponse *res)
+int handler_whoami(const Http_request_t *req, HttpResponse *res)
 {
     /*-----------------------------------------------------------------------
      * (1)  Compute an ISO‑8601 timestamp with milliseconds.                 *

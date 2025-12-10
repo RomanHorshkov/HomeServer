@@ -163,7 +163,7 @@ This design enables a tiny, epoll-only micro‑HTTP server to comfortably scale 
 ## HTTP capabilities
 
 * **HTTP/1.1 parsing** via **llhttp** in `app/src/browser/http_manager.c`.
-  Callbacks (`on_url`, `on_method`, `on_header_field`, `on_header_value`) build an `HttpRequest` struct.
+  Callbacks (`on_url`, `on_method`, `on_header_field`, `on_header_value`) build an `Http_request_t` struct.
   `determine_connection_policy()` honours `Connection: close`.
 * **Request orchestration** in `app/src/browser/browser.c` → `browser_manage_client_req()`.
   Parses → routes → `send_response()` (headers + binary‑safe body).

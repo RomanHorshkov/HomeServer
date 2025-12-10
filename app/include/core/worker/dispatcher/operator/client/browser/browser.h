@@ -17,7 +17,7 @@
  * @brief Handle a single client HTTP request: parse, dispatch, and respond.
  *
  * This is the main entry point for processing a client request. It performs:
- *   1. Parses the raw HTTP request buffer into a structured @ref HttpRequest.
+ *   1. Parses the raw HTTP request buffer into a structured @ref Http_request_t.
  *   2. Dispatches the request to the router, which fills a @ref HttpResponse.
  *   3. Sends the HTTP response (headers and body) over the client socket.
  *   4. Frees any heap-allocated response body (e.g., from static file serving).

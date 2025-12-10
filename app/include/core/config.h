@@ -31,25 +31,14 @@ typedef enum
  * HTTP PROPERTIES
  */
 
-/**
- * @brief Supported HTTP methods.
- */
-typedef enum
-{
-    HTTP_METHOD_GET,    /* GET method */
-    HTTP_METHOD_PUT,    /* PUT method */
-    HTTP_METHOD_POST,   /* POST method */
-    HTTP_METHOD_DELETE, /* DELETE method */
-    HTTP_METHOD_UNKNOWN /* Unknown method */
-} http_method_t;
 
-#define HTTP_RECEIVE_BUFFER_LEN KiB(4)
+#define HTTP_RECEIVE_BUFFER_LEN KiB(32)
 #define HTTP_MAX_METHOD_LEN 8
 #define HTTP_MAX_PATH_LEN KiB(1)
 #define HTTP_MAX_HEADERS_IN 20
 #define HTTP_MAX_HEADERS_OUT 12
 #define HTTP_MAX_HEADER_NAME_LEN 64
 #define HTTP_MAX_HEADER_VALUE_LEN KiB(1)
-#define HTTP_MAX_BODY_RAM_CAPACITY KiB(16)
+#define HTTP_MAX_BODY_RAM_CAPACITY KiB(4)
 
 #endif /* SERVER_SETTINGS_H */

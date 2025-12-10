@@ -4,7 +4,7 @@
  *
  * This header aggregates all dynamic API endpoint handler declarations
  * for the browser-facing layer of the server. Each handler implements
- * a specific REST endpoint, receives a parsed immutable `HttpRequest`,
+ * a specific REST endpoint, receives a parsed immutable `Http_request_t`,
  * and populates a fresh `HttpResponse` struct. No handler performs
  * socket I/O; network transmission and memory cleanup are managed by
  * the caller (router/browser).
@@ -65,12 +65,12 @@
  * On error (file not found, read error, etc.), logs the error and returns non-zero.
  * The caller is responsible for freeing the response body buffer if the call succeeds.
  *
- * @param request  Pointer to the parsed HttpRequest structure.
+ * @param request  Pointer to the parsed Http_request_t structure.
  * @param response Pointer to the HttpResponse structure to populate.
  * @retval  0      Success; response is fully populated.
  * @retval !=0     Failure; response is not valid.
  */
-int handler_static(const HttpRequest* request, HttpResponse* response);
+int handler_static(const Http_request_t* request, HttpResponse* response);
 
 /**
  * @brief Build an “echo” JSON response for <tt>/api/whoami</tt>.
@@ -88,9 +88,9 @@ int handler_static(const HttpRequest* request, HttpResponse* response);
  *
  * @note The function never allocates more than a few kilobytes of memory,
  *       so there is no hard limit on the header count beyond the one already
- *       imposed by @c HttpRequest.
+ *       imposed by @c Http_request_t.
  */
-int handler_whoami(const HttpRequest* req, HttpResponse* res);
+int handler_whoami(const Http_request_t* req, HttpResponse* res);
 
 /**
  * @brief Enumerate every month for which an expense JSON file exists.
@@ -109,13 +109,13 @@ int handler_whoami(const HttpRequest* req, HttpResponse* res);
  *   The response body buffer is allocated using cJSON_PrintUnformatted().
  *   The caller is responsible for freeing it with free().
  *
- * @param[in]  req   Pointer to the parsed HttpRequest (unused).
+ * @param[in]  req   Pointer to the parsed Http_request_t (unused).
  * @param[out] resp  Pointer to the HttpResponse to populate.
  *
  * @retval  0  Success – resp is populated (HTTP 200).
  * @retval -1  Fatal error (e.g., memory allocation failure).
  */
-int handler_expenses(const HttpRequest* req, HttpResponse* resp);
+int handler_expenses(const Http_request_t* req, HttpResponse* resp);
 
 /**
  * @brief Return a JSON directory listing for the “Drive” feature.
@@ -157,8 +157,8 @@ int handler_expenses(const HttpRequest* req, HttpResponse* resp);
  * @retval 0  Success – @p resp is filled, status 200 or 404.
  * @retval -1 INTERNAL ERROR (allocation failure, etc.).
  */
-int handler_drive(const HttpRequest* req, HttpResponse* resp);
+int handler_drive(const Http_request_t* req, HttpResponse* resp);
 
-int handler_database(const HttpRequest* req, HttpResponse* res);
+int handler_database(const Http_request_t* req, HttpResponse* res);
 
 #endif /* SERVER_BROWSER_HANDLER_INTERFACE_H */
