@@ -30,7 +30,7 @@
 #include <stdlib.h>  // malloc(), free()
 
 #include "llhttp.h"
-#include <emlog.h>
+#include "emlog.h"
 
 /****************************************************************************
  * PRIVATE DEFINES

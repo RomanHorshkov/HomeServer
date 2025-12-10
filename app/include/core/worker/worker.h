@@ -18,13 +18,11 @@
 #define SERVER_WORKER_H
 
 #include <stdint.h>
-#include "pipeline.h" /* pipeline */
 
 /****************************************************************************
  * PUBLIC TYPES
  ****************************************************************************
  */
-typedef struct worker worker_t;
 
 /****************************************************************************
  * PUBLIC FUNCTIONS DECLARATIONS
@@ -49,28 +47,10 @@ typedef struct worker worker_t;
  * @retval  0  Success.
  * @retval -1  Failure (see log for details).
  */
-int worker_init(worker_t **worker_ptr_ptr, pipeline_t *pipeline_ptr, uint8_t available_cpu_count);
+int worker_init(uint8_t cpu_count);
 
-/**
- * @brief Main worker thread function: manages all active client sockets.
- *
- * This function should be run in a dedicated thread. It waits for new client
- * sockets from the listener (via the pipe), registers them with epoll, and
- * handles all client I/O in an event-driven loop. When a client disconnects
- * or an error occurs, the worker cleans up the socket and removes it from epoll.
- *
- * The loop continues until the worker's atomic status flag is set to shutdown.
- *
- * @param arg  Pointer to a worker_t instance.
- * @return     NULL on exit.
- */
-void *worker_run(void *arg);
+int worker_dispatch_to_operator(int client_fd);
 
-/**
- * @brief Release worker resources and owned threads.
- *
- * @param worker_ptr Pointer to the worker instance.
- */
-void worker_destroy(worker_t *worker_ptr);
+void worker_destroy(void);
 
 #endif /* SERVER_WORKER_H */

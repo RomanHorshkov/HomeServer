@@ -29,7 +29,7 @@
 #include <unistd.h>
 #include <stdio.h>
 
-#include <emlog.h>
+#include "emlog.h"
 
 #include "http_manager.h"
 #include "operator.h"
@@ -38,7 +38,7 @@
 
 #define LOG_TAG "srv_client"
 
-static void _populate_transport_meta(worker_operator_t *op, worker_client_slot_t *slot);
+static void _populate_transport_meta(operator_t *op, worker_client_slot_t *slot);
 static int _send_response(int fd, const Http_request_t *req, const HttpResponse *resp);
 static ssize_t _send_all(int fd, const void *buf, size_t len);
 static void _free_response_body(HttpResponse *resp);
@@ -62,7 +62,7 @@ static void _fill_500(HttpResponse *resp);
  * @param slot Client slot containing parser state and buffers.
  * @return STATUS_SUCCESS to keep connection; STATUS_FAILURE to drop it.
  */
-int client_handle(worker_operator_t *op, worker_client_slot_t *slot)
+int client_handle(operator_t *op, worker_client_slot_t *slot)
 {
     (void)op;
     if(!slot) return STATUS_FAILURE;
@@ -153,7 +153,7 @@ int client_handle(worker_operator_t *op, worker_client_slot_t *slot)
     }
 }
 
-static void _populate_transport_meta(worker_operator_t *op, worker_client_slot_t *slot)
+static void _populate_transport_meta(operator_t *op, worker_client_slot_t *slot)
 {
     if(!op || !slot) return;
 

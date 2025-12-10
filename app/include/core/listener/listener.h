@@ -18,8 +18,6 @@
 #ifndef SERVER_LISTENER_H
 #define SERVER_LISTENER_H
 
-#include "pipeline.h" /* pipeline */
-
 /****************************************************************************
  * PUBLIC STRUCTURED VARIABLES DECLARATIONS
  ****************************************************************************
@@ -31,26 +29,20 @@
  */
 
 /**
- * @brief Initialise the listener subsystem and create all listening sockets.
- *
- * This function allocates and configures a new listener instance, sets up
- * one or more listening sockets (supporting both IPv4 and IPv6 as available),
- * and prepares the listener to accept new client connections.
- *
- * The listener is given the write end of a non-blocking pipe, which it uses
- * to forward accepted client file descriptors to the worker thread.
- *
+ * @brief Initialise the listener subsystem and prepare for accepting connections.
+ * 
+ * This function allocates and configures listening sockets on the specified port,
+ * sets up the event-driven infrastructure (epoll), and prepares the listener to
+ * accept new client connections.
+ * 
  * On success, the listener is ready to be run in its own thread via
  * @ref listener_run(). On failure, all resources are cleaned up and it is
  * safe for the caller to terminate.
- *
- * @param port             NUL-terminated string with the TCP port/service to bind.
- * @param pipe_write_fd    Pointer to the write end of the listener→worker pipe.
- *
- * @retval  0  Success.
- * @retval -1  Failure (see log for details).
+ * 
+ * @param port           Port number as a string (e.g. "8080").
+ * @retval STATUS_SUCCESS on success; STATUS_FAILURE on failure.
  */
-int listener_init(const char *port, pipeline_t *pipeline_ptr);
+int listener_init(const char *port/*, void *pipeline_ptr*/);
 
 /**
  * @brief Main listener thread function: accepts new connections and forwards them.

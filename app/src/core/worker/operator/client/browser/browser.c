@@ -26,7 +26,7 @@
 #include <string.h>     /* strerror */
 #include <sys/socket.h> /* send(), recv() */
 
-#include <emlog.h>
+#include "emlog.h"
 #include "router.h"          /* router_handle_request */
 #include "server_settings.h" /* HTTP constants */
 

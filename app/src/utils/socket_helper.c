@@ -28,15 +28,14 @@
 #include <unistd.h>
 
 #include "server_settings.h" /* STATUS_SUCCESS, STATUS_FAILURE */
-#include <emlog.h>
-
-#define LOG_TAG "socket_helper"
+#include "emlog.h"
 
 /****************************************************************************
  * PRIVATE DEFINES
  ****************************************************************************
  */
-/* None */
+
+#define LOG_TAG "socket_helper"
 
 /****************************************************************************
  * PRIVATE ENUMERATED VARIABLES
@@ -73,57 +72,61 @@ int socket_set_non_blocking(const int *socket_fd)
 
     if(socket_fd == NULL)
     {
-        EML_ERROR(LOG_TAG, "[socket_helper] socket_set_non_blocking: invalid input");
+        EML_PERR(LOG_TAG, "_set_non_blocking: invalid input");
+        goto fail;
     }
-    else
+    
+    /* Get current flags */
+    int flags = fcntl(*socket_fd, F_GETFL, 0);
+    if(flags == -1)
     {
-        /* Get current flags */
-        int flags = fcntl(*socket_fd, F_GETFL, 0);
-        if(flags == -1)
-        {
-            EML_ERROR(LOG_TAG, "[socket_helper] fcntl(F_GETFL) failed: %s", strerror(errno));
-        }
-        else
-        {
-            /* Set O_NONBLOCK flag */
-            if(fcntl(*socket_fd, F_SETFL, flags | O_NONBLOCK) == -1)
-            {
-                EML_ERROR(LOG_TAG, "[socket_helper] fcntl(F_SETFL) failed: %s", strerror(errno));
-            }
-            else
-            {
-                res = STATUS_SUCCESS;
-            }
-        }
+        EML_PERR(LOG_TAG, "_set_non_blocking: fcntl(F_GETFL) failed: %s", strerror(errno));
+        goto fail;
     }
-    return res;
+    
+    /* Set O_NONBLOCK flag */
+    if(fcntl(*socket_fd, F_SETFL, flags | O_NONBLOCK) == -1)
+    {
+        EML_PERR(LOG_TAG, "_set_non_blocking: fcntl(F_SETFL) failed: %s", strerror(errno));
+        goto fail;
+    }
+
+    return STATUS_SUCCESS;
+
+fail:
+    return STATUS_FAILURE;
 }
 
 int socket_set_reusability(const int *socket_fd)
 {
-    /* return value */
-    int res = STATUS_FAILURE;
-
+    if(!socket_fd)
+    {
+        EML_PERR(LOG_TAG, "_set_reusability: invalid input");
+        return STATUS_FAILURE;
+    }
+    
     /* Allow reuse of address (critical for restarts) */
     int yes = 1;
 
     if(setsockopt(*socket_fd, SOL_SOCKET, SO_REUSEADDR, &yes, sizeof(yes)) != -1)
     {
-        res = STATUS_SUCCESS;
+        return STATUS_SUCCESS;
     }
     else
     {
-        EML_ERROR(LOG_TAG, "listener socket reusability failed to set: %s", strerror(errno));
+        EML_PERR(LOG_TAG, "_set_reusability failed");
     }
 
-    return res;
+    return STATUS_FAILURE;
 }
 
 int socket_set_restartability(const int *socket_fd)
 {
-    /* return value */
-    int res = STATUS_FAILURE;
-
+    if(!socket_fd)
+    {
+        EML_PERR(LOG_TAG, "_set_restartability: invalid input");
+        return STATUS_FAILURE;
+    }
     /* Options for restart:
      * Just kill it. Don’t wait. Don’t flush data.
      * These options are ok for listeners.
@@ -133,14 +136,14 @@ int socket_set_restartability(const int *socket_fd)
     sl.l_linger = 0;
     if(setsockopt(*socket_fd, SOL_SOCKET, SO_LINGER, &sl, sizeof(sl)) != -1)
     {
-        res = STATUS_SUCCESS;
+        return STATUS_SUCCESS;
     }
     else
     {
-        EML_ERROR(LOG_TAG, "listener socket restartability failed to set: %s", strerror(errno));
+        EML_PERR(LOG_TAG, "_set_restartability failed");
     }
-
-    return res;
+    
+    return STATUS_FAILURE;
 }
 
 int socket_disable_nagle(const int *socket_fd)
@@ -148,22 +151,21 @@ int socket_disable_nagle(const int *socket_fd)
     int res = STATUS_FAILURE;
     int one = 1;
 
-    if(socket_fd == NULL)
+    if(!socket_fd)
     {
-        EML_ERROR(LOG_TAG, "[socket_helper] socket_disable_nagle: invalid input");
+        EML_ERROR(LOG_TAG, "_disable_nagle: invalid input");
+        return STATUS_FAILURE;
+    }
+    
+    if(setsockopt(*socket_fd, IPPROTO_TCP, TCP_NODELAY, &one, sizeof(one)) != -1)
+    {
+        return STATUS_SUCCESS;
     }
     else
     {
-        if(setsockopt(*socket_fd, IPPROTO_TCP, TCP_NODELAY, &one, sizeof(one)) == -1)
-        {
-            EML_ERROR(LOG_TAG, "[socket_helper] setsockopt(TCP_NODELAY) failed: %s", strerror(errno));
-        }
-        else
-        {
-            res = STATUS_SUCCESS;
-        }
+        EML_PERR(LOG_TAG, "_disable_nagle failed");
     }
-    return res;
+    return STATUS_FAILURE;
 }
 
 int socket_set_listener_hints(struct addrinfo *hints)
@@ -265,38 +267,30 @@ int listener_socket_init(const int *listen_fd, const int32_t *ai_family)
 
 int client_socket_init(const int *client_fd)
 {
-    int res = STATUS_FAILURE;
-
     if(client_fd == NULL)
     {
-        EML_ERROR(LOG_TAG, "[socket_helper] client_socket_init: invalid input");
+        EML_ERROR(LOG_TAG, "client_socket_init: invalid input");
+        return STATUS_FAILURE;
     }
-    else
+
+    /* Set non-blocking mode */
+    if(socket_set_non_blocking(client_fd) != STATUS_SUCCESS)
     {
-        /* Set non-blocking mode */
-        if(socket_set_non_blocking(client_fd) == STATUS_SUCCESS)
-        {
-            /* Disable Nagle's algorithm */
-            if(socket_disable_nagle(client_fd) == STATUS_SUCCESS)
-            {
-                /* Additional per-client options can be set here */
-                res = STATUS_SUCCESS;
-            }
-            else
-            {
-                EML_ERROR(LOG_TAG, 
-                    "[socket_helper] client_socket_init: failed to disable "
-                    "Nagle");
-            }
-        }
-        else
-        {
-            EML_ERROR(LOG_TAG, 
-                "[socket_helper] client_socket_init: failed to set "
-                "non-blocking");
-        }
+        EML_ERROR(LOG_TAG, "client_socket_init: failed to set non-blocking");
+        return STATUS_FAILURE;
     }
-    return res;
+
+    /* Disable Nagle's algorithm */
+    if(socket_disable_nagle(client_fd) != STATUS_SUCCESS)
+    {
+        EML_ERROR(LOG_TAG, "client_socket_init: failed to disable Nagle");
+        return STATUS_FAILURE;
+        
+    }
+    
+    /* Additional per-client options can be set here */
+
+    return STATUS_SUCCESS;
 }
 
 int pipe_socket_init(const int *pipe_fds)
