@@ -23,12 +23,11 @@
 #include <string.h>
 #include <unistd.h>
 
-#include <emlog.h>
-
+#include "emlog.h"
 #include "config_core.h"
-#include "pipeline.h"
 #include "reactor.h"
 #include "socket_helper.h"
+#include "worker.h"
 
 /****************************************************************************
  * PRIVATE DEFINES
@@ -55,10 +54,10 @@ typedef struct
     char port[6];                                                /**< Port number as string */
     int sockets_fds[SERVER_CORE_MAX_LISTENING_SOCKETS];          /**< Array of listening socket FDs */
     uint32_t active_sockets_no;                                  /**< Number of active listening sockets */
-    pipeline_t *pipeline;                                        /**< Pointer to worker pipeline */
+    // pipeline_t *pipeline;                                        /**< Pointer to worker pipeline */
 } listener_t;
 
-static listener_t listener = {0};
+static listener_t _listener = {0};
 
 /****************************************************************************
  * PRIVATE FUNCTIONS DECLARATIONS
@@ -116,40 +115,42 @@ static void _stop_listener(listener_t *l);
  ****************************************************************************
  */
 
-int listener_init(const char *port, pipeline_t *pipeline_ptr)
+int listener_init(const char *port/*, void *pipeline_ptr*/)
 {
-    if(port == NULL || port[0] == '\0' || pipeline_ptr == NULL)
+    if(!port || port[0] == '\0' /*|| pipeline_ptr == NULL*/)
     {
         EML_ERROR(LOG_TAG, "listener_init: invalid input");
         return STATUS_FAILURE;
     }
 
-    memset(&listener, 0, sizeof(listener));
-    listener.pipeline = pipeline_ptr;
-    strncpy(listener.port, port, sizeof(listener.port) - 1);
+    // _listener.pipeline = (pipeline_t*)pipeline_ptr;
+    strncpy(_listener.port, port, sizeof(_listener.port) - 1);
 
-    if(reactor_init(&listener.reactor, (size_t)MAX_FAN_OUT_SOCKETS) != STATUS_SUCCESS)
+    /* Init listener's reactor */
+    if(reactor_init(&_listener.reactor, (size_t)MAX_FAN_OUT_SOCKETS) != STATUS_SUCCESS)
     {
         EML_PERR(LOG_TAG, "listener_init: reactor_init failed");
         return STATUS_FAILURE;
     }
 
-    if(_init_listening_sockets(listener.port) != STATUS_SUCCESS)
+    /* Initialize listener's listening sockets */
+    if(_init_listening_sockets(_listener.port) != STATUS_SUCCESS)
     {
         EML_PERR(LOG_TAG, "listener_init: socket init failed");
-        reactor_shutdown(&listener.reactor);
+        reactor_shutdown(&_listener.reactor);
         return STATUS_FAILURE;
     }
 
+    /* register listening sockets to reactor */
     if(_register_listening_sockets() != STATUS_SUCCESS)
     {
         EML_PERR(LOG_TAG, "listener_init: register sockets failed");
-        _stop_listener(&listener);
-        reactor_shutdown(&listener.reactor);
+        _stop_listener(&_listener);
+        reactor_shutdown(&_listener.reactor);
         return STATUS_FAILURE;
     }
 
-    listener.status = LISTENER_STATUS_ACTIVE;
+    _listener.status = LISTENER_STATUS_ACTIVE;
     return STATUS_SUCCESS;
 }
 
@@ -157,16 +158,16 @@ void *listener_run(void *arg)
 {
     (void)arg;
 
-    while(listener.status == LISTENER_STATUS_ACTIVE)
+    while(_listener.status == LISTENER_STATUS_ACTIVE)
     {
-        if(reactor_run(&listener.reactor, NULL) != STATUS_SUCCESS)
+        if(reactor_run(&_listener.reactor, NULL) != STATUS_SUCCESS)
         {
-            EML_ERROR(LOG_TAG, "listener reactor_run failed");
+            EML_ERROR(LOG_TAG, "reactor_run failed");
         }
     }
 
-    _stop_listener(&listener);
-    reactor_shutdown(&listener.reactor);
+    _stop_listener(&_listener);
+    reactor_shutdown(&_listener.reactor);
     return NULL;
 }
 
@@ -194,7 +195,7 @@ static int _init_listening_sockets(const char *port)
 
     for(const struct addrinfo *cur = ai; cur != NULL; cur = cur->ai_next)
     {
-        if(listener.active_sockets_no >= SERVER_CORE_MAX_LISTENING_SOCKETS)
+        if(_listener.active_sockets_no >= SERVER_CORE_MAX_LISTENING_SOCKETS)
         {
             EML_WARN(LOG_TAG, "listener: max listening sockets reached (%d)", SERVER_CORE_MAX_LISTENING_SOCKETS);
             break;
@@ -228,7 +229,7 @@ static int _init_listening_sockets(const char *port)
             continue;
         }
 
-        listener.sockets_fds[listener.active_sockets_no++] = fd;
+        _listener.sockets_fds[listener.active_sockets_no++] = fd;
 
 #ifdef DEBUG_MODE
         char ip_str[INET6_ADDRSTRLEN];
@@ -259,14 +260,14 @@ static int _init_listening_sockets(const char *port)
     }
 
     freeaddrinfo(ai);
-    return (listener.active_sockets_no > 0) ? STATUS_SUCCESS : STATUS_FAILURE;
+    return (_listener.active_sockets_no > 0) ? STATUS_SUCCESS : STATUS_FAILURE;
 }
 
 static int _register_listening_sockets(void)
 {
-    for(uint32_t i = 0; i < listener.active_sockets_no; ++i)
+    for(uint32_t i = 0; i < _listener.active_sockets_no; ++i)
     {
-        int fd = listener.sockets_fds[i];
+        int fd = _listener.sockets_fds[i];
         fd_ctx_t *ctx = calloc(1, sizeof(*ctx));
         if(!ctx)
         {
@@ -274,10 +275,10 @@ static int _register_listening_sockets(void)
             return STATUS_FAILURE;
         }
         ctx->fd = fd;
-        ctx->owner = &listener;
+        ctx->owner = &_listener;
         ctx->handler = _handle_listen_event;
 
-        if(reactor_add_in(&listener.reactor, fd, ctx) != STATUS_SUCCESS)
+        if(reactor_add_in(&_listener.reactor, fd, ctx) != STATUS_SUCCESS)
         {
             EML_PERR(LOG_TAG, "listener: reactor_add_in failed for fd %d", fd);
             free(ctx);
@@ -305,18 +306,27 @@ static int _handle_listen_event(int fd, fd_ctx_t *ctx)
     if(client_socket_init(&client_fd) != STATUS_SUCCESS)
     {
         EML_PERR(LOG_TAG, "client_socket_init failed");
-        close(client_fd);
-        return STATUS_FAILURE;
+        goto fail;
     }
 
-    if(pipeline_push(client_fd) != STATUS_SUCCESS)
+    if(worker_dispatch_to_operator(client_fd) != STATUS_SUCCESS)
     {
-        EML_PERR(LOG_TAG, "pipeline_push failed");
-        close(client_fd);
-        return STATUS_FAILURE;
+        EML_PERR(LOG_TAG, "worker_dispatch_to_operator failed");
+        goto fail;
     }
+
+    // if(pipeline_push(client_fd) != STATUS_SUCCESS)
+    // {
+    //     EML_PERR(LOG_TAG, "pipeline_push failed");
+    //     socket_shutdown_and_close(client_fd);
+    //     return STATUS_FAILURE;
+    // }
 
     return STATUS_SUCCESS;
+
+fail:
+    socket_shutdown_and_close(client_fd);
+    return STATUS_FAILURE;
 }
 
 static void _stop_listener(listener_t *l)
@@ -327,7 +337,7 @@ static void _stop_listener(listener_t *l)
     {
         if(l->sockets_fds[i] > 0)
         {
-            close(l->sockets_fds[i]);
+            socket_shutdown_and_close(l->sockets_fds[i]);
             l->sockets_fds[i] = -1;
         }
     }

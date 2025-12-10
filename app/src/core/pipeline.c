@@ -163,7 +163,7 @@ int pipeline_push(const int client_fd)
         goto fail;
     }
 
-    /* Send a wake-up signal */
+    /* Send a wake-up signal to worker */
     if(write(pipeline.wakeup_fd, &(uint64_t){1U}/* wakeup counter */, sizeof(uint64_t)) != sizeof(uint64_t))
     {
         EML_PERR(LOG_TAG, "_push write to wakeup_fd failed");

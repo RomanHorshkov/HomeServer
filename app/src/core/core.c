@@ -38,12 +38,11 @@
 #include <sys/types.h>
 #include <unistd.h> /* fork(), close(), pipe(), read(), write(), getlogin(), getcwd(), system() etc. */
 
-#include <emlog.h>
-#include "listener/listener.h"
-#include "pipeline.h"
+#include "emlog.h"
+#include "listener.h"
+#include "worker.h"
 #include "server_settings.h"
 #include "socket_helper.h"
-#include "worker/worker.h"
 
 /****************************************************************************
  * PRIVATE DEFINES
@@ -65,20 +64,23 @@
   */
 typedef struct
 {
-    /* worker instance */
-    worker_t *worker;
+//     /* worker instance */
+//     worker_t *worker;
 
-    /* collaboration structure */
-    pipeline_t *pipeline;
+    // /* collaboration structure */
+    // pipeline_t *pipeline;
 
     /* listener thread */
     pthread_t listener_thread;
 
-    /* worker thread */
-    pthread_t worker_thread;
+    /* operators threads */
+    pthread_t* operators_threads;
 
     /* Detected CPU count for sizing worker/operator threads */
     uint8_t cpu_count;
+
+    /* number of operators */
+    uint8_t operators_count;
 
     // future: config_t *config, tls_t *tls, etc.
 } server_t;
@@ -126,24 +128,33 @@ int server_init(const char *port)
     /* Detect available CPUs and keep the value for thread sizing */
     server.cpu_count = _core_detect_cpu_count();
 
-    /* Initialize the pipeline between listener and worker */
-    if(pipeline_init(&server.pipeline) != STATUS_SUCCESS)
-    {
-        EML_ERROR(LOG_TAG, "W <-> L pipeline communication_init failed.");
-        goto fail;
-    }
+    // /* Initialize the pipeline between listener and worker */
+    // if(pipeline_init(&server.pipeline) != STATUS_SUCCESS)
+    // {
+    //     EML_ERROR(LOG_TAG, "W <-> L pipeline communication_init failed.");
+    //     goto fail;
+    // }
 
     /* Initialize the listener */
-    if(listener_init(port, server.pipeline) != STATUS_SUCCESS)
+    if(listener_init(port/*, server.pipeline*/) != STATUS_SUCCESS)
     {
         EML_PERR(LOG_TAG, "listener failed to init.");
         goto fail;
     }
 
     /* Initialize the worker */
-    if(worker_init(&server.worker, server.pipeline, server.cpu_count) != STATUS_SUCCESS)
+    server.operators_count = worker_init(server.cpu_count);
+    if(server.operators_count <= 0)
     {
         EML_PERR(LOG_TAG, "worker failed to init.");
+        goto fail;
+    }
+
+    /* Initialize operators threads array */
+    server.operators_threads = calloc((size_t)server.operators_count, sizeof(pthread_t));
+    if(!server.operators_threads)
+    {
+        EML_PERR(LOG_TAG, "operators_threads alloc failed");
         goto fail;
     }
 
@@ -156,16 +167,24 @@ fail:
 
 void server_run(void)
 {
-    /* run threads */
+    /* run listener thread */
     pthread_create(&server.listener_thread, NULL, listener_run, NULL);
-    pthread_create(&server.worker_thread, NULL, worker_run, server.worker);
+
+    /* run operators threads */
+    for(uint8_t op_idx = 0; op_idx < server.cpu_count; op_idx++)
+    {
+        pthread_create(&server.operators_threads[op_idx], NULL, operator_run, &server.operators[op_idx]);
+    }
     
     /* wait threads */
     pthread_join(server.listener_thread, NULL);
-    pthread_join(server.worker_thread, NULL);
+    for(uint8_t op_idx = 0; op_idx < server.cpu_count; op_idx++)
+    {
+        pthread_join(server.operators_threads[op_idx], NULL);
+    }
 
-    worker_destroy(server.worker);
-    pipeline_destroy();
+    worker_destroy();
+    // pipeline_destroy();
 }
 
 /****************************************************************************
@@ -198,11 +217,16 @@ static uint8_t _core_detect_cpu_count(void)
 
     EML_INFO(LOG_TAG, "Detected %ld CPU%s available",
              cpus, (cpus == 1) ? "" : "s");
-    if(cpus < 1 || cpus > 255)
+    if(cpus < 1)
     {
         EML_PERR(LOG_TAG, "sysconf(_SC_NPROCESSORS_ONLN) failed, defaulting to 1 CPU");
         return 1;
     }
+    if (cpus > 255)
+    {
+        EML_WARN(LOG_TAG, "Detected CPU count %ld exceeds max supported 255, capping to 255", cpus);
+        return 255;
+    }    
 
     return (uint8_t)cpus;
 }
@@ -218,20 +242,20 @@ static void _p_dbg_info_init(void)
     const struct passwd *pw = getpwuid(uid);
     if(pw)
     {
-        printf("[CORE]: running as user: %s\n", pw->pw_name);
+        printf(LOG_TAG "running as user: %s\n", pw->pw_name);
     }
     else
     {
-        printf("[CORE]: running as user: UNKNOWN (uid=%d)\n", (int)uid);
+        printf(LOG_TAG "running as user: UNKNOWN (uid=%d)\n", (int)uid);
     }
 
     /* Print current working directory */
     char cwd[HTTP_MAX_PATH_LEN];
     if(getcwd(cwd, sizeof(cwd)) != NULL)
-        printf("[CORE]: cwd: %s\n", cwd);
+        printf(LOG_TAG "cwd: %s\n", cwd);
 
     /* List directory contents */
-    printf("[CORE]: ls -la:\n");
+    printf(LOG_TAG "ls -la:\n");
     system("ls -la");
 }
 #endif
