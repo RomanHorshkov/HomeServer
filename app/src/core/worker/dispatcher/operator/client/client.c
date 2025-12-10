@@ -39,7 +39,7 @@
 #define LOG_TAG "srv_client"
 
 static void _populate_transport_meta(worker_operator_t *op, worker_client_slot_t *slot);
-static int _send_response(int fd, const HttpRequest *req, const HttpResponse *resp);
+static int _send_response(int fd, const Http_request_t *req, const HttpResponse *resp);
 static ssize_t _send_all(int fd, const void *buf, size_t len);
 static void _free_response_body(HttpResponse *resp);
 static void _fill_500(HttpResponse *resp);
@@ -73,7 +73,7 @@ int client_handle(worker_operator_t *op, worker_client_slot_t *slot)
         if(n > 0)
         {
 #ifdef DEBUG_MODE
-            EML_DBG(LOG_TAG, "fd %d received %zd bytes", slot->fd, n);
+            EML_DBG(LOG_TAG, "fd %d received %zd bytes, executing http parser", slot->fd, n);
 #endif
             slot->last_activity = (uint32_t)time_helper_get_now();
             slot->request_count++;
@@ -85,12 +85,12 @@ int client_handle(worker_operator_t *op, worker_client_slot_t *slot)
 
             if(slot->http.req.message_complete)
             {
-                EML_INFO(LOG_TAG, "fd %d HTTP %s %s body_len=%zu",
+#ifdef DEBUG_MODE
+                EML_DBG(LOG_TAG, "fd %d HTTP %s %s body_len=%zu",
                          slot->fd,
                          http_method_to_string(slot->http.req.method),
                          slot->http.req.path,
                          slot->http.req.body_len);
-#ifdef DEBUG_MODE
                 EML_DBG(LOG_TAG, "fd %d headers (%d):", slot->fd, slot->http.req.header_count);
                 for(int i = 0; i < slot->http.req.header_count; ++i)
                 {
@@ -100,8 +100,7 @@ int client_handle(worker_operator_t *op, worker_client_slot_t *slot)
                 }
 #endif
 
-                HttpResponse response;
-                memset(&response, 0, sizeof(response));
+                HttpResponse response = {0};
 
                 _populate_transport_meta(op, slot);
 
@@ -130,13 +129,22 @@ int client_handle(worker_operator_t *op, worker_client_slot_t *slot)
         }
         else if(n == 0)
         {
+#ifdef DEBUG_MODE
+            EML_DBG(LOG_TAG, "fd %d peer closed connection", slot->fd);
+#endif
             /* peer closed */
             return STATUS_FAILURE;
         }
         else
         {
+#ifdef DEBUG_MODE
+            EML_PERR(LOG_TAG, "recv failed on fd %d", slot->fd);
+#endif
             if(errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR)
             {
+#ifdef DEBUG_MODE
+                EML_DBG(LOG_TAG, "fd %d recv would block, again, or eintr; yielding", slot->fd);
+#endif
                 return STATUS_SUCCESS;
             }
             EML_PERR(LOG_TAG, "recv failed on fd %d", slot->fd);
@@ -149,7 +157,7 @@ static void _populate_transport_meta(worker_operator_t *op, worker_client_slot_t
 {
     if(!op || !slot) return;
 
-    HttpRequest *req = &slot->http.req;
+    Http_request_t *req = &slot->http.req;
     req->thread_id = (uint8_t)op->id;
 
     struct sockaddr_storage ss;
@@ -167,7 +175,7 @@ static void _populate_transport_meta(worker_operator_t *op, worker_client_slot_t
     }
 }
 
-static int _send_response(int fd, const HttpRequest *req, const HttpResponse *resp)
+static int _send_response(int fd, const Http_request_t *req, const HttpResponse *resp)
 {
     if(!resp) return STATUS_FAILURE;
 

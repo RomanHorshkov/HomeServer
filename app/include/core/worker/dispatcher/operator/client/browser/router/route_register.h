@@ -8,7 +8,7 @@
                                contains *no* struct definitions */
 
 /* ---------- Handler signature ---------- */
-typedef int (*route_handler_t)(const HttpRequest *, HttpResponse *);
+typedef int (*route_handler_t)(const Http_request_t *, HttpResponse *);
 
 /* ---------- metadata struct ---------- */
 typedef struct

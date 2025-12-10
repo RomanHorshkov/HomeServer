@@ -4,7 +4,7 @@
  *
  * Uses llhttp to extract method, path, headers, and body from incoming data.
  * Enforces basic security checks (no path traversal, safe headers) and determines
- * connection policy (keep-alive or close) before returning a structured HttpRequest.
+ * connection policy (keep-alive or close) before returning a structured Http_request_t.
  *
  * Usage:
  *   http_manage_request(buffer, length, request);
@@ -55,7 +55,7 @@
  */
 typedef struct
 {
-    HttpRequest* req;
+    Http_request_t* req;
     char current_field[HTTP_MAX_HEADER_NAME_LEN];
     char current_value[HTTP_MAX_HEADER_VALUE_LEN];
     int in_header_field;
@@ -133,41 +133,41 @@ static int on_method(llhttp_t* parser, const char* at, size_t length);
 static http_method_t parse_http_method(const char* at, size_t length);
 
 /**
- * @brief Parses a raw HTTP request buffer into an HttpRequest structure.
+ * @brief Parses a raw HTTP request buffer into an Http_request_t structure.
  *
  * This function processes the provided HTTP request buffer, extracting the HTTP method,
- * path, headers, and other relevant information, and populates the given HttpRequest struct.
+ * path, headers, and other relevant information, and populates the given Http_request_t struct.
  *
  * @param buffer      Pointer to the raw HTTP request buffer.
  * @param buffer_len  Length of the buffer in bytes.
- * @param req         Pointer to the HttpRequest structure to populate.
+ * @param req         Pointer to the Http_request_t structure to populate.
  * @return            0 on success, negative value on failure.
  */
-static int http_parse_request(const char* buffer, const size_t buffer_len, HttpRequest* req);
+static int http_parse_request(const char* buffer, const size_t buffer_len, Http_request_t* req);
 
 /**
- * @brief Validates and sanitizes a parsed HttpRequest structure.
+ * @brief Validates and sanitizes a parsed Http_request_t structure.
  *
- * This function checks the HttpRequest for security and protocol compliance, including:
+ * This function checks the Http_request_t for security and protocol compliance, including:
  *   - Non-empty and safe path (no traversal, no control chars)
  *   - Valid HTTP method
  *   - Header count and length limits
  *   - Safe header names and values (no control chars, no nulls)
  *   - Logs any issues found
  *
- * @param req         Pointer to the parsed HttpRequest structure to validate.
+ * @param req         Pointer to the parsed Http_request_t structure to validate.
  * @return            STATUS_SUCCESS if valid, STATUS_FAILURE otherwise.
  */
-static int sanitize_http_request(HttpRequest* req);
+static int sanitize_http_request(Http_request_t* req);
 
 /**
  * @brief Determines the connection policy (keep-alive or close) from headers.
  *
  * Scans the parsed headers for "Connection: close" and sets the policy in the request.
  *
- * @param req      Pointer to the HttpRequest structure to update.
+ * @param req      Pointer to the Http_request_t structure to update.
  */
-static void determine_connection_policy(HttpRequest* req);
+static void determine_connection_policy(Http_request_t* req);
 
 /**
  * @brief Validates the HTTP request path for security and protocol compliance.
@@ -199,12 +199,12 @@ static int validate_http_header_value(const char* hval, const char* hname);
  ****************************************************************************
  */
 
-int http_manage_request(const char* recv_buf, const size_t buffer_len, HttpRequest* request)
+int http_manage_request(const char* recv_buf, const size_t buffer_len, Http_request_t* request)
 {
     /* result variable */
     int res = STATUS_FAILURE;
 
-    /* Allocate memory and parse raw HTTP request into HttpRequest struct */
+    /* Allocate memory and parse raw HTTP request into Http_request_t struct */
     if(http_parse_request(recv_buf, buffer_len, request) != STATUS_SUCCESS)
     {
         EML_PERR(LOG_TAG, "[browser] parse failed");
@@ -232,7 +232,7 @@ fail:
  ****************************************************************************
  */
 
-static int http_parse_request(const char* buffer, const size_t buffer_len, HttpRequest* req)
+static int http_parse_request(const char* buffer, const size_t buffer_len, Http_request_t* req)
 {
     /* Return variable */
     int res = STATUS_FAILURE;
@@ -258,7 +258,7 @@ static int http_parse_request(const char* buffer, const size_t buffer_len, HttpR
     /* Assign the context to parser */
     parser.data = &ctx;
 
-    memset(req, 0, sizeof(HttpRequest));  // zero fields
+    memset(req, 0, sizeof(Http_request_t));  // zero fields
 
     /* execute the parser over the raw received buffer */
     llhttp_errno_t err = llhttp_execute(&parser, buffer, buffer_len);
@@ -318,6 +318,7 @@ int http_parser_init(http_parser_t *pstate)
 
     llhttp_init(&pstate->parser, HTTP_REQUEST, &pstate->settings);
 
+    /* TODO : CHECK IF NEEDS CALLOC HERE */
     /* attach context */
     LlhttpParserContext *ctx = calloc(1, sizeof(*ctx));
     if(!ctx) return STATUS_FAILURE;
@@ -460,7 +461,7 @@ static int validate_http_header_value(const char* hval, const char* hname)
     return STATUS_SUCCESS;
 }
 
-static int sanitize_http_request(HttpRequest* req)
+static int sanitize_http_request(Http_request_t* req)
 {
     /* Return variable */
     int res = STATUS_FAILURE;
@@ -559,7 +560,7 @@ static int on_header_value(llhttp_t* parser, const char* at, size_t length)
 static int on_body(llhttp_t* parser, const char* at, size_t length)
 {
     LlhttpParserContext* ctx = (LlhttpParserContext*)parser->data;
-    HttpRequest* req = ctx->req;
+    Http_request_t* req = ctx->req;
 
     /* If this chunk would push us over the RAM cap, abort */
     if(req->body_len + length > HTTP_MAX_BODY_RAM_CAPACITY)
@@ -618,7 +619,7 @@ static http_method_t parse_http_method(const char* at, size_t length)
     return method;
 }
 
-static void determine_connection_policy(HttpRequest* req)
+static void determine_connection_policy(Http_request_t* req)
 {
     for(int i = 0; i < req->header_count; ++i)
     {

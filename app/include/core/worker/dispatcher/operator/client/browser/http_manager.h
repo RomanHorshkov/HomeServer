@@ -36,7 +36,19 @@ typedef enum
 {
     HTTP_CONNECTION_KEEP_ALIVE = 0, /* Keep connection alive */
     HTTP_CONNECTION_CLOSE = 1,      /* Close connection */
-} HTTPConnectionPolicy;
+} Http_connection_policy_t;
+
+/**
+ * @brief Supported HTTP methods.
+ */
+typedef enum
+{
+    HTTP_METHOD_GET,    /* GET method */
+    HTTP_METHOD_PUT,    /* PUT method */
+    HTTP_METHOD_POST,   /* POST method */
+    HTTP_METHOD_DELETE, /* DELETE method */
+    HTTP_METHOD_UNKNOWN /* Unknown method */
+} http_method_t;
 
 /****************************************************************************
  * PUBLIC STRUCTURED VARIABLES DEFINITIONS
@@ -48,26 +60,27 @@ typedef enum
  */
 typedef struct
 {
-    http_method_t method;         /* HTTP method (GET, POST, etc.) */
-    char path[HTTP_MAX_PATH_LEN]; /* Request path */
-    uint32_t remote_ip_be;        /* peer IPv4 (network order), optional */
-    uint16_t remote_port_be;      /* peer port (network order), optional */
-    uint8_t  thread_id;           /* operator thread id carrying the request */
+    uint8_t  thread_id;                     /* operator thread id carrying the request */
+    uint64_t timestamp;                     /* request timestamp (epoch) */
+    uint32_t remote_ip_be;                  /* peer IPv4 (network order), optional */
+    uint16_t remote_port_be;                /* peer port (network order), optional */
+    uint8_t method;                         /* http_method_t HTTP method (GET, POST, etc.) */
+    char path[HTTP_MAX_PATH_LEN];           /* Request path */
+    uint8_t header_count;                   /* Number of headers parsed */
     char header_names[HTTP_MAX_HEADERS_IN][HTTP_MAX_HEADER_NAME_LEN];   /* Header names */
     char header_values[HTTP_MAX_HEADERS_IN][HTTP_MAX_HEADER_VALUE_LEN]; /* Header values */
-    int header_count;                       /* Number of headers parsed */
-    char body[HTTP_MAX_BODY_RAM_CAPACITY];  /* Preallocated request body buffer */
     size_t body_len;                        /* Length of the body in bytes */
-    HTTPConnectionPolicy connection_policy; /* Connection policy (keep-alive or close) */
-    int message_complete;                   /* set when llhttp signals completion */
+    char body[HTTP_MAX_BODY_RAM_CAPACITY];  /* Preallocated request body buffer */
+    uint8_t connection_policy;              /* Connection policy (keep-alive or close) */
+    uint8_t message_complete;               /* set when llhttp signals completion */
 
-} HttpRequest;
+} Http_request_t;
 
 typedef struct http_parser
 {
     llhttp_t parser;
     llhttp_settings_t settings;
-    HttpRequest req;
+    Http_request_t req;
 } http_parser_t;
 
 /**
@@ -128,21 +141,21 @@ static inline const char* http_method_to_string(http_method_t method)
 }
 
 /**
- * @brief Parse a raw HTTP request buffer into a structured HttpRequest
+ * @brief Parse a raw HTTP request buffer into a structured Http_request_t
  * and sanitize it.
  *
  * Uses llhttp to parse the HTTP request line, headers, and path.
- * Populates the HttpRequest struct with method, path, and headers.
+ * Populates the Http_request_t struct with method, path, and headers.
  * Determines the connection policy (keep-alive/close).
  * Sanitizes the request for malformed headers.
  *
  * @param buffer        Pointer to the raw HTTP request buffer.
  * @param buffer_len    Length of the buffer.
- * @param req           Pointer to the HttpRequest struct to populate.
+ * @param req           Pointer to the Http_request_t struct to populate.
  * @retval  0  Success.
  * @retval -1  Parse error (malformed request).
  */
-int http_manage_request(const char* recv_buf, const size_t buffer_len, HttpRequest* request);
+int http_manage_request(const char* recv_buf, const size_t buffer_len, Http_request_t* request);
 
 /**
  * @brief Initialize a streaming HTTP parser state.

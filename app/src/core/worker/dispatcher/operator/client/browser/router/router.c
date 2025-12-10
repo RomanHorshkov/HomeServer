@@ -65,7 +65,7 @@ extern size_t used;
  ****************************************************************************
  */
 
-static int call_api_handler(const HttpRequest *request, HttpResponse *response);
+static int call_api_handler(const Http_request_t *request, HttpResponse *response);
 
 /****************************************************************************
  * PRIVATE VARIABLES
@@ -78,7 +78,7 @@ static int call_api_handler(const HttpRequest *request, HttpResponse *response);
  ****************************************************************************
  */
 
-int router_handle_request(const HttpRequest *request, HttpResponse *response)
+int router_handle_request(const Http_request_t *request, HttpResponse *response)
 {
     /* Return variable */
     int res = STATUS_FAILURE;
@@ -103,7 +103,7 @@ int router_handle_request(const HttpRequest *request, HttpResponse *response)
         EML_ERROR(LOG_TAG, "[router] Fallback to / from %s", request->path);
 
         /* SPA fallback (serve homepage/entrypoint) */
-        HttpRequest *copy_req = calloc(1, sizeof(HttpRequest));
+        Http_request_t *copy_req = calloc(1, sizeof(Http_request_t));
         *copy_req = *request;  // shallow copy all fields
         strncpy(copy_req->path, "/", sizeof(copy_req->path));
         res = handler_static(copy_req, response);
@@ -122,7 +122,7 @@ int router_handle_request(const HttpRequest *request, HttpResponse *response)
  ****************************************************************************
  */
 
-static int call_api_handler(const HttpRequest *request, HttpResponse *response)
+static int call_api_handler(const Http_request_t *request, HttpResponse *response)
 {
     /* Return variable */
     int res = STATUS_FAILURE;

@@ -3,7 +3,7 @@
  * @brief Interprets and responds to client HTTP requests.
  *
  * Orchestrates request parsing, routing, and response sending. Handles raw socket I/O,
- * inherited from the worker module. Prepares HttpRequest and HttpResponse structures
+ * inherited from the worker module. Prepares Http_request_t and HttpResponse structures
  * for other modules to operate on.
  *
  * Usage:
@@ -78,10 +78,10 @@ int browser_manage_client_req(int fd)
     int res = STATUS_FAILURE;
 
     /* create the request and response variables */
-    HttpRequest request;
+    Http_request_t request;
     HttpResponse response;
 
-    memset(&request, 0, sizeof(HttpRequest));
+    memset(&request, 0, sizeof(Http_request_t));
     memset(&response, 0, sizeof(HttpResponse));
 
     /* make the receiving buffer */

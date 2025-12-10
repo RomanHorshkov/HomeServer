@@ -20,7 +20,7 @@
  * PRIVATE HELPERS
  ****************************************************************************/
 
-static inline int db_request_init_from_http(const HttpRequest* in, uint64_t now_epoch,
+static inline int db_request_init_from_http(const Http_request_t* in, uint64_t now_epoch,
                                             db_hdr_kv_t* headers_out, DB_request_t* out);
 static void http_response_from_db(HttpResponse* http_res, DB_response_t* db_res);
 static void cleanup_db_response(DB_response_t* db_res);
@@ -31,10 +31,11 @@ static const char* http_reason_phrase(int status);
  * PUBLIC FUNCTIONS DEFINITIONS
  ****************************************************************************/
 
-int handler_database(const HttpRequest* req, HttpResponse* res)
+int handler_database(const Http_request_t* req, HttpResponse* res)
 {
     if(!req || !res)
     {
+        EML_ERROR(LOG_TAG, "Invalid input to handler_database");
         send_400(res);
         return -1;
     }
@@ -44,6 +45,7 @@ int handler_database(const HttpRequest* req, HttpResponse* res)
 
     if(db_request_init_from_http(req, time(NULL), hdr_views, &db_req) != 0)
     {
+        EML_ERROR(LOG_TAG, "Failed to initialize DB_request_t from Http_request_t");
         send_400(res);
         return -1;
     }
@@ -62,7 +64,7 @@ int handler_database(const HttpRequest* req, HttpResponse* res)
  * PRIVATE FUNCTIONS DEFINITIONS
  ****************************************************************************/
 
-static inline int db_request_init_from_http(const HttpRequest* in, uint64_t now_epoch,
+static inline int db_request_init_from_http(const Http_request_t* in, uint64_t now_epoch,
                                             db_hdr_kv_t* headers_out, DB_request_t* out)
 {
     if(!in || !headers_out || !out) return -1;
@@ -92,8 +94,8 @@ static inline int db_request_init_from_http(const HttpRequest* in, uint64_t now_
     int hc = (in->header_count < HTTP_MAX_HEADERS_IN) ? in->header_count : HTTP_MAX_HEADERS_IN;
     for(int i = 0; i < hc; ++i)
     {
-        headers_out[i].HDR_KEY = sv_c(in->header_names[i], HTTP_MAX_HEADER_NAME_LEN);
-        headers_out[i].HDR_VAL = sv_c(in->header_values[i], HTTP_MAX_HEADER_VALUE_LEN);
+        headers_out[i].key = sv_c(in->header_names[i], HTTP_MAX_HEADER_NAME_LEN);
+        headers_out[i].value = sv_c(in->header_values[i], HTTP_MAX_HEADER_VALUE_LEN);
     }
     out->headers = headers_out;
     out->header_count = hc;
