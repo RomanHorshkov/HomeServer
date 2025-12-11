@@ -124,20 +124,22 @@ int reactor_add_in(const reactor_t *reactor_ptr, const int fd, fd_ctx_t *ctx)
     return _manage_fd(reactor_ptr, fd, EPOLL_CTL_ADD, EPOLLIN, ctx);
 }
 
-int reactor_add_in_client(const reactor_t *reactor_ptr, int fd, fd_ctx_t *ctx)
+int reactor_add_in_client(const reactor_t *reactor_ptr, int fd, void *ctx)
 {
     /* Result variable */
     int res = STATUS_FAILURE;
 
     if(!reactor_ptr || fd < 0 || !ctx)
     {
-        EML_ERROR(LOG_TAG, "[reactor] _add_in_client: invalid input");
+        EML_ERROR(LOG_TAG, "_add_in_client: invalid input");
     }
 
-    else
+    res = _manage_fd(reactor_ptr, fd, EPOLL_CTL_ADD,
+                    EPOLLIN | EPOLLRDHUP | EPOLLHUP | EPOLLERR, ctx);
+    
+    if (res != STATUS_SUCCESS)
     {
-        res = _manage_fd(reactor_ptr, fd, EPOLL_CTL_ADD,
-                                EPOLLIN | EPOLLRDHUP | EPOLLHUP | EPOLLERR, ctx);
+        EML_PERR(LOG_TAG, "_add_in_client: _manage_fd failed");
     }
 
     return res;
@@ -231,7 +233,7 @@ fail:
     return STATUS_FAILURE;
 }
 
-int reactor_shutdown(reactor_t *reactor_ptr)
+void reactor_shutdown(reactor_t *reactor_ptr)
 {
     /* Result variable */
     int res = STATUS_FAILURE;
@@ -239,23 +241,20 @@ int reactor_shutdown(reactor_t *reactor_ptr)
     if(!reactor_ptr)
     {
         EML_ERROR(LOG_TAG, "_shutdown: invalid input");
-        goto fail;
+        return;
     }
 
     /* Close epoll instance */
     if(epoller_shutdown(reactor_ptr->epoll_fd) < 0)
     {
         EML_PERR(LOG_TAG, "_shutdown: failed to close epoller fd");
-        goto fail;
     }
 
     /* Free the events buffer */
-    free(reactor_ptr->events);
-
-    return STATUS_SUCCESS;
-
-fail:
-    return res;
+    if(reactor_ptr->events)
+    {
+        free(reactor_ptr->events);
+    }
 }
 
 /****************************************************************************
@@ -268,14 +267,14 @@ static int _manage_fd(const reactor_t *reactor_ptr, const int watch_fd, const in
 {
     if(operation == 0)
     {
-        EML_ERROR(LOG_TAG, "[reactor] _manage_fd: invalid input, operation 0");
+        EML_ERROR(LOG_TAG, "_manage_fd: invalid input, operation 0");
         return STATUS_FAILURE;
     }
 
-    /* 1. Let the kernel work first – if this fails don’t mutate state. */
+    /* Let the kernel work first – if this fails don’t mutate state. */
     if(epoller_manage_fd(reactor_ptr->epoll_fd, watch_fd, operation, events, (void *)ctx) < 0)
     {
-        EML_PERR(LOG_TAG, "_manage_fd: epoler failed");
+        EML_PERR(LOG_TAG, "_manage_fd: epoller failed");
         return STATUS_FAILURE;
     }
 

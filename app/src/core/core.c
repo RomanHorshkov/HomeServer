@@ -41,7 +41,7 @@
 #include "emlog.h"
 #include "listener.h"
 #include "worker.h"
-#include "server_settings.h"
+#include "config_core.h"
 #include "socket_helper.h"
 
 /****************************************************************************
@@ -64,23 +64,11 @@
   */
 typedef struct
 {
-//     /* worker instance */
-//     worker_t *worker;
-
-    // /* collaboration structure */
-    // pipeline_t *pipeline;
-
     /* listener thread */
     pthread_t listener_thread;
 
-    /* operators threads */
-    pthread_t* operators_threads;
-
     /* Detected CPU count for sizing worker/operator threads */
     uint8_t cpu_count;
-
-    /* number of operators */
-    uint8_t operators_count;
 
     // future: config_t *config, tls_t *tls, etc.
 } server_t;
@@ -128,13 +116,6 @@ int server_init(const char *port)
     /* Detect available CPUs and keep the value for thread sizing */
     server.cpu_count = _core_detect_cpu_count();
 
-    // /* Initialize the pipeline between listener and worker */
-    // if(pipeline_init(&server.pipeline) != STATUS_SUCCESS)
-    // {
-    //     EML_ERROR(LOG_TAG, "W <-> L pipeline communication_init failed.");
-    //     goto fail;
-    // }
-
     /* Initialize the listener */
     if(listener_init(port/*, server.pipeline*/) != STATUS_SUCCESS)
     {
@@ -143,18 +124,9 @@ int server_init(const char *port)
     }
 
     /* Initialize the worker */
-    server.operators_count = worker_init(server.cpu_count);
-    if(server.operators_count <= 0)
+    if(worker_init(server.cpu_count) != 0)
     {
         EML_PERR(LOG_TAG, "worker failed to init.");
-        goto fail;
-    }
-
-    /* Initialize operators threads array */
-    server.operators_threads = calloc((size_t)server.operators_count, sizeof(pthread_t));
-    if(!server.operators_threads)
-    {
-        EML_PERR(LOG_TAG, "operators_threads alloc failed");
         goto fail;
     }
 
@@ -171,20 +143,12 @@ void server_run(void)
     pthread_create(&server.listener_thread, NULL, listener_run, NULL);
 
     /* run operators threads */
-    for(uint8_t op_idx = 0; op_idx < server.cpu_count; op_idx++)
-    {
-        pthread_create(&server.operators_threads[op_idx], NULL, operator_run, &server.operators[op_idx]);
-    }
-    
-    /* wait threads */
+    worker_run();
+
+    /* wait listener thread */
     pthread_join(server.listener_thread, NULL);
-    for(uint8_t op_idx = 0; op_idx < server.cpu_count; op_idx++)
-    {
-        pthread_join(server.operators_threads[op_idx], NULL);
-    }
 
     worker_destroy();
-    // pipeline_destroy();
 }
 
 /****************************************************************************

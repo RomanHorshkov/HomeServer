@@ -65,7 +65,7 @@ extern size_t used;
  ****************************************************************************
  */
 
-static int call_api_handler(const Http_request_t *request, HttpResponse *response);
+static int call_api_handler(const http_request_t *request, HttpResponse *response);
 
 /****************************************************************************
  * PRIVATE VARIABLES
@@ -78,7 +78,7 @@ static int call_api_handler(const Http_request_t *request, HttpResponse *respons
  ****************************************************************************
  */
 
-int router_handle_request(const Http_request_t *request, HttpResponse *response)
+int router_handle_request(const http_request_t *request, HttpResponse *response)
 {
     /* Return variable */
     int res = STATUS_FAILURE;

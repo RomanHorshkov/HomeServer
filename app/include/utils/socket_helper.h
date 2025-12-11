@@ -72,7 +72,7 @@ int socket_set_restartability(const int *socket_fd);
  * @retval  0  Success.
  * @retval -1 Failure (invalid pointer).
  */
-int socket_set_listener_hints(struct addrinfo *hints);
+int socket_listener_set_hints(struct addrinfo *hints);
 
 int64_t socket_drain(const int fd);
 
@@ -89,7 +89,7 @@ void socket_shutdown_and_close(int fd);
  * @retval  0  Success.
  * @retval -1 Failure (see log for details).
  */
-int listener_socket_init(const int *listen_fd, const int32_t *ai_family);
+int socket_listener_init(const int *listen_fd, const int32_t *ai_family);
 
 /**
  * @brief Initialize a client socket with recommended options.
@@ -100,17 +100,9 @@ int listener_socket_init(const int *listen_fd, const int32_t *ai_family);
  * @retval  0  Success.
  * @retval -1 Failure (see log for details).
  */
-int client_socket_init(const int *client_fd);
+int socket_client_init(const int *client_fd);
 
-/**
- * @brief Set pipe file descriptors to non-blocking mode.
- *
- * Uses fcntl() to set O_NONBLOCK on the pipe file descriptor.
- *
- * @param pipe_fds  File descriptor of the pipe.
- * @retval  0  Success.
- * @retval -1 Failure (see log for details).
- */
-int pipe_socket_init(const int *pipe_fds);
+
+int socket_read_nonblocking(int fd, void *buf, size_t count);
 
 #endif /* SERVER_SOCKET_HELPER_H */

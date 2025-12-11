@@ -12,11 +12,11 @@
 #include <stddef.h>  // size_t
 #include <stdint.h>
 #include <unistd.h>  // ssize_t
-#include <llhttp.h>
-
 #include <string.h>
 
-#include "server_settings.h"
+#include "string_view.h"
+#include "llhttp.h"
+#include "config_core.h"
 
 /****************************************************************************
  * PUBLIC DEFINES
@@ -58,30 +58,63 @@ typedef enum
 /**
  * @brief Parsed HTTP request.
  */
-typedef struct
+// typedef struct
+// {
+//     uint8_t  thread_id;                     /* operator thread id carrying the request */
+//     uint64_t timestamp;                     /* request timestamp (epoch) */
+//     uint32_t remote_ip_be;                  /* peer IPv4 (network order), optional */
+//     uint16_t remote_port_be;                /* peer port (network order), optional */
+//     uint8_t method;                         /* http_method_t HTTP method (GET, POST, etc.) */
+//     char path[HTTP_MAX_PATH_LEN];           /* Request path */
+//     uint8_t header_count;                   /* Number of headers parsed */
+//     char header_names[HTTP_MAX_HEADERS_IN][HTTP_MAX_HEADER_NAME_LEN];   /* Header names */
+//     char header_values[HTTP_MAX_HEADERS_IN][HTTP_MAX_HEADER_VALUE_LEN]; /* Header values */
+//     size_t body_len;                        /* Length of the body in bytes */
+//     char body[HTTP_MAX_BODY_RAM_CAPACITY];  /* Preallocated request body buffer */
+//     uint8_t connection_policy;              /* Connection policy (keep-alive or close) */
+//     uint8_t message_complete;               /* set when llhttp signals completion */
+
+// } Http_request_t;
+
+typedef struct 
 {
     uint8_t  thread_id;                     /* operator thread id carrying the request */
     uint64_t timestamp;                     /* request timestamp (epoch) */
     uint32_t remote_ip_be;                  /* peer IPv4 (network order), optional */
     uint16_t remote_port_be;                /* peer port (network order), optional */
-    uint8_t method;                         /* http_method_t HTTP method (GET, POST, etc.) */
-    char path[HTTP_MAX_PATH_LEN];           /* Request path */
     uint8_t header_count;                   /* Number of headers parsed */
-    char header_names[HTTP_MAX_HEADERS_IN][HTTP_MAX_HEADER_NAME_LEN];   /* Header names */
-    char header_values[HTTP_MAX_HEADERS_IN][HTTP_MAX_HEADER_VALUE_LEN]; /* Header values */
-    size_t body_len;                        /* Length of the body in bytes */
-    char body[HTTP_MAX_BODY_RAM_CAPACITY];  /* Preallocated request body buffer */
+    sv_t method;                            /* HTTP method (GET, POST, etc.) */
+    sv_t path;                              /* Request path */
+    sv_t header_names[HTTP_MAX_HEADERS_IN]; /* Header names */
+    sv_t header_values[HTTP_MAX_HEADERS_IN];/* Header values */
+    sv_t body;                              /* Request body buffer */
+
     uint8_t connection_policy;              /* Connection policy (keep-alive or close) */
     uint8_t message_complete;               /* set when llhttp signals completion */
 
-} Http_request_t;
+} http_request_t;
 
-typedef struct http_parser
+/**
+ * @brief Struct to keep track of actual llhttp parsing state
+ */
+typedef struct
 {
-    llhttp_t parser;
-    llhttp_settings_t settings;
-    Http_request_t req;
-} http_parser_t;
+    http_request_t req;   /* populated request */
+
+    sv_t current_field;   /* header field being accumulated */
+    sv_t current_value;   /* header value being accumulated */
+    sv_t current_url;     /* request-target (path+query etc.) */
+    sv_t current_body;    /* body slice */
+
+    int  in_header_field; /* 1 if we are currently appending to field, 0 for value */
+} llhttp_parser_ctx_t;
+
+typedef struct
+{
+    llhttp_t parser;                    /* llhttp parser instance */
+    llhttp_settings_t parser_settings;  /* llhttp settings/callbacks */
+    llhttp_parser_ctx_t parser_ctx;     /* populated request */
+} llhttp_parser_t;
 
 /**
  * @brief HTTP response to be sent to the client.
@@ -160,7 +193,7 @@ int http_manage_request(const char* recv_buf, const size_t buffer_len, Http_requ
 /**
  * @brief Initialize a streaming HTTP parser state.
  */
-int http_parser_init(http_parser_t *pstate);
+int http_parser_init(llhttp_parser_t *pstate);
 
 /**
  * @brief Feed data into the streaming HTTP parser.
@@ -168,11 +201,11 @@ int http_parser_init(http_parser_t *pstate);
  * @return STATUS_SUCCESS on success, STATUS_FAILURE on parse error.
  *         When a full message is parsed, pstate->req is populated.
  */
-int http_parser_execute(http_parser_t *pstate, const char *buf, size_t len);
+int http_parser_execute(llhttp_parser_t *pstate, const char *buf, size_t len);
 
 /**
  * @brief Reset parser state for a new message.
  */
-void http_parser_reset(http_parser_t *pstate);
+void http_parser_reset(llhttp_parser_t *pstate);
 
 #endif /* HTTP_MANAGER_H */

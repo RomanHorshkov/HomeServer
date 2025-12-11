@@ -5,7 +5,6 @@
 #ifndef SERVER_WORKER_OPERATOR_H
 #define SERVER_WORKER_OPERATOR_H
 
-#include <pthread.h>
 #include <stddef.h>
 #include <stdint.h>
 #include <stdatomic.h>
@@ -16,57 +15,131 @@
 #include "client.h"
 #include "http_manager.h"
 
-typedef struct fd_ctx_s fd_ctx_t;
+
+/****************************************************************************
+ * PUBLIC DEFINES
+ ****************************************************************************
+ */
+/* None */
+
+
+/****************************************************************************
+ * PUBLIC STRUCTURED VARIABLES DEFINITIONS
+ ****************************************************************************
+ */
 
 /**
- * @brief Per‑client state owned by an operator thread.
+ * @brief Operator status.
+ * Used to track the lifecycle state of an operator thread.
+ * 
+ * good: ACTIVE, FULL, min 1 bit set in the low bits (0x0F)
+ * bad: SHUTDOWN, INVALID, min 1 bit set in the high bits (0xF0)
  */
-typedef struct
+typedef enum
 {
-    int fd;                     /**< client socket fd */
-    fd_ctx_t *ctx;              /**< per‑fd reactor context */
-    uint32_t last_activity;     /**< coarse ms timestamp of last I/O */
-    uint32_t request_count;     /**< number of HTTP requests handled */
-    char recv_buf[HTTP_RECEIVE_BUFFER_LEN]; /**< staging buffer for socket reads */
-    http_parser_t http;         /**< per-connection HTTP parser state */
-} worker_client_slot_t;
+    /**
+     * @brief Uninitialized: not yet started.
+     */
+    OPERATOR_STATUS_UNINITIALIZED = 0,
+
+    /**
+     * @brief Active: ready to receive new clients.
+     */
+    OPERATOR_STATUS_ACTIVE = 1 << 0,
+
+    /**
+     * @brief Full: no more clients can be accepted.
+     */
+    OPERATOR_STATUS_FULL = 1 << 1,
+
+    /**
+     * @brief Shutdown: shutting down and cleaning up.
+     */
+    OPERATOR_STATUS_SHUTDOWN = 1 << 6,
+
+    /**
+     * @brief Invalid: max value for operator status.
+     */
+    OPERATOR_STATUS_INVALID = 1 << 7,
+} operator_status_t;
 
 /**
  * @brief Operator thread state.
  */
 typedef struct
 {
-    uint8_t id;                 /**< stable operator id (for logs/metrics) */
-    pthread_t thread;           /**< operator thread handle */
+    /**
+     * @brief Lifecycle status of this operator.
+     */
+    operator_status_t status;
 
-    /* Mailbox: dispatcher -> operator */
-    spsc_ring_t *ring;          /**< SPSC ring carrying new client FDs */
-    int wakeup_fd;              /**< eventfd to wake the reactor on new mail */
-    fd_ctx_t *wakeup_ctx;       /**< reactor context for wakeup fd */
+    /**
+     * @brief Stable operator identifier.
+     * Used as thread no and for logs/metrics.
+     */
+    uint8_t id;
 
-    /* Event core */
-    reactor_t reactor;          /**< epoll/reactor instance */
-    int timer_fd;               /**< timerfd for housekeeping */
-    uint32_t timer_frequency;   /**< current timer cadence (sec) */
+    /**
+     * @brief SPSC ring used to receive new clients fds.
+     */
+    spsc_ring_t *ring;
+    
+    /**
+     * @brief Wakeup reactor context.
+     * Used by dispatcher to wake the operator thread.
+     */
+    fd_ctx_t wakeup_ctx;
 
-    /* Clients */
-    worker_client_slot_t clients[WORKER_MAX_CLIENTS]; /**< slots */
-    size_t active_clients;      /**< number of in‑use slots */
-    atomic_uint active_count;   /**< visible to worker for load balancing */
+    /**
+     * @brief Timer fd for periodic housekeeping.
+     */
+    int timer_fd;
 
-    /* Status */
-    worker_status_t status;     /**< lifecycle state */
+    /**
+     * @brief Timer housekeeping frequency (seconds).
+     */
+    uint32_t timer_period;
+
+    /**
+     * @brief Operator's reactor instance (epoll).
+     */
+    reactor_t reactor;
+
+    /**
+     * @brief Client slots owned by this operator.
+     */
+    client_t clients[WORKER_MAX_CLIENTS];
+
+    /**
+     * @brief Active clients count.
+     * This is the number of clients currently being handled by this operator.
+     * atomic because visible to worker for load balancing.
+     */
+    atomic_uint active_clients;
+    
 } operator_t;
 
+/****************************************************************************
+ * PUBLIC FUNCTION DECLARATIONS
+ ****************************************************************************
+ */
+
 /**
- * @brief Initialize operator state (ring, wakeup, counters).
- * @param op Operator object to initialize.
- * @param id Stable operator identifier for logs/metrics.
+ * @brief Initialize an operator instance.
+ * 
+ * This function initializes the operator instance, setting up the necessary
+ * resources such as the reactor, mailbox, and client slots.
+ *
+ * @param op Pointer to operator_t structure to initialize.
+ * @param id Stable operator identifier.
  * @return STATUS_SUCCESS on success, STATUS_FAILURE on error.
  */
 int operator_init(operator_t *op, uint8_t id);
 
-/** Stop operator thread and release resources. */
+/**
+ * @brief Shutdown and cleanup operator state.
+ * @param op Operator object to shutdown.
+ */
 void operator_shutdown(operator_t *op);
 
 /**
@@ -74,12 +147,5 @@ void operator_shutdown(operator_t *op);
  */
 void *operator_thread(void *arg);
 
-/**
- * @brief Access mailbox components for dispatcher -> operator handoff.
- */
-/** eventfd used by dispatcher to wake the operator. */
-int operator_get_wakeup_fd(const operator_t *op);
-/** mailbox ring used to enqueue new client FDs. */
-spsc_ring_t *operator_get_ring(operator_t *op);
 
 #endif /* SERVER_WORKER_OPERATOR_H */

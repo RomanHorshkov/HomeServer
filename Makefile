@@ -150,14 +150,17 @@ run: all
 
 # Formatting ---------------------------------------------------------
 format:
-ifndef FILES
-	@echo "🛠  Formatting all .c/.h files in the project..."
-	@find app \( -path 'app/external' -o -path 'app/external/*' \) -prune -o \
-		-regex '.*\.(c\|h)' -exec clang-format -i {} +
-else
-	@echo "🛠  Formatting staged files: $(FILES)"
-	@clang-format -i $(FILES)
+ifndef CLANG_FORMAT
+	@echo "clang-format not found. Install it (e.g., sudo apt install clang-format)"; exit 1
 endif
+	@test -f .clang-format || { echo ".clang-format missing at repo root"; exit 1; }
+	@cnt=`$(FMT_FIND) | tr -cd '\0' | wc -c`; \
+	if [ $$cnt -eq 0 ]; then \
+	  echo "[fmt] no files"; \
+	else \
+	  echo "[fmt] formatting $$cnt files under $(FMT_ROOT) (excluding app/external and build)"; \
+	  $(FMT_FIND) | xargs -0 -r $(CLANG_FORMAT) -i -style=file; \
+	fi
 
 # Static analysis ----------------------------------------------------
 lint:

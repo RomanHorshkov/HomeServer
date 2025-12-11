@@ -6,10 +6,11 @@
  * for handling client connections. It provides functions to initialize
  * the worker pool, dispatch client connections to operators, and manage
  * operator lifecycles.
+ * 
+ * @note This module contains global state for the worker instance, because
+ * it will be used, by design, by just a single thread per time, server core
+ * process for initialization and listener thread at runtime.
  */
-
-
-
 
 
 #ifndef _GNU_SOURCE
@@ -45,11 +46,26 @@
 
 typedef struct
 {
-    operator_t *operators;      /**< Operator pool */
-    uint8_t operator_count;         /**< Pool size */
-    // uint8_t cpu_count;             /**< Host CPU count */
-    int db_initialized;            /**< db_app_init successfully completed */
-} worker_t ;
+    /**
+     * @brief Current worker status
+     */
+    worker_status_t status;
+
+    /**
+     * @brief Array of operators managed by this worker
+     */
+    operator_t *operators;
+
+    /**
+     * @brief Threads for each operator
+     */
+    pthread_t* operators_threads;
+
+    /**
+     * @brief Number of operators in the pool
+     */
+    uint8_t operators_count;
+} worker_t;
 
 /****************************************************************************
  * PRIVATE VARIABLES DEFINITIONS
@@ -117,39 +133,61 @@ static operator_t* _least_loaded_operator(void);
  */
 int worker_init(uint8_t cpu_count)
 {
-    _worker.operator_count = _compute_operator_count(cpu_count);
+    _worker.operators_count = _compute_operator_count(cpu_count);
+    if(_worker.operators_count == 0)
+    {
+        EML_PERR(LOG_TAG, "init: compute_operator_count failed");
+        return STATUS_FAILURE;
+    }
 
-    /* Allocate an operator for each available cpu */
-    _worker.operators = calloc(_worker.operator_count, sizeof(operator_t));
+    /* Allocate an operator for each cpu available for operators */
+    _worker.operators = calloc(_worker.operators_count, sizeof(operator_t));
     if(!_worker.operators)
     {
         EML_PERR(LOG_TAG, "init: operators alloc failed");
         return STATUS_FAILURE;
     }
 
+    /* Allocate a thread for each operator */
+    _worker.operators_threads = calloc(_worker.operators_count, sizeof(pthread_t));
+    if(!_worker.operators_threads)
+    {
+        EML_PERR(LOG_TAG, "init: operators_threads alloc failed");
+        goto fail;
+    }
+
     /* Initialize each operator */
-    for(uint8_t op_idx = 0; op_idx < _worker.operator_count; ++op_idx)
+    for(uint8_t op_idx = 0; op_idx < _worker.operators_count; ++op_idx)
     {
         if(operator_init(&_worker.operators[op_idx], op_idx) != STATUS_SUCCESS)
         {
             EML_ERROR(LOG_TAG, "init: operator %zu init failed", op_idx);
             goto fail;
         }
-    }
-    EML_INFO(LOG_TAG, "Initialized %zu operators", _worker.operator_count);
 
-    if(db_app_init(_worker.operator_count) != 0)
+        /* Paranoia check */
+        if(_worker.operators[op_idx].status != OPERATOR_STATUS_ACTIVE)
+        {
+            EML_ERROR(LOG_TAG, "init: operator %zu not active, status %d", op_idx, _worker.operators[op_idx].status);
+            goto fail;
+        }
+        
+    }
+    EML_INFO(LOG_TAG, "Initialized %u operators", _worker.operators_count);
+
+    /* Initialize the DataBase app */
+    if(db_app_init(_worker.operators_count) != 0)
     {
         EML_ERROR(LOG_TAG, "init: db_app_init failed");
         goto fail;
     }
-    _worker.db_initialized = 1;
 
-    EML_INFO(LOG_TAG, "Dispatcher ready with %zu operator%s (cpus=%u)",
-             _worker.operator_count,
-             (_worker.operator_count == 1) ? "" : "s",
+    EML_INFO(LOG_TAG, "Worker ready with %u operator%s (cpus=%u)",
+             _worker.operators_count,
+             (_worker.operators_count == 1) ? "" : "s",
              (unsigned)cpu_count);
-    return _worker.operator_count;
+
+    return STATUS_SUCCESS;
 
 fail:
     worker_destroy();
@@ -158,65 +196,103 @@ fail:
 
 int worker_dispatch_to_operator(int client_fd)
 {
-    operator_t *op = NULL;
-    uint8_t retry_max = 3;
-    uint8_t retry_count = 0;
-retry:
-{
-    if (retry_count++ >= retry_max)
+    if(client_fd < 0)
     {
-        EML_ERROR(LOG_TAG, "failed to dispatch client fd %d after %d retries",
-                   client_fd, retry_count);
+        EML_ERROR(LOG_TAG, "_to_operator: invalid client fd");
         return STATUS_FAILURE;
     }
-    
-    /* Get least loaded operator */
-    op = _least_loaded_operator();
-    if (!op)
+
+    if(_worker.status != WORKER_STATUS_ACTIVE)
     {
-        EML_ERROR(LOG_TAG, "failed to get least loaded operator");
-        goto retry;
+        EML_ERROR(LOG_TAG, "_to_operator: worker not active");
+        return STATUS_FAILURE;
+    }
+
+    /* Get least loaded operator */
+    operator_t *op = NULL;
+    op = _least_loaded_operator();
+    if(!op)
+    {
+        EML_ERROR(LOG_TAG, "_to_operator: failed to get least loaded operator");
+        return STATUS_FAILURE;
     }
 
     /* Check operator's health */
-    if (!op->ring || op->wakeup_fd == -1)
+    if (!op->ring || op->wakeup_ctx.fd == -1)
     {
-        EML_ERROR(LOG_TAG, "least loaded operator not healthy");
-        goto retry;
+        EML_ERROR(LOG_TAG, "_to_operator: least loaded operator not healthy");
+        return STATUS_FAILURE;
     }
 
     /* Push new client's fd to the operator's ring */
     if(spsc_ring_push(op->ring, client_fd) != 0)
     {
-        EML_ERROR(LOG_TAG, "failed pushing to operator's ring or ring full");
-        goto retry;
+        EML_ERROR(LOG_TAG, "_to_operator: failed pushing to operator's ring");
+        return STATUS_FAILURE;
     }
 
     /* Signal to operator a new client's fd presence on the ring */    
-    if(write(op->wakeup_fd, &(uint8_t){1U}, sizeof(uint8_t)) != sizeof(uint8_t))
+    if(write(op->wakeup_ctx.fd, &(uint8_t){1U}, sizeof(uint8_t)) != sizeof(uint8_t))
     {
-        EML_PERR(LOG_TAG, "dispatcher: write to wakeup fd %d failed", op->wakeup_fd);
+        EML_PERR(LOG_TAG, "_to_operator: write to wakeup fd %d failed", op->wakeup_ctx.fd);
         /* continue anyway, operator will eventually notice the new fd */
     }
+
+#ifdef MODE_DEBUG
+    EML_DBG(LOG_TAG, "_to_operator: assigned client fd %d to operator %d",
+             client_fd, op->id);
+#endif
+    return STATUS_SUCCESS;
+
 }
+
+int worker_run(void)
+{
+    /* run operators threads */
+    for(uint8_t op_idx = 0; op_idx < _worker.operators_count; op_idx++)
+    {
+        if(pthread_create(&_worker.operators_threads[op_idx], NULL,
+                          operator_thread, &_worker.operators[op_idx]) != 0)
+        {
+            EML_PERR(LOG_TAG, "operator %u thread creation failed",
+                     (unsigned)op_idx);
+            return STATUS_FAILURE;
+        }
+    }
+
+    // /* join operator threads */
+    // for(uint8_t op_idx = 0; op_idx < _worker.operators_count; op_idx++)
+    // {
+    //     if(pthread_join(_worker.operators_threads[op_idx], NULL) != 0)
+    //     {
+    //         EML_PERR(LOG_TAG, "operator %u thread join failed",
+    //                  (unsigned)op_idx);
+    //         return STATUS_FAILURE;
+    //     }
+    // }
+
     return STATUS_SUCCESS;
 }
 
 void worker_destroy(void)
 {
 
-    for(size_t i = 0; i < _worker.operator_count; ++i)
+    for(size_t i = 0; i < _worker.operators_count; ++i)
     {
         operator_shutdown(&_worker.operators[i]);
     }
+
     free(_worker.operators);
     _worker.operators = NULL;
-    _worker.operator_count = 0;
-    if(_worker.db_initialized)
+    if(_worker.operators_threads)
     {
-        db_app_shutdown();
-        _worker.db_initialized = 0;
+        free(_worker.operators_threads);
+        _worker.operators_threads = NULL;
     }
+
+    _worker.operators_threads = NULL;
+    _worker.operators_count = 0;
+    db_app_shutdown();
 }
 
 
@@ -229,9 +305,12 @@ static operator_t* _least_loaded_operator(void)
 {
     uint8_t best_idx = 0;
     unsigned int best_load = WORKER_MAX_CLIENTS; /* start with max possible load */
-    for(uint8_t i = 0; i < _worker.operator_count; ++i)
+    for(uint8_t i = 0; i < _worker.operators_count; ++i)
     {
-        unsigned int load = atomic_load_explicit(&_worker.operators[i].active_count,
+        /* Skip full operators */
+        if(_worker.operators[i].status == OPERATOR_STATUS_FULL) continue;
+
+        unsigned int load = atomic_load_explicit(&_worker.operators[i].active_clients,
                                                     memory_order_relaxed);
 
         /* when load is below the blind assignment limit just give it to the operator */
@@ -254,6 +333,15 @@ static operator_t* _least_loaded_operator(void)
             best_load = load;
             best_idx = i;
         }
+        /* skip overloaded operators, there are better around */
+
+        /* Here can see if all the operators are FULL */
+        if (i == _worker.operators_count - 1 && best_load == WORKER_MAX_CLIENTS)
+        {
+            /* All operators are full, set worker status to full! */
+            _worker.status = WORKER_STATUS_FULL;
+        }
+        
     }
 
     if (best_load == WORKER_MAX_CLIENTS)
@@ -273,14 +361,16 @@ static operator_t* _least_loaded_operator(void)
 static uint8_t _compute_operator_count(uint8_t cpu_count)
 {
     uint8_t available_cpus = 0;
-    /* Reserve one CPU for listener and one for dispatcher when possible */
+    /* Reserve one CPU for listener when possible */
     if(cpu_count <= 2)
     {
         available_cpus = 1;
     }
+
+    /* give all cpus - 1 to the operators */
     else
     {
-        available_cpus = cpu_count - 2;
+        available_cpus = cpu_count - 1;
     }
 
     EML_INFO(LOG_TAG, "Dispatcher sizing: cpu_count=%u, operators=%u",
