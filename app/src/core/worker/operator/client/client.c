@@ -17,32 +17,41 @@
  * - Parser reset: we reset after a full message to support pipelining later;
  *   close-on-first-request is a temporary simplification.
  */
+#ifndef _GNU_SOURCE
 #define _GNU_SOURCE
+#endif /* _GNU_SOURCE */
 
 #include "client.h"
-
-#include <errno.h>
-#include <netinet/in.h>
-#include <stdlib.h>
-#include <string.h>
-#include <sys/socket.h>
-#include <unistd.h>
-#include <stdio.h>
 
 #include "emlog.h"
 
 #include "http_manager.h"
-#include "operator.h"
 #include "router.h"
-#include "time_helper.h"
+#include "socket_helper.h"
+
+/****************************************************************************
+ * PRIVATE DEFINES
+ ****************************************************************************
+ */
 
 #define LOG_TAG "srv_client"
 
-static void _populate_transport_meta(operator_t *op, worker_client_slot_t *slot);
-static int _send_response(int fd, const Http_request_t *req, const HttpResponse *resp);
+/****************************************************************************
+ * PRIVATE FUNCTION DECLARATIONS
+ ****************************************************************************
+ */
+
+static int _send_response(int fd, const http_request_t *req, const HttpResponse *resp);
 static ssize_t _send_all(int fd, const void *buf, size_t len);
 static void _free_response_body(HttpResponse *resp);
 static void _fill_500(HttpResponse *resp);
+
+
+/****************************************************************************
+ * PUBLIC FUNCTIONS DEFINITIONS
+ ****************************************************************************
+ */
+
 
 /**
  * @brief Drain a readable client socket and advance HTTP parsing state.
@@ -58,120 +67,122 @@ static void _fill_500(HttpResponse *resp);
  *   - Updates slot->last_activity with coarse millisecond timestamp.
  *   - Increments slot->request_count for timeout heuristics.
  *
- * @param op   Owning operator (unused today; placeholder for future routing).
  * @param slot Client slot containing parser state and buffers.
  * @return STATUS_SUCCESS to keep connection; STATUS_FAILURE to drop it.
  */
-int client_handle(operator_t *op, worker_client_slot_t *slot)
+int client_handle(client_t *cli)
 {
-    (void)op;
-    if(!slot) return STATUS_FAILURE;
-
-    for(;;)
+    if(!cli)
     {
-        ssize_t n = recv(slot->fd, slot->recv_buf, sizeof(slot->recv_buf), 0);
-        if(n > 0)
+        EML_ERROR(LOG_TAG, "client_handle: invalid input");
+        return STATUS_FAILURE;
+    }
+
+    ssize_t read_bytes = socket_read_nonblocking(cli->ctx.fd, cli->recv_buf, HTTP_RECEIVE_BUFFER_LEN);
+
+    if(read_bytes > 0)
+    {
+#ifdef DEBUG_MODE
+        EML_DBG(LOG_TAG, "fd %d received %zd bytes, executing http parser", cli->ctx.fd, read_bytes);
+#endif
+        cli->last_activity = (uint32_t)time_helper_get_now();
+        if(http_parser_execute(&cli->http_parser, cli->recv_buf, (size_t)read_bytes) != STATUS_SUCCESS)
+        {
+            EML_ERROR(LOG_TAG, "HTTP parse failed on fd %d", cli->ctx.fd);
+            return STATUS_FAILURE;
+        }
+
+        if(cli->http_parser.req.message_complete)
         {
 #ifdef DEBUG_MODE
-            EML_DBG(LOG_TAG, "fd %d received %zd bytes, executing http parser", slot->fd, n);
-#endif
-            slot->last_activity = (uint32_t)time_helper_get_now();
-            slot->request_count++;
-            if(http_parser_execute(&slot->http, slot->recv_buf, (size_t)n) != STATUS_SUCCESS)
+            EML_DBG(LOG_TAG, "fd %d, method %s, path %s, body_len=%zu",
+                        cli->ctx.fd,
+                        http_method_to_string(cli->http_parser.req.method),
+                        cli->http_parser.req.path,
+                        cli->http_parser.req.body_len);
+            EML_DBG(LOG_TAG, "fd %d headers (%d):", cli->ctx.fd, cli->http_parser.req.header_count);
+            for(int i = 0; i < cli->http_parser.req.header_count; ++i)
             {
-                EML_ERROR(LOG_TAG, "HTTP parse failed on fd %d", slot->fd);
+                EML_DBG(LOG_TAG, "  %s: %s",
+                        cli->http_parser.req.header_names[i],
+                        cli->http_parser.req.header_values[i]);
+            }
+#endif
+            /* Increase completed request counts */
+            cli->request_count++;
+
+            HttpResponse response = {0};
+
+            int route_rc = router_handle_request(&cli->http_parser.req, &response);
+            if(route_rc != STATUS_SUCCESS && response.status_code == 0)
+            {
+                EML_ERROR(LOG_TAG, "router_handle_request failed for fd %d", cli->ctx.fd);
+                _fill_500(&response);
+            }
+
+            if(_send_response(cli->ctx.fd, &cli->http_parser.req, &response) != STATUS_SUCCESS)
+            {
+                _free_response_body(&response);
                 return STATUS_FAILURE;
             }
 
-            if(slot->http.req.message_complete)
+            _free_response_body(&response);
+            http_parser_reset(&cli->http_parser);
+            
+            if(cli->http_parser.req.connection_policy == HTTP_CONNECTION_CLOSE)
             {
-#ifdef DEBUG_MODE
-                EML_DBG(LOG_TAG, "fd %d HTTP %s %s body_len=%zu",
-                         slot->fd,
-                         http_method_to_string(slot->http.req.method),
-                         slot->http.req.path,
-                         slot->http.req.body_len);
-                EML_DBG(LOG_TAG, "fd %d headers (%d):", slot->fd, slot->http.req.header_count);
-                for(int i = 0; i < slot->http.req.header_count; ++i)
-                {
-                    EML_DBG(LOG_TAG, "  %s: %s",
-                            slot->http.req.header_names[i],
-                            slot->http.req.header_values[i]);
-                }
-#endif
-
-                HttpResponse response = {0};
-
-                _populate_transport_meta(op, slot);
-
-                int route_rc = router_handle_request(&slot->http.req, &response);
-                if(route_rc != STATUS_SUCCESS && response.status_code == 0)
-                {
-                    EML_ERROR(LOG_TAG, "router_handle_request failed for fd %d", slot->fd);
-                    _fill_500(&response);
-                }
-
-                if(_send_response(slot->fd, &slot->http.req, &response) != STATUS_SUCCESS)
-                {
-                    _free_response_body(&response);
-                    return STATUS_FAILURE;
-                }
-
-                _free_response_body(&response);
-                http_parser_reset(&slot->http);
-                if(slot->http.req.connection_policy == HTTP_CONNECTION_CLOSE)
-                {
-                    return STATUS_FAILURE; /* close after reply */
-                }
-                return STATUS_SUCCESS; /* keep alive */
+                return STATUS_FAILURE; /* close after reply */
             }
-            continue;
-        }
-        else if(n == 0)
-        {
-#ifdef DEBUG_MODE
-            EML_DBG(LOG_TAG, "fd %d peer closed connection", slot->fd);
-#endif
-            /* peer closed */
-            return STATUS_FAILURE;
+            return STATUS_SUCCESS; /* keep alive */
         }
         else
         {
-#ifdef DEBUG_MODE
-            EML_PERR(LOG_TAG, "recv failed on fd %d", slot->fd);
+#ifdef MODE_DEBUG
+            EML_DBG(LOG_TAG, "fd %d: message not complete yet", cli->ctx.fd);
 #endif
-            if(errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR)
-            {
-#ifdef DEBUG_MODE
-                EML_DBG(LOG_TAG, "fd %d recv would block, again, or eintr; yielding", slot->fd);
-#endif
-                return STATUS_SUCCESS;
-            }
-            EML_PERR(LOG_TAG, "recv failed on fd %d", slot->fd);
-            return STATUS_FAILURE;
+            return STATUS_SUCCESS;  /* need more data */
         }
     }
-}
-
-static void _populate_transport_meta(operator_t *op, worker_client_slot_t *slot)
-{
-    if(!op || !slot) return;
-
-    Http_request_t *req = &slot->http.req;
-    req->thread_id = (uint8_t)op->id;
-
-    struct sockaddr_storage ss;
-    socklen_t slen = sizeof(ss);
-    if(getpeername(slot->fd, (struct sockaddr *)&ss, &slen) == 0 && ss.ss_family == AF_INET)
+    else if(read_bytes == 0)
     {
-        const struct sockaddr_in *sin = (const struct sockaddr_in *)&ss;
-        req->remote_ip_be = sin->sin_addr.s_addr;
-        req->remote_port_be = sin->sin_port;
+#ifdef DEBUG_MODE
+        EML_DBG(LOG_TAG, "fd %d peer closed connection", cli->ctx.fd);
+#endif
+        /* peer closed */
+        return STATUS_FAILURE;
     }
     else
     {
-        req->remote_ip_be = 0;
-        req->remote_port_be = 0;
+#ifdef DEBUG_MODE
+        EML_PERR(LOG_TAG, "recv failed on fd %d", slot->fd);
+#endif
+        if(errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR)
+        {
+#ifdef DEBUG_MODE
+            EML_DBG(LOG_TAG, "fd %d recv would block, again, or eintr; yielding", slot->fd);
+#endif
+            return STATUS_SUCCESS;
+        }
+        EML_PERR(LOG_TAG, "recv failed on fd %d", slot->fd);
+        return STATUS_FAILURE;
+    }
+}
+
+void client_shutdown(client_t *cli)
+{
+    if(!cli)
+    {
+        EML_ERROR(LOG_TAG, "_shutdown: invalid input");
+    }
+
+    if (cli->is_busy)
+    {
+        socket_shutdown_and_close(cli->ctx.fd);
+        http_parser_reset(&cli->http_parser);
+        cli->is_busy = 0;
+        cli->last_activity = 0;
+        cli->request_count = 0;
+        memset(cli->recv_buf, 0, HTTP_RECEIVE_BUFFER_LEN);
     }
 }
 

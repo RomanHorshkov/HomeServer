@@ -8,7 +8,7 @@
 #include <stddef.h>
 #include <stdint.h>
 
-#include "server_settings.h"
+#include "config_core.h"
 #include "utils/string_view.h"
 
 #define HDR_KEY key

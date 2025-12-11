@@ -27,7 +27,7 @@
 #include <sys/types.h>
 #include <unistd.h>
 
-#include "server_settings.h" /* STATUS_SUCCESS, STATUS_FAILURE */
+#include "config_core.h" /* STATUS_SUCCESS, STATUS_FAILURE */
 #include "emlog.h"
 
 /****************************************************************************
@@ -168,11 +168,8 @@ int socket_disable_nagle(const int *socket_fd)
     return STATUS_FAILURE;
 }
 
-int socket_set_listener_hints(struct addrinfo *hints)
+int socket_listener_set_hints(struct addrinfo *hints)
 {
-    /* return value */
-    int res = STATUS_FAILURE;
-
     if(hints)
     {
         /* make sure hints setted to 0 */
@@ -188,10 +185,54 @@ int socket_set_listener_hints(struct addrinfo *hints)
         /* Use my IP automatically */
         hints->ai_flags = AI_PASSIVE;
 
-        res = STATUS_SUCCESS;
+        return STATUS_SUCCESS;
+    }
+    
+    return STATUS_FAILURE;
+}
+
+ssize_t socket_read_nonblocking(int fd, void *buf, size_t buf_len)
+{
+    if (fd < 0 || !buf || buf_len == 0)
+    {
+        EML_ERROR(LOG_TAG, "_read_nonblocking: invalid input");
+        return -1;
+    }
+    
+    static int retry_max = 3;
+    int retry_count = 0;
+
+retry:
+{
+    ssize_t red_bytes = read(fd, buf, buf_len);
+
+    /* return immediately if read() succeeded */
+    if(red_bytes > 0) return red_bytes;
+
+    /* return failure if connection closed */
+    if(red_bytes == 0) return STATUS_FAILURE;
+    
+    if(errno == EAGAIN || errno == EWOULDBLOCK)
+    {
+        /* No data available right now */
+        EML_WARN(LOG_TAG, "_read_nonblocking: read with no data");
+        return STATUS_SUCCESS;
     }
 
-    return res;
+    if(errno == EINTR)
+    {
+        /* retry immediately */
+        if(++retry_count < retry_max) goto retry;
+        else
+        {
+            EML_ERROR(LOG_TAG, "socket_read_nonblocking: read() interrupted too many times");
+        }
+    }
+} // retry
+    
+    /* An actual error occurred */
+    EML_ERROR(LOG_TAG, "socket_read_nonblocking: read() failed");
+    return STATUS_FAILURE;
 }
 
 int64_t socket_drain(const int fd)
@@ -211,7 +252,7 @@ void socket_shutdown_and_close(int fd)
     close(fd);
 }
 
-int listener_socket_init(const int *listen_fd, const int32_t *ai_family)
+int socket_listener_init(const int *listen_fd, const int32_t *ai_family)
 {
     /* Return variable */
     int res = STATUS_FAILURE;
@@ -219,71 +260,68 @@ int listener_socket_init(const int *listen_fd, const int32_t *ai_family)
     /* Check input */
     if(listen_fd == NULL || ai_family == NULL)
     {
-        EML_ERROR(LOG_TAG, "[socket_helper] listener_socket_init: invalid input");
+        EML_ERROR(LOG_TAG, "_listener_init: invalid input");
     }
 
     /* Set sockets reusability */
     else if(socket_set_reusability(listen_fd) != STATUS_SUCCESS)
     {
-        EML_ERROR(LOG_TAG, "set_listener_socket_reusability failed.");
+        EML_ERROR(LOG_TAG, "_listener_init: _reusability failed.");
     }
 
     /* Set sockets restartability */
     else if(socket_set_restartability(listen_fd) != STATUS_SUCCESS)
     {
-        EML_ERROR(LOG_TAG, "set_listener_socket_restartability failed.");
+        EML_ERROR(LOG_TAG, "_listener_init: _restartability failed.");
     }
 
     /* Set non-blocking mode */
     else if(socket_set_non_blocking(listen_fd) != STATUS_SUCCESS)
     {
-        EML_ERROR(LOG_TAG, "[socket_helper] listener_socket_init: failed to set non-blocking");
+        EML_ERROR(LOG_TAG, "_listener_init: failed to set non-blocking");
     }
 
     /* Everything went ok */
-    else
+    res = STATUS_SUCCESS;
+    
+    /* restrict the socket to only ipv6 if socket for ipv6 */
+    if(*ai_family == AF_INET6)
     {
-        res = STATUS_SUCCESS;
+        /* yes value */
+        int yes = 1;
 
-        /* restrict the socket to only ipv6 if socket for ipv6 */
-        if(*ai_family == AF_INET6)
+        /* Check if restriction successfully occurred */
+        if(setsockopt(*listen_fd, IPPROTO_IPV6, IPV6_V6ONLY, &yes, sizeof(yes)) !=
+            STATUS_SUCCESS)
         {
-            /* yes value */
-            int yes = 1;
-
-            /* Check if restriction successfully occurred */
-            if(setsockopt(*listen_fd, IPPROTO_IPV6, IPV6_V6ONLY, &yes, sizeof(yes)) !=
-               STATUS_SUCCESS)
-            {
-                /* if restriction fails set return variable to failure */
-                res = STATUS_FAILURE;
-                EML_ERROR(LOG_TAG, "Socket ipv6 opts failed: %s\n", strerror(errno));
-            }
+            /* if restriction fails set return variable to failure */
+            res = STATUS_FAILURE;
+            EML_ERROR(LOG_TAG, "Socket ipv6 opts failed: %s\n", strerror(errno));
         }
     }
 
     return res;
 }
 
-int client_socket_init(const int *client_fd)
+int socket_client_init(const int *client_fd)
 {
     if(client_fd == NULL)
     {
-        EML_ERROR(LOG_TAG, "client_socket_init: invalid input");
+        EML_ERROR(LOG_TAG, "_client_init: invalid input");
         return STATUS_FAILURE;
     }
 
     /* Set non-blocking mode */
     if(socket_set_non_blocking(client_fd) != STATUS_SUCCESS)
     {
-        EML_ERROR(LOG_TAG, "client_socket_init: failed to set non-blocking");
+        EML_ERROR(LOG_TAG, "_client_init: failed to set non-blocking");
         return STATUS_FAILURE;
     }
 
     /* Disable Nagle's algorithm */
     if(socket_disable_nagle(client_fd) != STATUS_SUCCESS)
     {
-        EML_ERROR(LOG_TAG, "client_socket_init: failed to disable Nagle");
+        EML_ERROR(LOG_TAG, "_client_init: failed to disable Nagle");
         return STATUS_FAILURE;
         
     }
@@ -293,38 +331,8 @@ int client_socket_init(const int *client_fd)
     return STATUS_SUCCESS;
 }
 
-int pipe_socket_init(const int *pipe_fds)
-{
-    /* Return variable */
-    int res = STATUS_FAILURE;
-
-    /* Check input */
-    if(pipe_fds == NULL)
-    {
-        EML_ERROR(LOG_TAG, "[socket_helper] pipe_socket_init: invalid input");
-    }
-
-    /* Set non-blocking for the first pipe file descriptor */
-    else if(socket_set_non_blocking(&pipe_fds[0]) != STATUS_SUCCESS)
-    {
-        EML_ERROR(LOG_TAG, 
-            "[socket_helper] pipe_socket_init: failed to set non-blocking for "
-            "pipe 0");
-    }
-
-    /* Set non-blocking for the second pipe file descriptor */
-    else if(socket_set_non_blocking(&pipe_fds[1]) != STATUS_SUCCESS)
-    {
-        EML_ERROR(LOG_TAG, 
-            "[socket_helper] pipe_socket_init: failed to set non-blocking for "
-            "pipe 1");
-    }
-
-    /* If everything went ok */
-    else
-    {
-        res = STATUS_SUCCESS;
-    }
-
-    return res;
-}
+/****************************************************************************
+ * PRIVATE FUNCTIONS DEFINITIONS
+ ****************************************************************************
+ */
+/* None */

@@ -41,7 +41,7 @@
 // #include "handler_expenses.h"
 // #include "handler_static.h"
 #include "http_manager.h"
-#include "server_settings.h"
+#include "config_core.h"
 
 /****************************************************************************
  * PUBLIC STRUCTURED VARIABLES DECLARATIONS

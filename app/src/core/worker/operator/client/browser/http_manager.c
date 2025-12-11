@@ -50,17 +50,6 @@
  ****************************************************************************
  */
 
-/**
- * @brief Struct to keep track of actual llhttp parsing state
- */
-typedef struct
-{
-    Http_request_t* req;
-    char current_field[HTTP_MAX_HEADER_NAME_LEN];
-    char current_value[HTTP_MAX_HEADER_VALUE_LEN];
-    int in_header_field;
-
-} LlhttpParserContext;
 
 /****************************************************************************
  * PRIVATE FUNCTIONS PROTOTYPES
@@ -104,6 +93,16 @@ static int on_header_field(llhttp_t* parser, const char* at, size_t length);
  */
 static int on_header_value(llhttp_t* parser, const char* at, size_t length);
 
+/**
+ * @brief llhttp callback: called when body data is parsed.
+ *
+ * Appends the parsed body data to the request's body buffer.
+ *
+ * @param parser   Pointer to the llhttp parser.
+ * @param at       Pointer to the start of the body data.
+ * @param length   Length of the body data.
+ * @return         0 on success.
+ */
 static int on_body(llhttp_t* parser, const char* at, size_t length);
 
 /**
@@ -237,23 +236,8 @@ static int http_parse_request(const char* buffer, const size_t buffer_len, Http_
     /* Return variable */
     int res = STATUS_FAILURE;
 
-    /* llhttp parser declare */
-    llhttp_t parser;
-    llhttp_settings_t settings;
-
-    /* llhttp parser initialize */
-    llhttp_settings_init(&settings);
-
-    settings.on_url = on_url;
-    settings.on_method = on_method;
-    settings.on_header_field = on_header_field;
-    settings.on_header_value = on_header_value;
-    settings.on_body = on_body;
-
-    llhttp_init(&parser, HTTP_REQUEST, &settings);
-
     /* Create parsing context to keep track of parsing */
-    LlhttpParserContext ctx = {.req = req, .in_header_field = 1};
+    llhttp_parser_ctx_t ctx = {.req = req, .in_header_field = 1};
 
     /* Assign the context to parser */
     parser.data = &ctx;
@@ -303,54 +287,66 @@ static int http_parse_request(const char* buffer, const size_t buffer_len, Http_
     return res;
 }
 
-int http_parser_init(http_parser_t *pstate)
+int http_parser_init(llhttp_parser_t *pstate)
 {
-    if(!pstate) return STATUS_FAILURE;
-    memset(pstate, 0, sizeof(*pstate));
+    /* Check input */
+    if(!pstate)
+    {
+        EML_ERROR(LOG_TAG, "_init: invalid input");
+        return STATUS_FAILURE;
+    }
 
-    llhttp_settings_init(&pstate->settings);
-    pstate->settings.on_url = on_url;
-    pstate->settings.on_method = on_method;
-    pstate->settings.on_header_field = on_header_field;
-    pstate->settings.on_header_value = on_header_value;
-    pstate->settings.on_body = on_body;
-    pstate->settings.on_message_complete = on_message_complete;
+    llhttp_settings_t *parser_settings = &pstate->parser_settings;
 
-    llhttp_init(&pstate->parser, HTTP_REQUEST, &pstate->settings);
+    /* Initialize the settings object */
+    llhttp_settings_init(parser_settings);
 
-    /* TODO : CHECK IF NEEDS CALLOC HERE */
-    /* attach context */
-    LlhttpParserContext *ctx = calloc(1, sizeof(*ctx));
-    if(!ctx) return STATUS_FAILURE;
-    ctx->req = &pstate->req;
-    pstate->parser.data = ctx;
+    /* Possible return values 0, -1, HPE_USER (llhttp_data_cb) */
+    parser_settings->on_url = on_url;
+    parser_settings->on_method = on_method;
+    parser_settings->on_header_field = on_header_field;
+    parser_settings->on_header_value = on_header_value;
+    parser_settings->on_body = on_body;
+    /* Possible return values 0, -1, `HPE_PAUSED` (llhttp_cb) */
+    parser_settings->on_message_complete = on_message_complete;
+
+    llhttp_init(&pstate->parser, HTTP_REQUEST, &pstate->parser_settings);
+
+    /* Set parser context */
+    pstate->parser.data = &pstate->parser_ctx;
 
     return STATUS_SUCCESS;
 }
 
-void http_parser_reset(http_parser_t *pstate)
+void http_parser_reset(llhttp_parser_t *pstate)
 {
-    if(!pstate) return;
-    LlhttpParserContext *ctx = (LlhttpParserContext *)pstate->parser.data;
+    if(!pstate)
+    {
+        EML_ERROR(LOG_TAG, "_reset: invalid input");
+    }
+    llhttp_parser_ctx_t *ctx = (llhttp_parser_ctx_t *)pstate->parser.data;
     if(ctx)
     {
         memset(ctx->current_field, 0, sizeof(ctx->current_field));
         memset(ctx->current_value, 0, sizeof(ctx->current_value));
         ctx->in_header_field = 1;
     }
-    memset(&pstate->req, 0, sizeof(pstate->req));
-    pstate->req.body_len = 0;
-    pstate->req.message_complete = 0;
+    memset(&pstate->parser_ctx.req, 0, sizeof(pstate->parser_ctx.req));
     llhttp_reset(&pstate->parser);
 }
 
-int http_parser_execute(http_parser_t *pstate, const char *buf, size_t len)
+int http_parser_execute(llhttp_parser_t *pstate, const char *in_buf, size_t len)
 {
-    if(!pstate || !buf) return STATUS_FAILURE;
-    llhttp_errno_t err = llhttp_execute(&pstate->parser, buf, len);
+    if(!pstate || !in_buf)
+    {
+        EML_ERROR(LOG_TAG, "_execute: invalid input");
+        return STATUS_FAILURE;
+    }
+
+    llhttp_errno_t err = llhttp_execute(&pstate->parser, in_buf, len);
     if(err != HPE_OK)
     {
-        EML_ERROR(LOG_TAG, "llhttp parse error: %s", llhttp_errno_name(err));
+        EML_ERROR(LOG_TAG, "_execute error: %s for %s", llhttp_errno_name(err), llhttp_get_error_reason(&pstate->parser));
         return STATUS_FAILURE;
     }
     return STATUS_SUCCESS;
@@ -525,14 +521,14 @@ static int sanitize_http_request(Http_request_t* req)
 
 static int on_url(llhttp_t* parser, const char* at, size_t length)
 {
-    LlhttpParserContext* ctx = (LlhttpParserContext*)parser->data;
+    llhttp_parser_ctx_t* ctx = (llhttp_parser_ctx_t*)parser->data;
     snprintf(ctx->req->path, HTTP_MAX_PATH_LEN, "%.*s", (int)length, at);
     return 0;
 }
 
 static int on_header_field(llhttp_t* parser, const char* at, size_t length)
 {
-    LlhttpParserContext* ctx = (LlhttpParserContext*)parser->data;
+    llhttp_parser_ctx_t* ctx = (llhttp_parser_ctx_t*)parser->data;
 
     // If were finishing a previous header, store it
     if(!ctx->in_header_field && ctx->req->header_count < HTTP_MAX_HEADERS_IN)
@@ -551,7 +547,7 @@ static int on_header_field(llhttp_t* parser, const char* at, size_t length)
 
 static int on_header_value(llhttp_t* parser, const char* at, size_t length)
 {
-    LlhttpParserContext* ctx = (LlhttpParserContext*)parser->data;
+    llhttp_parser_ctx_t* ctx = (llhttp_parser_ctx_t*)parser->data;
     snprintf(ctx->current_value, HTTP_MAX_HEADER_VALUE_LEN, "%.*s", (int)length, at);
     ctx->in_header_field = 0;
     return 0;
@@ -559,7 +555,7 @@ static int on_header_value(llhttp_t* parser, const char* at, size_t length)
 
 static int on_body(llhttp_t* parser, const char* at, size_t length)
 {
-    LlhttpParserContext* ctx = (LlhttpParserContext*)parser->data;
+    llhttp_parser_ctx_t* ctx = (llhttp_parser_ctx_t*)parser->data;
     Http_request_t* req = ctx->req;
 
     /* If this chunk would push us over the RAM cap, abort */
@@ -585,50 +581,15 @@ static int on_body(llhttp_t* parser, const char* at, size_t length)
 
 static int on_method(llhttp_t* parser, const char* at, size_t length)
 {
-    LlhttpParserContext* ctx = (LlhttpParserContext*)parser->data;
+    llhttp_parser_ctx_t* ctx = (llhttp_parser_ctx_t*)parser->data;
     ctx->req->method = parse_http_method(at, length);
     return 0;
 }
 
 static int on_message_complete(llhttp_t* parser)
 {
-    LlhttpParserContext* ctx = (LlhttpParserContext*)parser->data;
+    llhttp_parser_ctx_t* ctx = (llhttp_parser_ctx_t*)parser->data;
     if(!ctx) return 0;
     ctx->req->message_complete = 1;
     return 0;
-}
-
-static http_method_t parse_http_method(const char* at, size_t length)
-{
-    /* Return variable */
-    http_method_t method = HTTP_METHOD_UNKNOWN;
-
-    if(length > HTTP_MAX_METHOD_LEN)
-    {
-        EML_ERROR(LOG_TAG, "HTTP method too long");
-    }
-    else if(length == 3 && strncmp(at, "GET", 3) == 0)
-        method = HTTP_METHOD_GET;
-    else if(length == 4 && strncmp(at, "POST", 4) == 0)
-        method = HTTP_METHOD_POST;
-    else if(length == 3 && strncmp(at, "PUT", 3) == 0)
-        method = HTTP_METHOD_PUT;
-    else if(length == 6 && strncmp(at, "DELETE", 6) == 0)
-        method = HTTP_METHOD_DELETE;
-
-    return method;
-}
-
-static void determine_connection_policy(Http_request_t* req)
-{
-    for(int i = 0; i < req->header_count; ++i)
-    {
-        /* Check for the header Connection */
-        if(strcasecmp(req->header_names[i], "Connection") == 0 &&
-           strcasestr(req->header_values[i], "close"))
-        {
-            req->connection_policy = HTTP_CONNECTION_CLOSE;
-            break;
-        }
-    }
 }

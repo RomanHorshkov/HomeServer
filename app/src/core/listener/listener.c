@@ -181,7 +181,7 @@ static int _init_listening_sockets(const char *port)
     struct addrinfo hints;
     struct addrinfo *ai = NULL;
 
-    if(socket_set_listener_hints(&hints) != STATUS_SUCCESS)
+    if(socket_listener_set_hints(&hints) != STATUS_SUCCESS)
     {
         EML_PERR(LOG_TAG, "listener: hints failed");
         return STATUS_FAILURE;
@@ -208,9 +208,9 @@ static int _init_listening_sockets(const char *port)
             continue;
         }
 
-        if(listener_socket_init(&fd, &cur->ai_family) != STATUS_SUCCESS)
+        if(socket_listener_init(&fd, &cur->ai_family) != STATUS_SUCCESS)
         {
-            EML_PERR(LOG_TAG, "listener: listener_socket_init failed");
+            EML_PERR(LOG_TAG, "listener: socket_listener_init failed");
             close(fd);
             continue;
         }
@@ -229,7 +229,7 @@ static int _init_listening_sockets(const char *port)
             continue;
         }
 
-        _listener.sockets_fds[listener.active_sockets_no++] = fd;
+        _listener.sockets_fds[_listener.active_sockets_no++] = fd;
 
 #ifdef DEBUG_MODE
         char ip_str[INET6_ADDRSTRLEN];
@@ -301,12 +301,6 @@ static int _handle_listen_event(int fd, fd_ctx_t *ctx)
     {
         EML_PERR(LOG_TAG, "accept failed");
         return STATUS_FAILURE;
-    }
-
-    if(client_socket_init(&client_fd) != STATUS_SUCCESS)
-    {
-        EML_PERR(LOG_TAG, "client_socket_init failed");
-        goto fail;
     }
 
     if(worker_dispatch_to_operator(client_fd) != STATUS_SUCCESS)

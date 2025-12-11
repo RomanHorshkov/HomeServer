@@ -24,6 +24,16 @@
  ****************************************************************************
  */
 
+typedef enum
+{
+    WORKER_STATUS_INACTIVE = 0, /* worker is inactive */
+    WORKER_STATUS_ACTIVE = 1,   /* worker is active */
+    WORKER_STATUS_FULL = 2,     /* worker is full */
+    WORKER_STATUS_SHUTDOWN = 3, /* worker to shutdown */
+    WORKER_STATUS_INVALID = 4,  /* max value for worker status */
+} worker_status_t;
+
+
 /****************************************************************************
  * PUBLIC FUNCTIONS DECLARATIONS
  ****************************************************************************

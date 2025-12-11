@@ -28,7 +28,7 @@
 
 #include "emlog.h"
 #include "router.h"          /* router_handle_request */
-#include "server_settings.h" /* HTTP constants */
+#include "config_core.h" /* HTTP constants */
 
 #define LOG_TAG "browser"
 

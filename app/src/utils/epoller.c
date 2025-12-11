@@ -8,7 +8,7 @@
 #include <sys/epoll.h> /* epoll_create1(), epoll_ctl(), epoll_wait(), struct epoll_event */
 #include <unistd.h>
 
-#include "server_settings.h"
+#include "config_core.h"
 #include "emlog.h"
 
 #define LOG_TAG "srv_epoller"

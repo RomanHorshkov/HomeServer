@@ -12,12 +12,27 @@
 
 typedef enum
 {
-    WORKER_STATUS_INACTIVE = 0, /* worker is inactive */
-    WORKER_STATUS_ACTIVE = 1,   /* worker is active */
-    WORKER_STATUS_FULL = 2,     /* worker is full */
-    WORKER_STATUS_SHUTDOWN = 3, /* worker to shutdown */
-    WORKER_STATUS_INVALID = 4,  /* max value for worker status */
-} worker_status_t;
+    /**
+     * @brief Uninitialized: not yet started.
+     */
+    SERVER_STATUS_UNINITIALIZED = 0,
+    /**
+     * @brief Active: ready to receive new clients.
+     */
+    SERVER_STATUS_ACTIVE = 1,
+    /**
+     * @brief Shutdown: shutting down and cleaning up.
+     */
+    SERVER_STATUS_SHUTDOWN = 2,
+    /**
+     * @brief Invalid: max value for server status.
+     */
+    SERVER_STATUS_INVALID = 3,
+    /**
+     * @brief Invalid: max value for operator status.
+     */
+    OPERATOR_STATUS_INVALID = 4,
+} operator_status_t;
 
 typedef enum
 {
@@ -83,16 +98,16 @@ typedef enum
 #define WORKER_MAX_CLIENTS 64U
 
 /* Client short timeout [s]: applied before first activity (initial request) */
-#define WORKER_CLIENT_TIMEOUT_SHORT 5U
+#define WORKER_CLIENT_TIMEOUT_SHORT Seconds(15U)
 
 /* Client long timeout [s]: applied after the first successful activity */
-#define WORKER_CLIENT_TIMEOUT_LONG 30U
+#define WORKER_CLIENT_TIMEOUT_LONG Minutes(1U)
 
 /* Operator timer tick while clients are present [s] */
-#define OPERATOR_TIMER_ACTIVE_SEC 5U
+#define OPERATOR_TIMER_PERIOD_SHORT Seconds(5U)
 
 /* Operator timer tick when idle [s] */
-#define OPERATOR_TIMER_IDLE_SEC 60U
+#define OPERATOR_TIMER_PERIOD_LONG Minutes(5U)
 
 
 

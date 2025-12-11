@@ -8,7 +8,7 @@
 #include <stdint.h>
 #include <stddef.h>
 
-#include "server_settings.h"
+#include "config_core.h"
 
 /****************************************************************************
  * PUBLIC DEFINES
@@ -30,20 +30,20 @@
 //     FD_TYPE_TLS_WRAPPER,
 // } fd_type_e;
 
-typedef struct fd_ctx_s fd_ctx_t;
+typedef struct fd_ctx_t fd_ctx_s;
 
-typedef int (*fd_callback_fn)(int fd, fd_ctx_t *ctx);
+typedef int (*fd_callback_fn)(int fd, fd_ctx_s *ctx);
 
 /**
  * @brief File descriptor context structure.
  */
-struct fd_ctx_s
+typedef struct 
 {
     int fd;                 /* file descriptor */
     void *owner;            /* listener_t*, worker_t*, connection_t* */
     fd_callback_fn handler; /* function to call on event */
     uint32_t events;        /* current mask */
-};
+} fd_ctx_t;
 
 /****************************************************************************
  * PUBLIC STRUCTURED VARIABLES

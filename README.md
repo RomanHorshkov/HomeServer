@@ -60,7 +60,7 @@ Main thread (core)
 ├─ Starts three threads:
 │    ├─ Listener thread
 │    │    • reactor_run() on listen sockets + pipe[0]
-│    │    • On EPOLLIN: accept4(), client_socket_init()
+│    │    • On EPOLLIN: accept4(), socket_client_init()
 │    │    • pipeline_push() + eventfd write → wake worker
 │    │    • Reads worker state from pipe[0] to pause/resume accepts
 │    ├─ Worker thread
@@ -389,7 +389,7 @@ flowchart TD
 
 * Waits on epoll for `EPOLLIN` on listen sockets
 * Accepts new clients using `accept4()`
-* Initializes sockets (`client_socket_init`)
+* Initializes sockets (`socket_client_init`)
 * Pushes new client FDs into `pipeline_t`
 * Reads worker load status updates from `pipe[0]`
 * Pauses accepting if worker is full
@@ -593,7 +593,7 @@ sequenceDiagram
 
   alt Worker is ACTIVE
     Listener->> Listener: accept():client_fd
-    Listener->>Socket_helper: client_socket_init(client_fd) 
+    Listener->>Socket_helper: socket_client_init(client_fd) 
 
     Listener->>Pipeline: pipeline_push(client_fd)
     Pipeline->>Pipeline: spsc_ring_push(client_fd)
