@@ -220,20 +220,45 @@ int http_man_init(llhttp_parser_t *pstate)
     return STATUS_SUCCESS;
 }
 
-int http_man_execute(llhttp_parser_t *pstate, const char *in_buf, size_t len)
+int http_man_execute(llhttp_parser_t *pstate, const char *in_buf, size_t read_bytes)
 {
-    if(!pstate || !in_buf)
+    if(!pstate || !in_buf || read_bytes == 0)
     {
         EML_ERROR(LOG_TAG, "_execute: invalid input");
         return STATUS_FAILURE;
     }
 
-    llhttp_errno_t err = llhttp_execute(&pstate->parser, in_buf, len);
+    /* Suppose coming in ALWAYS the same buffer for the same client, i.e. same parser instance */
+    size_t start_buf_idx = 0;
+
+    /* Check if a previous msg state exists */
+    if(pstate->parser_ctx.parsing && pstate->parser_ctx.buf_used > 0)
+    {
+        /* Start parsing from the last parsed byte */
+        start_buf_idx = pstate->parser_ctx.buf_used;
+    }
+
+    /* mark parsing ongoing */
+    else
+    {
+        pstate->parser_ctx.parsing = 1u;
+    }
+
+    llhttp_errno_t err = llhttp_execute(&pstate->parser, in_buf + start_buf_idx, read_bytes);
     if(err != HPE_OK)
     {
         EML_ERROR(LOG_TAG, "_execute error: %s for %s", llhttp_errno_name(err), llhttp_get_error_reason(&pstate->parser));
         return STATUS_FAILURE;
     }
+
+    /* Update buffer used for next parsing */
+    pstate->parser_ctx.buf_used += read_bytes;
+
+#ifdef MODE_DEBUG
+    EML_DBG(LOG_TAG, "_execute: parsed %zu bytes, total used %zu bytes",
+            read_bytes, pstate->parser_ctx.buf_used);
+#endif
+
     return STATUS_SUCCESS;
 }
 
@@ -274,6 +299,8 @@ static int on_message_begin(llhttp_t *parser)
     sv_reset(&ctx->current_url);
     sv_reset(&ctx->current_body);
     ctx->in_header_field = 0;
+
+    /* DO NOT call llhttp_reset(parser) here */
 
     return HPE_OK;
 }
@@ -352,14 +379,10 @@ static int on_headers_complete(llhttp_t *parser)
         return HPE_USER;
     }
 
-    /*
-    Note: storing method as a view into llhttp’s static string, not
-    into the client buffer. That’s fine and IMO nicer.
-    */
-    http_request_t *req = &ctx->req;
-
     /* Commit last header if pending */
     _commit_header_if_ready(ctx);
+
+    http_request_t *req = &ctx->req;
 
     /* set URL view into request path */
     req->path = ctx->current_url;
@@ -385,6 +408,14 @@ static int on_body(llhttp_t *parser, const char *at, size_t length)
         return HPE_USER;
     }
 
+    /* If sv_append uses a fixed buffer, you probably track that inside it.
+       But at least check the logical length to avoid ridiculous bodies. */
+    if(ctx->current_body.n + length > HTTP_MAX_BODY_RAM_CAPACITY)
+    {
+        EML_ERROR(LOG_TAG, "Body exceeds max capacity while parsing");
+        return HPE_INTERNAL; /* abort parsing immediately */
+    }
+
     /* Append or set new */
     PARSER_SAVE(ctx->current_body, at, length);
 
@@ -401,16 +432,54 @@ static int on_message_complete(llhttp_t* parser)
         return HPE_USER;
     }
 
+    /* Finalize body view before sanitization! */
+    ctx->req.body = ctx->current_body;
+
     /* Sanitize parsed HTTP request */
     if(sanitize_http_request(&ctx->req) != STATUS_SUCCESS)
     {
         EML_PERR(LOG_TAG, "sanitize_http_request failed");
-        return HPE_INTERNAL;
+        return HPE_USER;
     }
 
-    /* Finalize body view */
-    ctx->req.body = ctx->current_body;
+    /* Mark message as complete */
     ctx->req.message_complete = 1u;
+
+    /* mark parsing complete */
+    ctx->parsing = 0u;
+    ctx->buf_used = 0u;
+
+    
+#ifdef MODE_DEBUG
+    EML_DBG(LOG_TAG,
+             "parsed complete request: METHOD=%s PATH=%.*s headers=%u body_len=%zu",
+             http_method_to_string(ctx->req.method),
+             (int)ctx->req.path.n, ctx->req.path.p ? ctx->req.path.p : "",
+             ctx->req.header_count,
+             ctx->req.body.n);
+
+    /* print loudly all the content of the http parsed request! */
+    for (uint8_t i = 0; i < ctx->req.header_count; ++i)
+    {
+        EML_DBG(LOG_TAG,
+                 "header[%u]: %.*s: %.*s",
+                 i,
+                 (int)ctx->req.header_names[i].n,
+                 ctx->req.header_names[i].p ? ctx->req.header_names[i].p : "",
+                 (int)ctx->req.header_values[i].n,
+                 ctx->req.header_values[i].p ? ctx->req.header_values[i].p : "");
+    }
+
+    /* print body if any */
+    if(ctx->req.body.n > 0 && ctx->req.body.p)
+    {
+        EML_DBG(LOG_TAG,
+                 "body (%zu bytes): %.*s",
+                 ctx->req.body.n,
+                 (int)ctx->req.body.n,
+                 ctx->req.body.p);
+    }
+#endif
 
     return HPE_OK;
 }

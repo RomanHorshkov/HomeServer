@@ -7,6 +7,7 @@
 
 #include "config_core.h"
 #include "reactor.h" /* for fd_ctx_t */
+#include "http_manager.h"
 
 typedef struct llhttp_parser_t; // believe me it exists
 
@@ -28,7 +29,6 @@ typedef struct
  * @return STATUS_SUCCESS to keep connection; STATUS_FAILURE to drop it.
  */
 int client_handle(client_t *slot);
-
 
 /**
  * @brief Shutdown and cleanup client connection.

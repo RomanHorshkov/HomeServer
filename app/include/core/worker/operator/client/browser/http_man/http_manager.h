@@ -50,6 +50,9 @@ typedef struct
     sv_t current_body;    /* body sl      ice */
 
     int  in_header_field; /* 1 if we are currently appending to field, 0 for value */
+
+    uint8_t parsing;      /* 1 if parsing is ongoing */
+    size_t buf_used;      /* bytes currently stored in cli->recv_buf for this message */
 } llhttp_parser_ctx_t;
 
 typedef struct

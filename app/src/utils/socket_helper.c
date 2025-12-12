@@ -226,6 +226,7 @@ retry:
         else
         {
             EML_ERROR(LOG_TAG, "socket_read_nonblocking: read() interrupted too many times");
+            return STATUS_FAILURE;
         }
     }
 } // retry
