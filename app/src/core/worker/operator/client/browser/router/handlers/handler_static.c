@@ -14,6 +14,7 @@
  */
 #include "handlers_int.h"
 #include "emlog.h"
+#include <string.h>
 
 #define LOG_TAG "handler_static"
 
@@ -66,36 +67,49 @@ int handler_static(const Http_request_t *request, HttpResponse *response)
     /* Validate input pointers */
     if(request != NULL && response != NULL)
     {
+        sv_t rel_sv = request->path;
         /* Map "/" (home) to the SPA shell at views/index.html */
-        if(request->path[0] == '/' && request->path[1] == '\0')
+        if(rel_sv.p && rel_sv.n == 1 && rel_sv.p[0] == '/')
         {
-            /* Default home page in server settings */
             rel_path = HOME_PAGE;
         }
 
         /* Strip leading '/' from other absolute paths */
-        else if(request->path[0] == '/' && request->path[1] != '\0')
+        else if(rel_sv.p && rel_sv.n >= 2 && rel_sv.p[0] == '/')
         {
-            rel_path = request->path + 1;
+            rel_sv.p += 1;
+            rel_sv.n -= 1;
         }
 
         /* Strip leading "./" if present */
-        else if(request->path[0] == '.' && request->path[1] == '/')
+        else if(rel_sv.p && rel_sv.n >= 2 && rel_sv.p[0] == '.' && rel_sv.p[1] == '/')
         {
-            rel_path = request->path + 2;
+            rel_sv.p += 2;
+            rel_sv.n -= 2;
         }
 
         /* Use the path as-is otherwise */
-        else
+        else if(!rel_sv.p)
         {
-            rel_path = request->path;
+            rel_sv.p = "";
+            rel_sv.n = 0;
         }
 
         /* Ensure the relative path fits into our buffer */
-        if(strlen(rel_path) + 1 <= sizeof(requested_file_path))
+        size_t rel_len = rel_path ? strlen(rel_path) : rel_sv.n;
+        if(rel_len + 1 <= sizeof(requested_file_path))
         {
             /* Copy the relative path into requested_file_path */
-            snprintf(requested_file_path, sizeof(requested_file_path), "%s", rel_path);
+            if(rel_path)
+            {
+                memcpy(requested_file_path, rel_path, rel_len);
+            }
+            else
+            {
+                memcpy(requested_file_path, rel_sv.p, rel_len);
+            }
+            requested_file_path[rel_len] = '\0';
+            rel_path = requested_file_path;
 
             /* Open the file in binary mode */
             f = fopen(requested_file_path, "rb");
@@ -131,18 +145,18 @@ int handler_static(const Http_request_t *request, HttpResponse *response)
             }
             else
             {
-#ifdef DEBUG_MODE
+#ifdef MODE_DEBUG
                 EML_ERROR(LOG_TAG, "Failed to open file %s", requested_file_path);
-#endif /* DEBUG_MODE */
+#endif /* MODE_DEBUG */
             }
         }
         else
         {
-#ifdef DEBUG_MODE
+#ifdef MODE_DEBUG
             EML_ERROR(LOG_TAG,
                       "Requested path length does not fit into buffer (len=%zu)",
                       strlen(rel_path));
-#endif /* DEBUG_MODE */
+#endif /* MODE_DEBUG */
         }
     }
 

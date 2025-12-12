@@ -16,6 +16,14 @@
 
 #define LOG_TAG "handler_db"
 
+static inline int _sv_starts_with_str(const sv_t *sv, const char *prefix)
+{
+    if(!sv || !sv->p || !prefix) return 0;
+    size_t plen = strlen(prefix);
+    if(sv->n < plen) return 0;
+    return memcmp(sv->p, prefix, plen) == 0;
+}
+
 /****************************************************************************
  * PRIVATE HELPERS
  ****************************************************************************/
@@ -75,33 +83,37 @@ static inline int db_request_init_from_http(const Http_request_t* in, uint64_t n
     out->remote_port_be = in->remote_port_be;
     out->thread_id = in->thread_id;
     out->method = in->method;
-    const char* path = in->path;
+    sv_t path = in->path;
     static const char prefix[] = "/api/app/";
-    if(strncmp(path, prefix, sizeof(prefix) - 1) == 0)
+    if(_sv_starts_with_str(&path, prefix))
     {
-        path += sizeof(prefix) - 1;
+        path.p += sizeof(prefix) - 1;
+        path.n -= (sizeof(prefix) - 1);
     }
-    else if(strncmp(path, "/api/app", strlen("/api/app")) == 0)
+    else if(_sv_starts_with_str(&path, "/api/app"))
     {
-        path += strlen("/api/app");
+        const size_t skip = strlen("/api/app");
+        path.p += skip;
+        path.n -= skip;
     }
-    if(path[0] == '/')
+    if(path.p && path.n > 0 && path.p[0] == '/')
     {
-        path++;
+        path.p++;
+        path.n--;
     }
-    out->path = sv_c(path, HTTP_MAX_PATH_LEN);
+    out->path = path;
 
     int hc = (in->header_count < HTTP_MAX_HEADERS_IN) ? in->header_count : HTTP_MAX_HEADERS_IN;
     for(int i = 0; i < hc; ++i)
     {
-        headers_out[i].key = sv_c(in->header_names[i], HTTP_MAX_HEADER_NAME_LEN);
-        headers_out[i].value = sv_c(in->header_values[i], HTTP_MAX_HEADER_VALUE_LEN);
+        headers_out[i].key = in->header_names[i];
+        headers_out[i].value = in->header_values[i];
     }
     out->headers = headers_out;
     out->header_count = hc;
 
-    out->body = in->body;
-    out->body_len = in->body_len;
+    out->body = in->body.p;
+    out->body_len = in->body.n;
 
     return 0;
 }
@@ -147,9 +159,9 @@ static void http_response_from_db(HttpResponse* http_res, DB_response_t* db_res)
                                                                 : HTTP_MAX_HEADERS_OUT;
         for(int i = 0; i < limit; ++i)
         {
-            copy_sv_to_buf(&db_res->headers[i].HDR_KEY, http_res->header_names[i],
+            copy_sv_to_buf(&db_res->headers[i].key, http_res->header_names[i],
                            HTTP_MAX_HEADER_NAME_LEN);
-            copy_sv_to_buf(&db_res->headers[i].HDR_VAL, http_res->header_values[i],
+            copy_sv_to_buf(&db_res->headers[i].value, http_res->header_values[i],
                            HTTP_MAX_HEADER_VALUE_LEN);
             http_res->header_count++;
         }
@@ -176,9 +188,9 @@ static void cleanup_db_response(DB_response_t* db_res)
         for(size_t i = 0; i < (size_t)db_res->header_count; ++i)
         {
             const db_hdr_kv_t* h = &db_res->headers[i];
-            if(h->HDR_KEY.n == 10 && strncasecmp(h->HDR_KEY.p, "Set-Cookie", 10) == 0)
+            if(h->key.n == 10 && strncasecmp(h->key.p, "Set-Cookie", 10) == 0)
             {
-                free_cstr_p(h->HDR_VAL.p);
+                free_cstr_p(h->value.p);
             }
         }
         free(db_res->headers);

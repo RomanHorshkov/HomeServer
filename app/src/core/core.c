@@ -28,6 +28,7 @@
 #endif /* _GNU_SOURCE */
 
 #include <errno.h>
+#include <limits.h>
 #include <netdb.h>      /* socklen_t */
 #include <pthread.h>    /* pthread_create(), pthread_join() */
 #include <pwd.h>        /* pwd */
@@ -96,7 +97,7 @@ static void _core_logger_bootstrap(void);
 
 static uint8_t _core_detect_cpu_count(void);
 
-#ifdef DEBUG_MODE
+#ifdef MODE_DEBUG
 static void _p_dbg_info_init(void);
 #endif
 
@@ -107,9 +108,9 @@ static void _p_dbg_info_init(void);
 
 int server_init(const char *port)
 {
-#ifdef DEBUG_MODE
+#ifdef MODE_DEBUG
     _p_dbg_info_init();
-#endif /* DEBUG_MODE */
+#endif /* MODE_DEBUG */
     
     _core_logger_bootstrap();
 
@@ -161,7 +162,7 @@ static void _core_logger_bootstrap(void)
     static bool initialized = false;
     if(initialized) return;
 
-#ifdef DEBUG_MODE
+#ifdef MODE_DEBUG
     emlog_init(EML_LEVEL_DBG, true);
     emlog_set_writev_flush(true);
     EML_INFO(LOG_TAG, "Debug logger active; stdout/stderr sink");
@@ -195,7 +196,7 @@ static uint8_t _core_detect_cpu_count(void)
     return (uint8_t)cpus;
 }
 
-#ifdef DEBUG_MODE
+#ifdef MODE_DEBUG
 static void _p_dbg_info_init(void)
 {
     
@@ -214,7 +215,7 @@ static void _p_dbg_info_init(void)
     }
 
     /* Print current working directory */
-    char cwd[HTTP_MAX_PATH_LEN];
+    char cwd[PATH_MAX];
     if(getcwd(cwd, sizeof(cwd)) != NULL)
         printf(LOG_TAG "cwd: %s\n", cwd);
 

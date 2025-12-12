@@ -102,9 +102,9 @@ int reactor_init(reactor_t *reactor_ptr, size_t max_events)
         goto fail;
     }
 
-#ifdef DEBUG_MODE
+#ifdef MODE_DEBUG
     EML_DBG(LOG_TAG, "_init: reactor initialized successfully");
-#endif /* DEBUG_MODE */
+#endif /* MODE_DEBUG */
 
     return STATUS_SUCCESS;
 
@@ -124,7 +124,7 @@ int reactor_add_in(const reactor_t *reactor_ptr, const int fd, fd_ctx_t *ctx)
     return _manage_fd(reactor_ptr, fd, EPOLL_CTL_ADD, EPOLLIN, ctx);
 }
 
-int reactor_add_in_client(const reactor_t *reactor_ptr, int fd, void *ctx)
+int reactor_add_in_client(const reactor_t *reactor_ptr, int fd, fd_ctx_t *ctx)
 {
     /* Result variable */
     int res = STATUS_FAILURE;
@@ -132,6 +132,7 @@ int reactor_add_in_client(const reactor_t *reactor_ptr, int fd, void *ctx)
     if(!reactor_ptr || fd < 0 || !ctx)
     {
         EML_ERROR(LOG_TAG, "_add_in_client: invalid input");
+        return STATUS_FAILURE;
     }
 
     res = _manage_fd(reactor_ptr, fd, EPOLL_CTL_ADD,
@@ -214,15 +215,12 @@ int reactor_run(reactor_t *reactor_ptr, int *out_fd)
         {
             /* signal the fd to close */
             *out_fd = ctx->fd;
-#ifdef DEBUG_MODE
+#ifdef MODE_DEBUG
             EML_DBG(LOG_TAG, "_run: epoll fd %d to close, continue.", ctx->fd);
 #endif
             goto fail;
         }
 
-#ifdef DEBUG_MODE
-        EML_DBG(LOG_TAG, "_run: calling fd %d handler", ctx->fd);
-#endif
         /* Call the handler */
         res = ctx->handler(ctx->fd, ctx);
 
@@ -233,15 +231,12 @@ fail:
     return STATUS_FAILURE;
 }
 
-void reactor_shutdown(reactor_t *reactor_ptr)
+int reactor_shutdown(reactor_t *reactor_ptr)
 {
-    /* Result variable */
-    int res = STATUS_FAILURE;
-
     if(!reactor_ptr)
     {
         EML_ERROR(LOG_TAG, "_shutdown: invalid input");
-        return;
+        return STATUS_FAILURE;
     }
 
     /* Close epoll instance */
@@ -255,6 +250,8 @@ void reactor_shutdown(reactor_t *reactor_ptr)
     {
         free(reactor_ptr->events);
     }
+
+    return STATUS_SUCCESS;
 }
 
 /****************************************************************************

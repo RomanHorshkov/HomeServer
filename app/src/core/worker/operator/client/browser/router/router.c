@@ -33,6 +33,13 @@
 
 #define LOG_TAG "router"
 
+static int sv_starts_with(const sv_t *sv, const char *prefix, size_t prefix_len)
+{
+    if(!sv || !sv->p || !prefix) return 0;
+    if(sv->n < prefix_len) return 0;
+    return memcmp(sv->p, prefix, prefix_len) == 0;
+}
+
 /****************************************************************************
  * PRIVATE STRUCTURED VARIABLES
  ****************************************************************************
@@ -90,22 +97,25 @@ int router_handle_request(const http_request_t *request, HttpResponse *response)
     }
 
     /* Try API routes first */
-    else if(strncmp(request->path, "/api/", 5) == 0)
+    else if(sv_starts_with(&request->path, "/api/", 5))
     {
-#ifdef DEBUG_MODE
-        EML_INFO(LOG_TAG, "[router] API request detected %s, searching handler", request->path);
+#ifdef MODE_DEBUG
+        EML_INFO(LOG_TAG, "[router] API request detected %.*s, searching handler",
+                 (int)request->path.n, request->path.p ? request->path.p : "");
 #endif
         res = call_api_handler(request, response);
     }
 
     else
     {
-        EML_ERROR(LOG_TAG, "[router] Fallback to / from %s", request->path);
+        EML_ERROR(LOG_TAG, "[router] Fallback to / from %.*s",
+                  (int)request->path.n, request->path.p ? request->path.p : "");
 
         /* SPA fallback (serve homepage/entrypoint) */
         Http_request_t *copy_req = calloc(1, sizeof(Http_request_t));
         *copy_req = *request;  // shallow copy all fields
-        strncpy(copy_req->path, "/", sizeof(copy_req->path));
+        copy_req->path.p = "/";
+        copy_req->path.n = 1;
         res = handler_static(copy_req, response);
 
         free(copy_req);
@@ -142,14 +152,19 @@ static int call_api_handler(const Http_request_t *request, HttpResponse *respons
     for(size_t i = 0; i < count; ++i)
     {
         /* Check if any table entry corresponds to request */
-        if(strncmp(request->path, table[i].path, table[i].path_len) == 0)
+        if(sv_starts_with(&request->path, table[i].path, table[i].path_len))
         {
-            const char next = request->path[table[i].path_len];
+            char next = '\0';
+            if(request->path.p && request->path.n > table[i].path_len)
+            {
+                next = request->path.p[table[i].path_len];
+            }
             /* Check if next char is a / or \0, to avoid /api/whoami123 as ok */
             if(next == '\0' || next == '/')
             {
-#ifdef DEBUG_MODE
-                EML_INFO(LOG_TAG, "[router] api path %s, table path %s", request->path, table[i].path);
+#ifdef MODE_DEBUG
+                EML_INFO(LOG_TAG, "[router] api path %.*s, table path %s",
+                         (int)request->path.n, request->path.p ? request->path.p : "", table[i].path);
 #endif
                 res = table[i].handler(request, response);
             }

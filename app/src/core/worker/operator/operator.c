@@ -13,6 +13,7 @@
 #include "operator.h"
 
 #include <errno.h>
+#include <pthread.h>
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
@@ -26,6 +27,7 @@
 #include "spsc_ring.h"
 #include "socket_helper.h"
 #include "time_helper.h"
+#include "worker.h"
 
 /****************************************************************************
  * PRIVATE DEFINES
@@ -91,6 +93,7 @@ static int _operator_add_client(operator_t *op, int client_fd);
  */
 static int _operator_remove_client_by_fd(operator_t *op, int client_fd);
 
+static void _operator_state_update(operator_t *op);
 static void _operator_status_update(operator_t *op);
 
 /**
@@ -172,7 +175,7 @@ int operator_init(operator_t *op, uint8_t id)
     }
 
     /* Set operator status to ACTIVE */
-    op->status = WORKER_STATUS_ACTIVE;
+    op->status = OPERATOR_STATUS_ACTIVE;
 
     return STATUS_SUCCESS;
 
@@ -215,7 +218,10 @@ void *operator_thread(void *arg)
             /* Check if reactor signaled to close the fd */
             if(out_fd != -1)
             {
-                EML_INFO(LOG_TAG, "[op %d] reactor requested close for fd %d", op->id, out_fd);
+#ifdef MODE_DEBUG
+                EML_DBG(LOG_TAG, "[op %d] reactor requested close for fd %d", op->id, out_fd);
+#endif
+                /* shuts down the client and removes from operator's reactor */
                 _operator_remove_client_by_fd(op, out_fd);
                 continue;
             }
@@ -304,10 +310,10 @@ static int _operator_handle_wakeup_event(int fd, fd_ctx_t *ctx)
             return STATUS_FAILURE;
         }
         
-#ifdef DEBUG_MODE
-        EML_DBG(LOG_TAG, "[op %d tid %lu] wakeup on fd %d",
-                op->id, (unsigned long)pthread_self(), client_fd);
-#endif /* DEBUG_MODE */
+#ifdef MODE_DEBUG
+        EML_DBG(LOG_TAG, "[op %d] wakeup, adding new client on fd %d",
+                op->id, client_fd);
+#endif /* MODE_DEBUG */
         if(_operator_add_client(op, client_fd) != STATUS_SUCCESS)
         {
             EML_ERROR(LOG_TAG, "[op %d] failed to add client %d, client closed.", op->id, client_fd);
@@ -321,16 +327,14 @@ static int _operator_handle_wakeup_event(int fd, fd_ctx_t *ctx)
 static int _operator_handle_client_event(int fd, fd_ctx_t *ctx)
 {
     operator_t *op = NULL;
-#ifdef DEBUG_MODE
-    op = ctx ? (operator_t *)ctx->owner : NULL;
-    EML_DBG(LOG_TAG, "[op %d tid %lu] client event fd %d, calling client_handle",
-            op ? op->id : -1, (unsigned long)pthread_self(), fd);
-#endif /* DEBUG_MODE */
     if(!ctx || !ctx->owner)
     {
         return STATUS_FAILURE;
     }
     op = (operator_t *)ctx->owner;
+#ifdef MODE_DEBUG
+    EML_DBG(LOG_TAG, "[op %d] handle client event on fd %d", op->id, fd);
+#endif /* MODE_DEBUG */
 
     /* Find the client slot */
     client_t *cli = NULL;
@@ -349,8 +353,8 @@ static int _operator_handle_client_event(int fd, fd_ctx_t *ctx)
         return STATUS_FAILURE;
     }
 
-    int res = client_handle(cli);
-    if(res != STATUS_SUCCESS)
+    /* Handle the client */
+    if(client_handle(cli) != STATUS_SUCCESS)
     {
         _operator_remove_client_by_fd(op, cli->ctx.fd);
     }
@@ -433,10 +437,11 @@ static int _operator_add_client(operator_t *op, int client_fd)
     /* Increase this operator's active client count by 1 */
     atomic_fetch_add_explicit(&op->active_clients, 1U, memory_order_relaxed);
 
-#ifdef DEBUG_MODE
-    EML_DBG(LOG_TAG, "[op %d tid %lu] added client fd %d (active=%zu)",
-            op->id, (unsigned long)pthread_self(), client_fd, op->active_clients);
-#endif /* DEBUG_MODE */
+#ifdef MODE_DEBUG
+    unsigned active_clients = atomic_load_explicit(&op->active_clients, memory_order_relaxed);
+    EML_DBG(LOG_TAG, "[op %u] added client fd %d (active=%u)",
+            op->id, client_fd, active_clients);
+#endif /* MODE_DEBUG */
 
     /* Update operator's state */
     _operator_state_update(op);
@@ -457,20 +462,31 @@ static int _operator_remove_client_by_idx(operator_t *op, unsigned int idx)
 
     /* Decrease this operator's active client count by 1 */
     atomic_fetch_sub_explicit(&op->active_clients, 1U, memory_order_relaxed);
+
+    return STATUS_SUCCESS;
 }
 
 static int _operator_remove_client_by_fd(operator_t *op, int client_fd)
 {
     /* find client by fd */
-    unsigned int idx = 0;
-    for(unsigned int cli_idx = 0; cli_idx < WORKER_MAX_CLIENTS; ++cli_idx)
+    unsigned int idx;
+    for(idx = 0; idx < WORKER_MAX_CLIENTS; ++idx)
     {
         /* continue if client slot empty */
-        if(!op->clients[cli_idx].is_busy) continue;
-        
-        if(op->clients[cli_idx].ctx.fd == client_fd)
+        if(!op->clients[idx].is_busy)
         {
-            idx = cli_idx;
+            if(idx >= WORKER_MAX_CLIENTS - 1)
+            {
+                EML_ERROR(LOG_TAG, "[op %d] remove client: no client slot found for fd %d",
+                          op->id, client_fd);
+                return STATUS_FAILURE;
+            }
+
+            continue;
+        }
+        
+        if(op->clients[idx].ctx.fd == client_fd)
+        {
             break;
         }
     }
@@ -487,9 +503,11 @@ static int _operator_remove_client_by_fd(operator_t *op, int client_fd)
     /* Decrease this operator's active client count by 1 */
     atomic_fetch_sub_explicit(&op->active_clients, 1U, memory_order_relaxed);
 
-#ifdef DEBUG_MODE
-    EML_DBG(LOG_TAG, "[op %d] removed client fd %d (active=%zu)", op->id, client_fd, op->active_clients);
-#endif /* DEBUG_MODE */
+
+#ifdef MODE_DEBUG
+    unsigned active_clients = atomic_load_explicit(&op->active_clients, memory_order_relaxed);
+    EML_DBG(LOG_TAG, "[op %u] removed client fd %d (active=%u)", op->id, client_fd, active_clients);
+#endif /* MODE_DEBUG */
 
     _operator_state_update(op);
 
@@ -586,17 +604,17 @@ static void _operator_status_update(operator_t *op)
     if(active_clients >= WORKER_MAX_CLIENTS && op->status != OPERATOR_STATUS_FULL)
     {
         op->status = OPERATOR_STATUS_FULL;
-#ifdef DEBUG_MODE
+#ifdef MODE_DEBUG
         EML_DBG(LOG_TAG, "[op %d] status set to FULL", op->id);
-#endif /* DEBUG_MODE */
+#endif /* MODE_DEBUG */
     }
 
     if(active_clients < WORKER_MAX_CLIENTS && op->status != OPERATOR_STATUS_ACTIVE)
     {
         op->status = OPERATOR_STATUS_ACTIVE;
-#ifdef DEBUG_MODE
+#ifdef MODE_DEBUG
         EML_DBG(LOG_TAG, "[op %d] status set to ACTIVE", op->id);
-#endif /* DEBUG_MODE */
+#endif /* MODE_DEBUG */
     }
 }
 
@@ -611,18 +629,18 @@ static void _operator_timer_update(operator_t *op)
     if(active_clients > 0 && op->timer_period != OPERATOR_TIMER_PERIOD_SHORT)
     {
         _operator_set_timer(op, OPERATOR_TIMER_PERIOD_SHORT);
-#ifdef DEBUG_MODE
+#ifdef MODE_DEBUG
         EML_DBG(LOG_TAG, "[op %d] switched timer to short period", op->id);
-#endif /* DEBUG_MODE */
+#endif /* MODE_DEBUG */
     }
 
     /* For absent clients and short period, set period to long */
     if(active_clients == 0 && op->timer_period != OPERATOR_TIMER_PERIOD_LONG)
     {
         _operator_set_timer(op, OPERATOR_TIMER_PERIOD_LONG);
-#ifdef DEBUG_MODE
+#ifdef MODE_DEBUG
         EML_DBG(LOG_TAG, "[op %d] switched timer to long period", op->id);
-#endif /* DEBUG_MODE */
+#endif /* MODE_DEBUG */
     }
 }
 
@@ -637,11 +655,10 @@ static void _clean_clients(operator_t *op)
                                                    : WORKER_CLIENT_TIMEOUT_LONG;
         if((now - op->clients[cli_idx].last_activity) > timeout)
         {
-#ifdef DEBUG_MODE
+#ifdef MODE_DEBUG
             EML_DBG(LOG_TAG, "[op %d] timeout closing idle fd %d (last=%u, now=%u, to=%u)",
-                    op->id, op->clients[cli_idx].fd, op->clients[cli_idx].last_activity, now, timeout);
+                    op->id, op->clients[cli_idx].ctx.fd, op->clients[cli_idx].last_activity, now, timeout);
 #endif
-            int fd = op->clients[cli_idx].ctx.fd;
             _operator_remove_client_by_idx(op, cli_idx);
             continue;
         }

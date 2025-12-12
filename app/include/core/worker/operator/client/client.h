@@ -9,8 +9,6 @@
 #include "reactor.h" /* for fd_ctx_t */
 #include "http_manager.h"
 
-typedef struct llhttp_parser_t; // believe me it exists
-
 /**
  * @brief Per‑client state owned by an operator thread.
  */

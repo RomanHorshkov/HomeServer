@@ -27,6 +27,18 @@
 
 #define LOG_TAG "handler_whoami"
 
+static void _sv_to_cstr(char *dst, size_t cap, const sv_t *sv)
+{
+    if(!dst || cap == 0) return;
+    size_t len = 0;
+    if(sv && sv->p && sv->n > 0)
+    {
+        len = sv->n < (cap - 1) ? sv->n : (cap - 1);
+        memcpy(dst, sv->p, len);
+    }
+    dst[len] = '\0';
+}
+
 /****************************************************************************
  * PRIVATE DEFINES
  ****************************************************************************
@@ -95,16 +107,22 @@ int handler_whoami(const Http_request_t *req, HttpResponse *res)
     yyjson_mut_val *root = yyjson_mut_obj(doc);
     yyjson_mut_doc_set_root(doc, root);
 
-    yyjson_mut_obj_add_str(doc, root, "path", req->path);
+    char path_buf[HTTP_MAX_PATH_LEN];
+    _sv_to_cstr(path_buf, sizeof path_buf, &req->path);
+    yyjson_mut_obj_add_str(doc, root, "path", path_buf);
     yyjson_mut_obj_add_str(doc, root, "contract_version", CONTRACT_VERSION);
     yyjson_mut_obj_add_str(doc, root, "server_time", iso_time);
     yyjson_mut_obj_add_str(doc, root, "method", http_method_to_string(req->method));
 
     yyjson_mut_val *hdrs = yyjson_mut_obj(doc);
     yyjson_mut_obj_add_val(doc, root, "headers", hdrs);
+    char header_name_buf[HTTP_MAX_HEADER_NAME_LEN];
+    char header_value_buf[HTTP_MAX_HEADER_VALUE_LEN];
     for(int i = 0; i < req->header_count; ++i)
     {
-        yyjson_mut_obj_add_str(doc, hdrs, req->header_names[i], req->header_values[i]);
+        _sv_to_cstr(header_name_buf, sizeof header_name_buf, &req->header_names[i]);
+        _sv_to_cstr(header_value_buf, sizeof header_value_buf, &req->header_values[i]);
+        yyjson_mut_obj_add_str(doc, hdrs, header_name_buf, header_value_buf);
     }
 
     size_t body_len = 0;

@@ -12,6 +12,8 @@
  */
 
 #include <stdint.h> /* int64_t, int32_t */
+#include <stddef.h>
+#include <sys/types.h> /* ssize_t */
 
 /* Forward declarations: */
 struct addrinfo;
@@ -103,6 +105,6 @@ int socket_listener_init(const int *listen_fd, const int32_t *ai_family);
 int socket_client_init(const int *client_fd);
 
 
-int socket_read_nonblocking(int fd, void *buf, size_t count);
+ssize_t socket_read_nonblocking(int fd, void *buf, size_t count);
 
 #endif /* SERVER_SOCKET_HELPER_H */

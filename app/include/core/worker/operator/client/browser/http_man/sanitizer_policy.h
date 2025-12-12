@@ -155,29 +155,21 @@ static const policy_table_t char_policy_http_header_value = {
 #define POLICY_CHAR_OK(table, ch) \
     (((table)[POLICY_IDX((unsigned char)(ch))] & POLICY_MASK((unsigned char)(ch))) != 0u)
 
-/*
- * Core check macro:
- *   - Walks the buffer
- *   - For each byte, checks the corresponding policy bit
- *   - Returns 1 if all allowed, 0 if any forbidden
- *
- * GCC/Clang statement expression so we can use it inside an if().
- */
-#define SANITIZER_POLICY_CHECK(policy_tbl, buf, len)                   \
-    ({                                                                 \
-        const unsigned char *san_p_ = (const unsigned char *)(buf);    \
-        size_t               san_n_ = (len);                           \
-        int                  san_ok_ = 1;                              \
-        for(size_t san_i_ = 0; san_i_ < san_n_; ++san_i_)              \
-        {                                                              \
-            unsigned char san_c_ = san_p_[san_i_];                     \
-            if (!POLICY_CHAR_OK((policy_tbl), san_c_)) {               \
-                san_ok_ = 0;                                           \
-                break;                                                 \
-            }                                                          \
-        }                                                              \
-        san_ok_;                                                       \
-    })
+static inline int sanitizer_policy_check(const policy_table_t tbl, const void *buf, size_t len)
+{
+    const unsigned char *san_p = (const unsigned char *)buf;
+    for(size_t san_i = 0; san_i < len; ++san_i)
+    {
+        if(!POLICY_CHAR_OK(tbl, san_p[san_i]))
+        {
+            return 0;
+        }
+    }
+    return 1;
+}
+
+#define SANITIZER_POLICY_CHECK(policy_tbl, buf, len) \
+    sanitizer_policy_check((policy_tbl), (buf), (len))
 
 /* User-facing macros, specific policies. */
 
