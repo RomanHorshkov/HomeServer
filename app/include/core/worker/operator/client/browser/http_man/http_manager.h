@@ -83,7 +83,7 @@ typedef struct
     uint32_t remote_ip_be;                  /* peer IPv4 (network order), optional */
     uint16_t remote_port_be;                /* peer port (network order), optional */
     uint8_t header_count;                   /* Number of headers parsed */
-    sv_t method;                            /* HTTP method (GET, POST, etc.) */
+    http_method_t method;                   /* HTTP method (GET, POST, etc.) */
     sv_t path;                              /* Request path */
     sv_t header_names[HTTP_MAX_HEADERS_IN]; /* Header names */
     sv_t header_values[HTTP_MAX_HEADERS_IN];/* Header values */
@@ -104,7 +104,7 @@ typedef struct
     sv_t current_field;   /* header field being accumulated */
     sv_t current_value;   /* header value being accumulated */
     sv_t current_url;     /* request-target (path+query etc.) */
-    sv_t current_body;    /* body slice */
+    sv_t current_body;    /* body sl      ice */
 
     int  in_header_field; /* 1 if we are currently appending to field, 0 for value */
 } llhttp_parser_ctx_t;
@@ -170,6 +170,18 @@ static inline const char* http_method_to_string(http_method_t method)
             return "DELETE";
         default:
             return "UNKNOWN";
+    }
+}
+
+static inline http_method_t http_method_from_llhttp_method(llhttp_method_t m)
+{
+    switch (m)
+    {
+        case HTTP_GET:    return HTTP_METHOD_GET;
+        case HTTP_POST:   return HTTP_METHOD_POST;
+        case HTTP_PUT:    return HTTP_METHOD_PUT;
+        case HTTP_DELETE: return HTTP_METHOD_DELETE;
+        default:          return HTTP_METHOD_UNKNOWN;
     }
 }
 
