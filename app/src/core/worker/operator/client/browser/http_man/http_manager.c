@@ -24,13 +24,9 @@
 
 #include "http_manager.h"
 
-#include <ctype.h>
-#include <errno.h>
-#include <stdio.h>
 #include <stdlib.h>  // malloc(), free()
 
-#include "llhttp.h"
-#include "emlog.h"
+#include "sanitizer.h"
 
 /****************************************************************************
  * PRIVATE DEFINES
@@ -38,6 +34,17 @@
  */
 
 #define LOG_TAG "http_man"
+
+#define PARSER_CTX(parser)  ((llhttp_parser_ctx_t *)((parser)->data))
+
+
+/**
+ * @brief Append to same sv if already present, i.e. input coming in chunks
+ * otherwise set new.
+ */
+#define PARSER_SAVE(ctx_sv, at, length) \
+    do { if(!(ctx_sv).p) sv_set(&(ctx_sv), at, length); \
+    else sv_append(&(ctx_sv), at, length); } while(0)
 
 /****************************************************************************
  * PRIVATE ENUMERATED VARIABLES
@@ -140,48 +147,31 @@ static int on_message_complete(llhttp_t* parser);
  */
 static int on_method_complete(llhttp_t* parser);
 
-/**
- * @brief Validates and sanitizes a parsed Http_request_t structure.
- *
- * This function checks the Http_request_t for security and protocol compliance, including:
- *   - Non-empty and safe path (no traversal, no control chars)
- *   - Valid HTTP method
- *   - Header count and length limits
- *   - Safe header names and values (no control chars, no nulls)
- *   - Logs any issues found
- *
- * @param req         Pointer to the parsed Http_request_t structure to validate.
- * @return            STATUS_SUCCESS if valid, STATUS_FAILURE otherwise.
- */
-static int sanitize_http_request(Http_request_t* req);
 
 /**
- * @brief Determines the connection policy (keep-alive or close) from headers.
+ * @brief Commit the current header field and value to the request if both are ready.
  *
- * Scans the parsed headers for "Connection: close" and sets the policy in the request.
- *
- * @param req      Pointer to the Http_request_t structure to update.
+ * @param ctx Pointer to the llhttp parser context.
  */
-static void determine_connection_policy(Http_request_t* req);
+static inline void _commit_header_if_ready(llhttp_parser_ctx_t *ctx)
+{
+    http_request_t *req = &ctx->req;
 
-/**
- * @brief Validates the HTTP request path for security and protocol compliance.
- * Checks for empty, traversal, control chars, and suspicious chars.
- * @return STATUS_SUCCESS if valid, STATUS_FAILURE otherwise.
- */
-static int validate_http_path(const char* path);
+    /* Check if valid name, value and max headers constraint */
+    if (ctx->current_field.p && ctx->current_field.n &&
+        ctx->current_value.p && ctx->current_value.n &&
+        req->header_count < HTTP_MAX_HEADERS_IN)
+    {
+        int idx = req->header_count++;
+        /* Store the header field and value in the request structure */
+        req->header_names[idx]  = ctx->current_field;
+        req->header_values[idx] = ctx->current_value;
+    }
 
-/**
- * @brief Validates a header name for length and safe characters.
- * @return STATUS_SUCCESS if valid, STATUS_FAILURE otherwise.
- */
-static int validate_http_header_name(const char* hname);
-
-/**
- * @brief Validates a header value for length and safe characters.
- * @return STATUS_SUCCESS if valid, STATUS_FAILURE otherwise.
- */
-static int validate_http_header_value(const char* hval, const char* hname);
+    /* Reset current field and value for next header */
+    sv_reset(&ctx->current_field);
+    sv_reset(&ctx->current_value);
+}
 
 /****************************************************************************
  * PRIVATE STRUCTURED VARIABLES
@@ -194,35 +184,7 @@ static int validate_http_header_value(const char* hval, const char* hname);
  ****************************************************************************
  */
 
-int http_manage_request(const char* recv_buf, const size_t buffer_len, http_request_t* request)
-{
-    /* result variable */
-    int res = STATUS_FAILURE;
-
-    /* Allocate memory and parse raw HTTP request into http_request_t struct */
-    if(http_parse_request(recv_buf, buffer_len, request) != STATUS_SUCCESS)
-    {
-        EML_PERR(LOG_TAG, "[browser] parse failed");
-        goto fail;
-    }
-
-    /* Sanitize parsed HTTP reuest */
-    if(sanitize_http_request(request) != STATUS_SUCCESS)
-    {
-        EML_PERR(LOG_TAG, "[browser] sanitize_http_request failed");
-        goto fail;
-    }
-
-    /* Determine connection policy based on headers */
-    determine_connection_policy(request);
-
-    return STATUS_SUCCESS;
-
-fail:
-    return res;
-}
-
-int http_parser_init(llhttp_parser_t *pstate)
+int http_man_init(llhttp_parser_t *pstate)
 {
     /* Check input */
     if(!pstate)
@@ -253,12 +215,12 @@ int http_parser_init(llhttp_parser_t *pstate)
     pstate->parser.data = &pstate->parser_ctx;
 
     /* Initial reset */
-    http_parser_reset(pstate);
+    http_man_reset(pstate);
 
     return STATUS_SUCCESS;
 }
 
-int http_parser_execute(llhttp_parser_t *pstate, const char *in_buf, size_t len)
+int http_man_execute(llhttp_parser_t *pstate, const char *in_buf, size_t len)
 {
     if(!pstate || !in_buf)
     {
@@ -275,7 +237,7 @@ int http_parser_execute(llhttp_parser_t *pstate, const char *in_buf, size_t len)
     return STATUS_SUCCESS;
 }
 
-void http_parser_reset(llhttp_parser_t *pstate)
+void http_man_reset(llhttp_parser_t *pstate)
 {
     if (!pstate)
     {
@@ -296,181 +258,22 @@ void http_parser_reset(llhttp_parser_t *pstate)
  ****************************************************************************
  */
 
-static int validate_http_path(const char* path)
+static int on_message_begin(llhttp_t *parser)
 {
-    /* Return variable */
-    int res = STATUS_FAILURE;
-
-    /* Check input */
-    if(!path || path[0] == '\0')
+    /* Get parser context */
+    llhttp_parser_ctx_t *ctx = PARSER_CTX(parser);
+    if(!ctx)
     {
-        EML_ERROR(LOG_TAG, "Request path is empty");
+        EML_ERROR(LOG_TAG, "on_message_begin: null context");
+        return HPE_USER;
     }
 
-    /* Check for path traversal attempts (any ".." in the path) */
-    else if(strstr(path, "..") || strstr(path, "./"))
-    {
-        EML_ERROR(LOG_TAG, "Path traversal attempt detected: %s", path);
-    }
-
-    /* Check if path starts with . or ./ */
-    else if(path[0] == '.' && (path[1] == '\0' || path[1] == '/'))
-    {
-        EML_ERROR(LOG_TAG, "Path starts with '.': %s", path);
-    }
-
-    /* Check for dangerous or suspicious characters */
-    else
-    {
-        /* assume valid unless find an issue */
-        res = STATUS_SUCCESS;
-
-        for(size_t i = 0; i < strlen(path); ++i)
-        {
-            unsigned char c = (unsigned char)path[i];
-
-            /* Check for control characters, null byte, or suspicious characters */
-            if(c < 0x20 || c == 0x7F)
-            {
-                EML_ERROR(LOG_TAG, "Path contains control or null character %s", path);
-                res = STATUS_FAILURE;
-                break;
-            }
-
-            /* Allow alphanumeric, '/', '-', ... */
-            else if(!(isalnum(c) || c == '/' || c == '-' || c == '_' || c == '.' || c == '~' ||
-                      c == '?' || c == '=' || c == '&' || c == '+' || c == '%'))
-            {
-                EML_ERROR(LOG_TAG, "Path contains suspicious character %s", path);
-                res = STATUS_FAILURE;
-                break;
-            }
-
-            /* If here - the character is valid */
-        }
-    }
-    return res;
-}
-
-static int validate_http_header_name(const char* hname)
-{
-    if(!hname)
-    {
-        EML_ERROR(LOG_TAG, "Null header name");
-        return STATUS_FAILURE;
-    }
-    if(strlen(hname) >= HTTP_MAX_HEADER_NAME_LEN)
-    {
-        EML_ERROR(LOG_TAG, "Header name too long: %s", hname);
-        return STATUS_FAILURE;
-    }
-    for(size_t j = 0; j < strlen(hname); ++j)
-    {
-        unsigned char c = (unsigned char)hname[j];
-        if(c < 0x20 || c == 0x7F)
-        {
-            EML_ERROR(LOG_TAG, "Header name contains control or null character: %s", hname);
-            return STATUS_FAILURE;
-        }
-    }
-    return STATUS_SUCCESS;
-}
-
-static int validate_http_header_value(const char* hval, const char* hname)
-{
-    if(!hval)
-    {
-        EML_ERROR(LOG_TAG, "Null header value (%s)", hname ? hname : "<unknown>");
-        return STATUS_FAILURE;
-    }
-    if(strlen(hval) >= HTTP_MAX_HEADER_VALUE_LEN)
-    {
-        EML_ERROR(LOG_TAG, "Header value too long (%s)", hname ? hname : "<unknown>");
-        return STATUS_FAILURE;
-    }
-    for(size_t j = 0; j < strlen(hval); ++j)
-    {
-        unsigned char c = (unsigned char)hval[j];
-        if(c < 0x20 || c == 0x7F)
-        {
-            EML_ERROR(LOG_TAG, "Header value contains control or null character (%s)",
-                      hname ? hname : "<unknown>");
-            return STATUS_FAILURE;
-        }
-    }
-    return STATUS_SUCCESS;
-}
-
-static int sanitize_http_request(http_request_t* req)
-{
-    /* Return variable */
-    int res = STATUS_FAILURE;
-
-    /* Check for null pointers */
-    if(!req)
-    {
-        EML_ERROR(LOG_TAG, "Null pointer argument to sanitize_http_request");
-    }
-
-    /* Validate the request path */
-    else if(validate_http_path(req->path) != STATUS_SUCCESS)
-    {
-        EML_ERROR(LOG_TAG, "Validate path failed: %s", req->path);
-    }
-
-    /* Ensure the method is valid */
-    else if(req->method == HTTP_METHOD_UNKNOWN)
-    {
-        EML_ERROR(LOG_TAG, "Invalid HTTP method HTTP_METHOD_UNKNOWN");
-    }
-
-    /* Ensure headers are within limits */
-    else if(req->header_count > HTTP_MAX_HEADERS_IN)
-    {
-        EML_ERROR(LOG_TAG, "Too many headers");
-        return STATUS_FAILURE;
-    }
-
-    else
-    {
-        res = STATUS_SUCCESS;
-
-        /* Ensure header names and values are within limits and safe */
-        for(int i = 0; i < req->header_count; ++i)
-        {
-            const char* hname = req->header_names[i];
-            const char* hval = req->header_values[i];
-            if(validate_http_header_name(hname) != STATUS_SUCCESS)
-            {
-                EML_ERROR(LOG_TAG, "Invalid header name: %s", hname);
-                res = STATUS_FAILURE;
-                break;
-            };
-            if(validate_http_header_value(hval, hname) != STATUS_SUCCESS)
-            {
-                EML_ERROR(LOG_TAG, "Invalid header value: %s", hval);
-                res = STATUS_FAILURE;
-                break;
-            }
-        }
-
-#ifdef DEBUG_MODE
-        EML_INFO(LOG_TAG, "sanitizeD request: METHOD: %s, PATH: %s",
-                 http_method_to_string(req->method), req->path);
-#endif /* DEBUG_MODE */
-    }
-
-    return res;
-}
-
-static int on_message_begin(llhttp_t *p)
-{
-    llhttp_parser_ctx_t *ctx = (llhttp_parser_ctx_t *)p->data;
-    if(!ctx) return HPE_OK;
-
-    /* Reset an already initialized parser back to the start state, preserving the
-     * existing parser type, callback settings, user data */
-    llhttp_reset(p);
+    memset(&ctx->req, 0, sizeof(http_request_t));
+    sv_reset(&ctx->current_field);
+    sv_reset(&ctx->current_value);
+    sv_reset(&ctx->current_url);
+    sv_reset(&ctx->current_body);
+    ctx->in_header_field = 0;
 
     return HPE_OK;
 }
@@ -478,27 +281,29 @@ static int on_message_begin(llhttp_t *p)
 static int on_url(llhttp_t* parser, const char* at, size_t length)
 {
     /* llhttp gives URL / request-target piece by piece via on_url */
-    /* Check input length */
-    if (length >= HTTP_MAX_PATH_LEN)
-    {
-        EML_ERROR(LOG_TAG, "URL length exceeds maximum allowed length");
-        return HPE_INVALID_URL;
-    }
-    
     /* Get parser context */
-    llhttp_parser_ctx_t* ctx = (llhttp_parser_ctx_t*)parser->data;
-    if (!ctx) return HPE_OK;
-    
-    /* Store the URL in the request structure */
-    sv_set(&ctx->req.path, at, length);
-    
-    return 0;
+    llhttp_parser_ctx_t *ctx = PARSER_CTX(parser);
+    if(!ctx)
+    {
+        EML_ERROR(LOG_TAG, "on_url: null context");
+        return HPE_USER;
+    }
+
+    /* Append or set new */
+    PARSER_SAVE(ctx->current_url, at, length);
+
+    return HPE_OK;
 }
 
 static int on_header_field(llhttp_t* parser, const char* at, size_t length)
 {
-    llhttp_parser_ctx_t *ctx = (llhttp_parser_ctx_t *)p->data;
-    if (!ctx) return HPE_OK;
+    /* Get parser context */
+    llhttp_parser_ctx_t *ctx = PARSER_CTX(parser);
+    if(!ctx)
+    {
+        EML_ERROR(LOG_TAG, "on_header_field: null context");
+        return HPE_USER;
+    }
 
     /* Starting a new field after having a complete field+value?
        Commit the previous header first. */
@@ -506,36 +311,46 @@ static int on_header_field(llhttp_t* parser, const char* at, size_t length)
         ctx->current_field.p && ctx->current_field.n &&
         ctx->current_value.p && ctx->current_value.n)
     {
-        http_request_t *req = &ctx->req;
-        if (req->header_count < HTTP_MAX_HEADERS_IN)
-        {
-            int idx = req->header_count++;
-            req->header_names[idx]  = ctx->current_field;
-            req->header_values[idx] = ctx->current_value;
-        }
-        sv_reset(&ctx->current_field);
-        sv_reset(&ctx->current_value);
+        _commit_header_if_ready(ctx);
     }
 
+    /* Now we are in a header field */
     ctx->in_header_field = 1;
-    sv_set(&ctx->current_field, at, length);
+
+    /* Append or set new */
+    PARSER_SAVE(ctx->current_field, at, length);
+
     return HPE_OK;
 }
 
 static int on_header_value(llhttp_t* parser, const char* at, size_t length)
 {
-    llhttp_parser_ctx_t *ctx = (llhttp_parser_ctx_t *)p->data;
-    if (!ctx) return HPE_OK;
+    /* Get parser context */
+    llhttp_parser_ctx_t *ctx = PARSER_CTX(parser);
+    if(!ctx)
+    {
+        EML_ERROR(LOG_TAG, "on_header_value: null context");
+        return HPE_USER;
+    }
 
+    /* Now we are in a header value */
     ctx->in_header_field = 0;
-    sv_append_or_reset(&ctx->current_value, at, length);
+
+    /* Append or set new */
+    PARSER_SAVE(ctx->current_value, at, length);
+
     return HPE_OK;
 }
 
-static int on_headers_complete(llhttp_t *p)
+static int on_headers_complete(llhttp_t *parser)
 {
-    llhttp_parser_ctx_t *ctx = (llhttp_parser_ctx_t *)p->data;
-    if (!ctx) return HPE_OK;
+    /* Get parser context */
+    llhttp_parser_ctx_t *ctx = PARSER_CTX(parser);
+    if(!ctx)
+    {
+        EML_ERROR(LOG_TAG, "on_headers_complete: null context");
+        return HPE_USER;
+    }
 
     /*
     Note: storing method as a view into llhttp’s static string, not
@@ -543,76 +358,83 @@ static int on_headers_complete(llhttp_t *p)
     */
     http_request_t *req = &ctx->req;
 
-    /* commit last header if we have both field+value */
-    if (ctx->current_field.p && ctx->current_field.n &&
-        ctx->current_value.p && ctx->current_value.n &&
-        req->header_count < HTTP_MAX_HEADERS_IN)
-    {
-        int idx = req->header_count++;
-        req->header_names[idx]  = ctx->current_field;
-        req->header_values[idx] = ctx->current_value;
-    }
+    /* Commit last header if pending */
+    _commit_header_if_ready(ctx);
 
-    /* copy URL view into request path */
+    /* set URL view into request path */
     req->path = ctx->current_url;
-
-    /* method: use llhttp's method name (static strings) */
-    const char *mname = llhttp_method_name(p->method); /* from llhttp.h */
-    req->method.p = mname;
-    req->method.n = strlen(mname);
-
-    /* connection policy: either use headers or llhttp_keep_alive */
-    if (llhttp_should_keep_alive(p))
+    
+    /* Connection policy: let llhttp decide */
+    if(llhttp_should_keep_alive(parser))
         req->connection_policy = HTTP_CONNECTION_KEEP_ALIVE;
     else
         req->connection_policy = HTTP_CONNECTION_CLOSE;
 
+    /* SHOULD REJECT ANYTHING HERE? */
+
     return HPE_OK;
 }
 
-static int on_body(llhttp_t *p, const char *at, size_t length)
+static int on_body(llhttp_t *parser, const char *at, size_t length)
 {
-    llhttp_parser_ctx_t *ctx = (llhttp_parser_ctx_t *)p->data;
-    if (!ctx) return HPE_OK;
+    /* Get parser context */
+    llhttp_parser_ctx_t *ctx = PARSER_CTX(parser);
+    if(!ctx)
+    {
+        EML_ERROR(LOG_TAG, "on_body: null context");
+        return HPE_USER;
+    }
 
-    sv_append(&ctx->current_body, at, length);
+    /* Append or set new */
+    PARSER_SAVE(ctx->current_body, at, length);
+
     return HPE_OK;
 }
-
 
 static int on_message_complete(llhttp_t* parser)
 {
+    /* Get parser context */
+    llhttp_parser_ctx_t *ctx = PARSER_CTX(parser);
+    if(!ctx)
+    {
+        EML_ERROR(LOG_TAG, "on_message_complete: null context");
+        return HPE_USER;
+    }
 
-    // /* Sanitize parsed HTTP request */
-    // if(sanitize_http_request(request) != STATUS_SUCCESS)
-    // {
-    //     EML_PERR(LOG_TAG, "[browser] sanitize_http_request failed");
-    //     goto fail;
-    // }
-    
-    // determine_connection_policy(request);
+    /* Sanitize parsed HTTP request */
+    if(sanitize_http_request(&ctx->req) != STATUS_SUCCESS)
+    {
+        EML_PERR(LOG_TAG, "sanitize_http_request failed");
+        return HPE_INTERNAL;
+    }
+
+    /* Finalize body view */
+    ctx->req.body = ctx->current_body;
+    ctx->req.message_complete = 1u;
+
+    return HPE_OK;
 }
 
 
 static int on_method_complete(llhttp_t* parser)
 {
-    llhttp_parser_ctx_t* ctx = (llhttp_parser_ctx_t*)parser->data;
-    ctx->req.method = llhttp_method_from_string(at, length);
+    /* Get parser context */
+    llhttp_parser_ctx_t *ctx = PARSER_CTX(parser);
+    if(!ctx)
+    {
+        EML_ERROR(LOG_TAG, "on_method_complete: null context");
+        return HPE_USER;
+    }
+
+    /* Map llhttp method to the small enum */
+    http_method_t lm = http_method_from_llhttp_method(llhttp_get_method(parser));
+
+    if(lm == HTTP_METHOD_UNKNOWN)
+    {
+        EML_ERROR(LOG_TAG, "Unknown HTTP method: %d", lm);
+        return HPE_INVALID_METHOD;
+    }
+
+    ctx->req.method = lm;
     return 0;
-}
-
-static int on_message_complete_llhttp(llhttp_t *p)
-{
-    llhttp_parser_ctx_t *ctx = (llhttp_parser_ctx_t *)p->data;
-    if (!ctx) return HPE_OK;
-
-    http_request_t *req = &ctx->req;
-
-    /* finalize body view */
-    req->body = ctx->current_body;
-
-    /* mark message complete */
-    req->message_complete = 1u;
-
-    return HPE_OK;
 }

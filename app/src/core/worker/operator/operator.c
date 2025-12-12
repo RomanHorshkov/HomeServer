@@ -164,9 +164,9 @@ int operator_init(operator_t *op, uint8_t id)
     /* init each client's http parser */
     for (size_t cli_idx = 0; cli_idx < WORKER_MAX_CLIENTS; cli_idx++)
     {
-        if(http_parser_init(&op->clients[cli_idx].http_parser) != STATUS_SUCCESS)
+        if(http_man_init(&op->clients[cli_idx].http_parser) != STATUS_SUCCESS)
         {
-            EML_ERROR(LOG_TAG, "[op %d] http_parser_init failed", op->id);
+            EML_ERROR(LOG_TAG, "[op %d] http_man_init failed", op->id);
             goto fail;
         }
     }
