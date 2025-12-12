@@ -218,3 +218,8 @@ if(CMAKE_BUILD_TYPE STREQUAL "Debug")
 else()
     target_compile_definitions(server PRIVATE NDEBUG)
 endif()
+
+option(HS_BUILD_HTTP_IT "Build the HTTP manager integration tests" OFF)
+if(HS_BUILD_HTTP_IT)
+    add_subdirectory(tests/IT)
+endif()
