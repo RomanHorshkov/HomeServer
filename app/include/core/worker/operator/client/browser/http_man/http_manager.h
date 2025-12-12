@@ -2,97 +2,40 @@
  * @file http_manager.h
  * @brief Minimal HTTP/1.x parsing and response helpers for operator client path.
  */
-#ifndef HTTP_MANAGER_H
-#define HTTP_MANAGER_H
+#ifndef SERVER_HTTP_MANAGER_H
+#define SERVER_HTTP_MANAGER_H
 
 /****************************************************************************
- * PUBLIC INCLUDES
+ * INCLUDES
  ****************************************************************************
  */
-#include <stddef.h>  // size_t
-#include <stdint.h>
-#include <unistd.h>  // ssize_t
 #include <string.h>
 
-#include "string_view.h"
+#include "http_common.h"
 #include "llhttp.h"
-#include "config_core.h"
 
 /****************************************************************************
- * PUBLIC DEFINES
+ * DEFINES
  ****************************************************************************
  */
 /* None */
 
 /****************************************************************************
- * PUBLIC ENUMERATED VARIABLES
+ * ENUMERATED TYPES
  ****************************************************************************
  */
-
-/**
- * @brief Connection policy for HTTP/1.x.
- */
-typedef enum
-{
-    HTTP_CONNECTION_KEEP_ALIVE = 0, /* Keep connection alive */
-    HTTP_CONNECTION_CLOSE = 1,      /* Close connection */
-} Http_connection_policy_t;
-
-/**
- * @brief Supported HTTP methods.
- */
-typedef enum
-{
-    HTTP_METHOD_GET,    /* GET method */
-    HTTP_METHOD_PUT,    /* PUT method */
-    HTTP_METHOD_POST,   /* POST method */
-    HTTP_METHOD_DELETE, /* DELETE method */
-    HTTP_METHOD_UNKNOWN /* Unknown method */
-} http_method_t;
+/* None */
 
 /****************************************************************************
- * PUBLIC STRUCTURED VARIABLES DEFINITIONS
+ * ENUMERATED VARIABLES
  ****************************************************************************
  */
+/* None */
 
-/**
- * @brief Parsed HTTP request.
+/****************************************************************************
+ * STRUCTURED TYPES
+ ****************************************************************************
  */
-// typedef struct
-// {
-//     uint8_t  thread_id;                     /* operator thread id carrying the request */
-//     uint64_t timestamp;                     /* request timestamp (epoch) */
-//     uint32_t remote_ip_be;                  /* peer IPv4 (network order), optional */
-//     uint16_t remote_port_be;                /* peer port (network order), optional */
-//     uint8_t method;                         /* http_method_t HTTP method (GET, POST, etc.) */
-//     char path[HTTP_MAX_PATH_LEN];           /* Request path */
-//     uint8_t header_count;                   /* Number of headers parsed */
-//     char header_names[HTTP_MAX_HEADERS_IN][HTTP_MAX_HEADER_NAME_LEN];   /* Header names */
-//     char header_values[HTTP_MAX_HEADERS_IN][HTTP_MAX_HEADER_VALUE_LEN]; /* Header values */
-//     size_t body_len;                        /* Length of the body in bytes */
-//     char body[HTTP_MAX_BODY_RAM_CAPACITY];  /* Preallocated request body buffer */
-//     uint8_t connection_policy;              /* Connection policy (keep-alive or close) */
-//     uint8_t message_complete;               /* set when llhttp signals completion */
-
-// } Http_request_t;
-
-typedef struct 
-{
-    uint8_t  thread_id;                     /* operator thread id carrying the request */
-    uint64_t timestamp;                     /* request timestamp (epoch) */
-    uint32_t remote_ip_be;                  /* peer IPv4 (network order), optional */
-    uint16_t remote_port_be;                /* peer port (network order), optional */
-    uint8_t header_count;                   /* Number of headers parsed */
-    http_method_t method;                   /* HTTP method (GET, POST, etc.) */
-    sv_t path;                              /* Request path */
-    sv_t header_names[HTTP_MAX_HEADERS_IN]; /* Header names */
-    sv_t header_values[HTTP_MAX_HEADERS_IN];/* Header values */
-    sv_t body;                              /* Request body buffer */
-
-    uint8_t connection_policy;              /* Connection policy (keep-alive or close) */
-    uint8_t message_complete;               /* set when llhttp signals completion */
-
-} http_request_t;
 
 /**
  * @brief Struct to keep track of actual llhttp parsing state
@@ -135,12 +78,13 @@ typedef struct
 } HttpResponse;
 
 /****************************************************************************
- * PUBLIC ENUMERATED VARIABLES
+ * ENUMERATED VARIABLES
  ****************************************************************************
  */
+/* None */
 
 /****************************************************************************
- * PUBLIC FUNCTIONS DECLARATIONS
+ * FUNCTIONS DECLARATIONS
  ****************************************************************************
  */
 
@@ -186,26 +130,9 @@ static inline http_method_t http_method_from_llhttp_method(llhttp_method_t m)
 }
 
 /**
- * @brief Parse a raw HTTP request buffer into a structured Http_request_t
- * and sanitize it.
- *
- * Uses llhttp to parse the HTTP request line, headers, and path.
- * Populates the Http_request_t struct with method, path, and headers.
- * Determines the connection policy (keep-alive/close).
- * Sanitizes the request for malformed headers.
- *
- * @param buffer        Pointer to the raw HTTP request buffer.
- * @param buffer_len    Length of the buffer.
- * @param req           Pointer to the Http_request_t struct to populate.
- * @retval  0  Success.
- * @retval -1  Parse error (malformed request).
- */
-int http_manage_request(const char* recv_buf, const size_t buffer_len, Http_request_t* request);
-
-/**
  * @brief Initialize a streaming HTTP parser state.
  */
-int http_parser_init(llhttp_parser_t *pstate);
+int http_man_init(llhttp_parser_t *pstate);
 
 /**
  * @brief Feed data into the streaming HTTP parser.
@@ -213,11 +140,11 @@ int http_parser_init(llhttp_parser_t *pstate);
  * @return STATUS_SUCCESS on success, STATUS_FAILURE on parse error.
  *         When a full message is parsed, pstate->req is populated.
  */
-int http_parser_execute(llhttp_parser_t *pstate, const char *buf, size_t len);
+int http_man_execute(llhttp_parser_t *pstate, const char *buf, size_t len);
 
 /**
  * @brief Reset parser state for a new message.
  */
-void http_parser_reset(llhttp_parser_t *pstate);
+void http_man_reset(llhttp_parser_t *pstate);
 
-#endif /* HTTP_MANAGER_H */
+#endif /* SERVER_HTTP_MANAGER_H */

@@ -86,7 +86,7 @@ int client_handle(client_t *cli)
         EML_DBG(LOG_TAG, "fd %d received %zd bytes, executing http parser", cli->ctx.fd, read_bytes);
 #endif
         cli->last_activity = (uint32_t)time_helper_get_now();
-        if(http_parser_execute(&cli->http_parser, cli->recv_buf, (size_t)read_bytes) != STATUS_SUCCESS)
+        if(http_man_execute(&cli->http_parser, cli->recv_buf, (size_t)read_bytes) != STATUS_SUCCESS)
         {
             EML_ERROR(LOG_TAG, "HTTP parse failed on fd %d", cli->ctx.fd);
             return STATUS_FAILURE;
@@ -127,8 +127,8 @@ int client_handle(client_t *cli)
             }
 
             _free_response_body(&response);
-            http_parser_reset(&cli->http_parser);
-            
+            http_man_reset(&cli->http_parser);
+
             if(cli->http_parser.req.connection_policy == HTTP_CONNECTION_CLOSE)
             {
                 return STATUS_FAILURE; /* close after reply */
@@ -178,7 +178,7 @@ void client_shutdown(client_t *cli)
     if (cli->is_busy)
     {
         socket_shutdown_and_close(cli->ctx.fd);
-        http_parser_reset(&cli->http_parser);
+        http_man_reset(&cli->http_parser);
         cli->is_busy = 0;
         cli->last_activity = 0;
         cli->request_count = 0;
