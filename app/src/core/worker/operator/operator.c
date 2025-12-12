@@ -89,7 +89,7 @@ static int _operator_add_client(operator_t *op, int client_fd);
  * @brief Unregister and close a client socket. Compacts the slot array and
  *        decrements @c active_clients with relaxed atomics.
  */
-static int _operator_remove_client(operator_t *op, int client_fd);
+static int _operator_remove_client_by_fd(operator_t *op, int client_fd);
 
 static void _operator_status_update(operator_t *op);
 
@@ -216,7 +216,7 @@ void *operator_thread(void *arg)
             if(out_fd != -1)
             {
                 EML_INFO(LOG_TAG, "[op %d] reactor requested close for fd %d", op->id, out_fd);
-                _operator_remove_client(op, out_fd);
+                _operator_remove_client_by_fd(op, out_fd);
                 continue;
             }
             EML_ERROR(LOG_TAG, "[op %d] reactor_run failed", op->id);
@@ -352,7 +352,7 @@ static int _operator_handle_client_event(int fd, fd_ctx_t *ctx)
     int res = client_handle(cli);
     if(res != STATUS_SUCCESS)
     {
-        _operator_remove_client(op, cli->ctx.fd);
+        _operator_remove_client_by_fd(op, cli->ctx.fd);
     }
     return STATUS_SUCCESS;
 }
@@ -444,13 +444,26 @@ static int _operator_add_client(operator_t *op, int client_fd)
     return STATUS_SUCCESS;
 }
 
-static int _operator_remove_client(operator_t *op, int client_fd)
+static int _operator_remove_client_by_idx(operator_t *op, unsigned int idx)
 {
-    unsigned int active_clients = atomic_load_explicit(&op->active_clients, memory_order_relaxed);
+    /* Delete client from reactor */
+    if(reactor_del(&op->reactor, op->clients[idx].ctx.fd) != STATUS_SUCCESS)
+    {
+        EML_PERR(LOG_TAG, "[op %d] reactor_del failed fd %d", op->id, op->clients[idx].ctx.fd);
+    }
 
+    /* Shutdown client */
+    client_shutdown(&op->clients[idx]);
+
+    /* Decrease this operator's active client count by 1 */
+    atomic_fetch_sub_explicit(&op->active_clients, 1U, memory_order_relaxed);
+}
+
+static int _operator_remove_client_by_fd(operator_t *op, int client_fd)
+{
     /* find client by fd */
     unsigned int idx = 0;
-    for(unsigned int cli_idx = 0; cli_idx < active_clients; ++cli_idx)
+    for(unsigned int cli_idx = 0; cli_idx < WORKER_MAX_CLIENTS; ++cli_idx)
     {
         /* continue if client slot empty */
         if(!op->clients[cli_idx].is_busy) continue;
@@ -625,12 +638,11 @@ static void _clean_clients(operator_t *op)
         if((now - op->clients[cli_idx].last_activity) > timeout)
         {
 #ifdef DEBUG_MODE
-            EML_DBG(LOG_TAG, "[op %d] closing idle fd %d (last=%u, now=%u, to=%u)",
+            EML_DBG(LOG_TAG, "[op %d] timeout closing idle fd %d (last=%u, now=%u, to=%u)",
                     op->id, op->clients[cli_idx].fd, op->clients[cli_idx].last_activity, now, timeout);
 #endif
-            int fd = op->clients[cli_idx].fd;
-            _operator_remove_client(op, fd);
-
+            int fd = op->clients[cli_idx].ctx.fd;
+            _operator_remove_client_by_idx(op, cli_idx);
             continue;
         }
     }

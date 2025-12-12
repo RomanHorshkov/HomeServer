@@ -13,7 +13,6 @@
 #include "reactor.h"
 #include "spsc_ring.h"
 #include "client.h"
-#include "http_manager.h"
 
 
 /****************************************************************************
