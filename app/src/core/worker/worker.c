@@ -19,8 +19,10 @@
 
 #include "worker.h"
 
+#include <pthread.h>
 #include <stdlib.h>
 
+#include "app_interface.h"
 #include "emlog.h"
 #include "operator.h"
 
@@ -161,26 +163,30 @@ int worker_init(uint8_t cpu_count)
     {
         if(operator_init(&_worker.operators[op_idx], op_idx) != STATUS_SUCCESS)
         {
-            EML_ERROR(LOG_TAG, "init: operator %zu init failed", op_idx);
+        EML_ERROR(LOG_TAG, "init: operator %u init failed", (unsigned)op_idx);
             goto fail;
         }
 
         /* Paranoia check */
         if(_worker.operators[op_idx].status != OPERATOR_STATUS_ACTIVE)
         {
-            EML_ERROR(LOG_TAG, "init: operator %zu not active, status %d", op_idx, _worker.operators[op_idx].status);
+            EML_ERROR(LOG_TAG, "init: operator %u not active, status %d", (unsigned)op_idx, _worker.operators[op_idx].status);
             goto fail;
         }
         
     }
-    EML_INFO(LOG_TAG, "Initialized %u operators", _worker.operators_count);
 
-    /* Initialize the DataBase app */
-    if(db_app_init(_worker.operators_count) != 0)
-    {
-        EML_ERROR(LOG_TAG, "init: db_app_init failed");
-        goto fail;
-    }
+    /* Set worker status to active */
+    _worker.status = WORKER_STATUS_ACTIVE;
+
+    EML_DBG(LOG_TAG, "SKIPPING DB APP INIT");
+
+    // /* Initialize the DataBase app */
+    // if(db_app_init(_worker.operators_count) != 0)
+    // {
+    //     EML_ERROR(LOG_TAG, "init: db_app_init failed");
+    //     goto fail;
+    // }
 
     EML_INFO(LOG_TAG, "Worker ready with %u operator%s (cpus=%u)",
              _worker.operators_count,
@@ -232,7 +238,7 @@ int worker_dispatch_to_operator(int client_fd)
     }
 
     /* Signal to operator a new client's fd presence on the ring */    
-    if(write(op->wakeup_ctx.fd, &(uint8_t){1U}, sizeof(uint8_t)) != sizeof(uint8_t))
+    if(write(op->wakeup_ctx.fd, &(uint64_t){1U}, sizeof(uint64_t)) != sizeof(uint64_t))
     {
         EML_PERR(LOG_TAG, "_to_operator: write to wakeup fd %d failed", op->wakeup_ctx.fd);
         /* continue anyway, operator will eventually notice the new fd */
@@ -316,7 +322,7 @@ static operator_t* _least_loaded_operator(void)
         /* when load is below the blind assignment limit just give it to the operator */
         if(load < BLIND_ASSIGNMENT_LIMIT_PERCENTAGE)
         {
-#ifdef DEBUG_MODE
+#ifdef MODE_DEBUG
             EML_DBG(LOG_TAG, "selecting operator %u with load=%u (blind)",
                      (unsigned)i, load);
 #endif
@@ -326,7 +332,7 @@ static operator_t* _least_loaded_operator(void)
         /* calculate min load over all operators */
         if(load < best_load)
         {
-#ifdef DEBUG_MODE
+#ifdef MODE_DEBUG
             EML_DBG(LOG_TAG, "operator %u has new best load=%u",
                      (unsigned)i, load);
 #endif
@@ -350,7 +356,7 @@ static operator_t* _least_loaded_operator(void)
         return NULL;
     }
 
-#ifdef DEBUG_MODE
+#ifdef MODE_DEBUG
     EML_DBG(LOG_TAG, "[dispatch] selecting operator %u with load=%u",
                 (unsigned)best_idx, best_load);
 #endif

@@ -30,20 +30,20 @@
 //     FD_TYPE_TLS_WRAPPER,
 // } fd_type_e;
 
-typedef struct fd_ctx_t fd_ctx_s;
+typedef struct fd_ctx fd_ctx_t;
 
-typedef int (*fd_callback_fn)(int fd, fd_ctx_s *ctx);
+typedef int (*fd_callback_fn)(int fd, fd_ctx_t *ctx);
 
 /**
  * @brief File descriptor context structure.
  */
-typedef struct 
+struct fd_ctx
 {
     int fd;                 /* file descriptor */
     void *owner;            /* listener_t*, worker_t*, connection_t* */
     fd_callback_fn handler; /* function to call on event */
     uint32_t events;        /* current mask */
-} fd_ctx_t;
+};
 
 /****************************************************************************
  * PUBLIC STRUCTURED VARIABLES

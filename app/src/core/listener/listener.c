@@ -231,7 +231,7 @@ static int _init_listening_sockets(const char *port)
 
         _listener.sockets_fds[_listener.active_sockets_no++] = fd;
 
-#ifdef DEBUG_MODE
+#ifdef MODE_DEBUG
         char ip_str[INET6_ADDRSTRLEN];
         void *addr = NULL;
         const char *ipver = "";
@@ -256,7 +256,7 @@ static int _init_listening_sockets(const char *port)
         {
             EML_DBG(LOG_TAG, "listening socket created (%s)", ipver);
         }
-#endif /* DEBUG_MODE */
+#endif /* MODE_DEBUG */
     }
 
     freeaddrinfo(ai);
@@ -292,9 +292,9 @@ static int _register_listening_sockets(void)
 static int _handle_listen_event(int fd, fd_ctx_t *ctx)
 {
     (void)ctx;
-#ifdef DEBUG_MODE
+#ifdef MODE_DEBUG
     EML_DBG(LOG_TAG, "listen event on fd %d", fd);
-#endif /* DEBUG_MODE */
+#endif /* MODE_DEBUG */
 
     int client_fd = accept(fd, NULL, NULL);
     if(client_fd < 0)

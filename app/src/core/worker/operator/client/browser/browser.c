@@ -99,9 +99,9 @@ int browser_manage_client_req(int fd)
     /* Peer closed connection (FIN) */
     if(n == 0)
     {
-#ifdef DEBUG_MODE
+#ifdef MODE_DEBUG
         EML_INFO(LOG_TAG, "Peer closed connection (fd %d)", fd);
-#endif /* DEBUG_MODE */
+#endif /* MODE_DEBUG */
         goto fail;
     }
 
@@ -112,9 +112,9 @@ int browser_manage_client_req(int fd)
         goto fail;
     }
 
-#ifdef DEBUG_MODE
+#ifdef MODE_DEBUG
     EML_INFO(LOG_TAG, "received from fd %d:\n%.*s", fd, (int)n, recv_buf);
-#endif /* DEBUG_MODE */
+#endif /* MODE_DEBUG */
 
     /* manage http request */
     if(http_manage_request(recv_buf, n, &request) != STATUS_SUCCESS)

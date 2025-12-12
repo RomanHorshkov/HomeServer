@@ -28,6 +28,7 @@
 // #include "http_manager.h" included in .h
 #include "router.h"
 #include "socket_helper.h"
+#include "time_helper.h"
 
 /****************************************************************************
  * PRIVATE DEFINES
@@ -81,15 +82,22 @@ int client_handle(client_t *cli)
     llhttp_parser_ctx_t *p_ctx = &cli->http_parser.parser_ctx;
     size_t start_buf_idx = 0;
 
-    /* If already in parsing state, start writing the buffer where stopped before */
+    /* If already in parsing state, continue writing after the bytes already present */
     if(p_ctx->parsing) start_buf_idx = p_ctx->buf_used;
 
-    /* This way can set the kernel to receive (write) consecutively on the same buffer */
-    ssize_t read_bytes = socket_read_nonblocking(cli->ctx.fd, cli->recv_buf + start_buf_idx, HTTP_RECEIVE_BUFFER_LEN - start_buf_idx);
+    /* Ensure we always receive into the same stable buffer and avoid overrun */
+    if(start_buf_idx >= HTTP_RECEIVE_BUFFER_LEN)
+    {
+        EML_ERROR(LOG_TAG, "recv buffer overflow for fd %d", cli->ctx.fd);
+        goto hell;
+    }
+
+    size_t available_space = HTTP_RECEIVE_BUFFER_LEN - start_buf_idx;
+    ssize_t read_bytes = socket_read_nonblocking(cli->ctx.fd, cli->recv_buf + start_buf_idx, available_space);
 
     if(read_bytes > 0)
     {
-#ifdef DEBUG_MODE
+#ifdef MODE_DEBUG
         EML_DBG(LOG_TAG, "fd %d received %zd bytes, executing http parser", cli->ctx.fd, read_bytes);
 #endif
         /* Set client's last activity */

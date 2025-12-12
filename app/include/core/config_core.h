@@ -28,18 +28,6 @@ typedef enum
      * @brief Invalid: max value for server status.
      */
     SERVER_STATUS_INVALID = 3,
-    /**
-     * @brief Invalid: max value for operator status.
-     */
-    OPERATOR_STATUS_INVALID = 4,
-} operator_status_t;
-
-typedef enum
-{
-    SERVER_STATUS_INACTIVE = 0, /* server is inactive */
-    SERVER_STATUS_ACTIVE = 1,   /* server is active */
-    SERVER_STATUS_SHUTDOWN = 2, /* server is shutting down */
-    SERVER_STATUS_INVALID = 3,  /* max value for server status */
 } server_status;
 
 typedef enum

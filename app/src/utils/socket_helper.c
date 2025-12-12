@@ -68,7 +68,6 @@
 
 int socket_set_non_blocking(const int *socket_fd)
 {
-    int res = STATUS_FAILURE;
 
     if(socket_fd == NULL)
     {
@@ -148,7 +147,6 @@ int socket_set_restartability(const int *socket_fd)
 
 int socket_disable_nagle(const int *socket_fd)
 {
-    int res = STATUS_FAILURE;
     int one = 1;
 
     if(!socket_fd)

@@ -17,9 +17,9 @@
  * (c) 2025
  */
 
-#ifdef DEBUG_MODE
+#ifdef MODE_DEBUG
 #    include <stdio.h> /* printf / fprintf / perror */
-#endif                 /* DEBUG_MODE */
+#endif                 /* MODE_DEBUG */
 
 #include "core.h" /* server_init / run / shutdown */
 
@@ -38,9 +38,9 @@ int main(int argc, char *argv[])
     /* Check input */
     if(argc != 2)
     {
-#ifdef DEBUG_MODE
+#ifdef MODE_DEBUG
         printf("Usage: %s <port>\n", argv[0]);
-#endif /* DEBUG_MODE */
+#endif /* MODE_DEBUG */
         return -1;
     }
 

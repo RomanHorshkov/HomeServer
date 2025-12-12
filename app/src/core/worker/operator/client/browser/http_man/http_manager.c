@@ -228,7 +228,7 @@ int http_man_execute(llhttp_parser_t *pstate, const char *in_buf, size_t read_by
         return STATUS_FAILURE;
     }
 
-    /* Suppose coming in ALWAYS the same buffer for the same client, i.e. same parser instance */
+    /* Suppose the parser always receives the same stable receive buffer pointer. */
     size_t start_buf_idx = 0;
 
     /* Check if a previous msg state exists */
@@ -242,6 +242,14 @@ int http_man_execute(llhttp_parser_t *pstate, const char *in_buf, size_t read_by
     else
     {
         pstate->parser_ctx.parsing = 1u;
+    }
+
+    size_t total_bytes = start_buf_idx + read_bytes;
+    if(total_bytes > HTTP_RECEIVE_BUFFER_LEN)
+    {
+        EML_ERROR(LOG_TAG, "_execute: buffer overflow detected (%zu bytes, limit %zu)",
+                  total_bytes, (size_t)HTTP_RECEIVE_BUFFER_LEN);
+        return STATUS_FAILURE;
     }
 
     llhttp_errno_t err = llhttp_execute(&pstate->parser, in_buf + start_buf_idx, read_bytes);

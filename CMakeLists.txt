@@ -84,19 +84,18 @@ set(SERVER_SOURCES
     ${CMAKE_SOURCE_DIR}/app/src/main.c
     ${CMAKE_SOURCE_DIR}/app/src/core/core.c
     ${CMAKE_SOURCE_DIR}/app/src/core/reactor.c
-    ${CMAKE_SOURCE_DIR}/app/src/core/pipeline.c
     ${CMAKE_SOURCE_DIR}/app/src/core/listener/listener.c
     ${CMAKE_SOURCE_DIR}/app/src/core/worker/worker.c
-    ${CMAKE_SOURCE_DIR}/app/src/core/worker/dispatcher/dispatcher.c
-    ${CMAKE_SOURCE_DIR}/app/src/core/worker/dispatcher/operator/operator.c
-    ${CMAKE_SOURCE_DIR}/app/src/core/worker/dispatcher/operator/client/client.c
-    ${CMAKE_SOURCE_DIR}/app/src/core/worker/dispatcher/operator/client/browser/http_manager.c
-    ${CMAKE_SOURCE_DIR}/app/src/core/worker/dispatcher/operator/client/browser/router/router.c
-    ${CMAKE_SOURCE_DIR}/app/src/core/worker/dispatcher/operator/client/browser/router/route_register.c
-    ${CMAKE_SOURCE_DIR}/app/src/core/worker/dispatcher/operator/client/browser/handlers/handler_db.c
-    ${CMAKE_SOURCE_DIR}/app/src/core/worker/dispatcher/operator/client/browser/handlers/handler_static.c
-    ${CMAKE_SOURCE_DIR}/app/src/core/worker/dispatcher/operator/client/browser/handlers/handler_utils.c
-    ${CMAKE_SOURCE_DIR}/app/src/core/worker/dispatcher/operator/client/browser/handlers/handler_whoami.c
+    ${CMAKE_SOURCE_DIR}/app/src/core/worker/operator/operator.c
+    ${CMAKE_SOURCE_DIR}/app/src/core/worker/operator/client/client.c
+    ${CMAKE_SOURCE_DIR}/app/src/core/worker/operator/client/browser/http_man/http_manager.c
+    ${CMAKE_SOURCE_DIR}/app/src/core/worker/operator/client/browser/http_man/sanitizer.c
+    ${CMAKE_SOURCE_DIR}/app/src/core/worker/operator/client/browser/router/router.c
+    ${CMAKE_SOURCE_DIR}/app/src/core/worker/operator/client/browser/router/route_register.c
+    ${CMAKE_SOURCE_DIR}/app/src/core/worker/operator/client/browser/router/handlers/handler_db.c
+    ${CMAKE_SOURCE_DIR}/app/src/core/worker/operator/client/browser/router/handlers/handler_static.c
+    ${CMAKE_SOURCE_DIR}/app/src/core/worker/operator/client/browser/router/handlers/handler_utils.c
+    ${CMAKE_SOURCE_DIR}/app/src/core/worker/operator/client/browser/router/handlers/handler_whoami.c
     ${CMAKE_SOURCE_DIR}/app/src/utils/socket_helper.c
     ${CMAKE_SOURCE_DIR}/app/src/utils/epoller.c
     ${CMAKE_SOURCE_DIR}/app/src/utils/time_helper.c
@@ -106,14 +105,14 @@ set(SERVER_INCLUDE_DIRS
     ${CMAKE_SOURCE_DIR}/app/include
     ${CMAKE_SOURCE_DIR}/app/include/core
     ${CMAKE_SOURCE_DIR}/app/include/core/listener
-    ${CMAKE_SOURCE_DIR}/app/include/utils
     ${CMAKE_SOURCE_DIR}/app/include/core/worker
-    ${CMAKE_SOURCE_DIR}/app/include/core/worker/dispatcher
-    ${CMAKE_SOURCE_DIR}/app/include/core/worker/dispatcher/operator
-    ${CMAKE_SOURCE_DIR}/app/include/core/worker/dispatcher/operator/client
-    ${CMAKE_SOURCE_DIR}/app/include/core/worker/dispatcher/operator/client/browser
-    ${CMAKE_SOURCE_DIR}/app/include/core/worker/dispatcher/operator/client/browser/router
-    ${CMAKE_SOURCE_DIR}/app/include/core/worker/dispatcher/operator/client/browser/handlers
+    ${CMAKE_SOURCE_DIR}/app/include/core/worker/operator
+    ${CMAKE_SOURCE_DIR}/app/include/core/worker/operator/client
+    ${CMAKE_SOURCE_DIR}/app/include/core/worker/operator/client/browser
+    ${CMAKE_SOURCE_DIR}/app/include/core/worker/operator/client/browser/router
+    ${CMAKE_SOURCE_DIR}/app/include/core/worker/operator/client/browser/handlers
+    ${CMAKE_SOURCE_DIR}/app/include/core/worker/operator/client/browser/http_man
+    ${CMAKE_SOURCE_DIR}/app/include/utils
     ${CMAKE_SOURCE_DIR}/app/external/DB_app/app/include
     ${CMAKE_SOURCE_DIR}/app/external/DB_app/app/external/yyjson
     ${CMAKE_SOURCE_DIR}/app/external/DB_app/app/external/UUID7/include
@@ -215,7 +214,7 @@ target_compile_options(
 )
 target_compile_definitions(server PRIVATE _POSIX_C_SOURCE=200809L)
 if(CMAKE_BUILD_TYPE STREQUAL "Debug")
-    target_compile_definitions(server PRIVATE DEBUG_MODE MODE_DEBUG)
+    target_compile_definitions(server PRIVATE MODE_DEBUG MODE_DEBUG)
 else()
     target_compile_definitions(server PRIVATE NDEBUG)
 endif()

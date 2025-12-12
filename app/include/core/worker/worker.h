@@ -61,6 +61,8 @@ int worker_init(uint8_t cpu_count);
 
 int worker_dispatch_to_operator(int client_fd);
 
+int worker_run(void);
+
 void worker_destroy(void);
 
 #endif /* SERVER_WORKER_H */

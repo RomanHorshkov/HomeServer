@@ -21,6 +21,7 @@
 
  
 #include "sanitizer.h"
+#include "http_manager.h"
 
 #include "sanitizer_policy.h"
 
@@ -133,7 +134,7 @@ int sanitize_http_request(http_request_t *req)
     }
 
 
-#ifdef DEBUG_MODE
+#ifdef MODE_DEBUG
     EML_INFO(LOG_TAG,
              "sanitized request: METHOD=%s PATH=%.*s headers=%u",
              http_method_to_string(req->method),

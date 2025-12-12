@@ -94,7 +94,7 @@ typedef struct
 static inline int http_response_add_header(HttpResponse* r, const char* name, const char* val)
 {
     if(!r || !name || !val) return -1;
-    if(r->header_count >= HTTP_MAX_HEADERS_OUT) return -1;
+    if(r->header_count >= (int)HTTP_MAX_HEADERS_OUT) return -1;
     int i = r->header_count++;
     strncpy(r->header_names[i], name, HTTP_MAX_HEADER_NAME_LEN - 1);
     r->header_names[i][HTTP_MAX_HEADER_NAME_LEN - 1] = 0;
