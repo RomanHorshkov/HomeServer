@@ -77,7 +77,7 @@ int epoller_manage_fd(const int epoll_fd, const int target_fd, const int operati
             else
             {
                 EML_INFO(LOG_TAG, "_manage_fd with data, epoll_fd %d, target_fd "
-                    "%d, op %d",
+                    "%d, epoll_ctl_operation %d",
                     epoll_fd, target_fd, operation);
                 ev.events = event;
                 ev.data.ptr = data;

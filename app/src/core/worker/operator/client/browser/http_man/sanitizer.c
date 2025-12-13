@@ -125,13 +125,6 @@ int sanitize_http_request(http_request_t *req)
         EML_ERROR(LOG_TAG, "Invalid HTTP headers");
         return STATUS_FAILURE;
     }
-    
-    /* (Optional) Validate body size */
-    if(req->body.n > HTTP_MAX_BODY_RAM_CAPACITY)
-    {
-        EML_ERROR(LOG_TAG, "HTTP body too large");
-        return STATUS_FAILURE;
-    }
 
 
 #ifdef MODE_DEBUG
@@ -223,21 +216,28 @@ static int _validate_http_header(const sv_t *name, const sv_t *value)
         return STATUS_FAILURE;
     }
 
-    if(!value || !value->p || value->n == 0 || value->n >= HTTP_MAX_HEADER_VALUE_LEN)
+    if(!value || !value->p || value->n == 0)
     {
         EML_ERROR(LOG_TAG, "http invalid header value");
         return STATUS_FAILURE;
     }
 
+    /* Check name len */
+    if (name->n >= HTTP_MAX_HEADER_NAME_LEN)
+    {
+        EML_ERROR(LOG_TAG, "Header name too long: %zu", name->n);
+        return STATUS_FAILURE;
+    }
+    
     /* Check for control characters or suspicious characters */
-    /* Check name */
+    /* Check name chars */
     if(!SANITIZER_POLICY_HDR_NAME_VALID(name->p, name->n))
     {
         EML_ERROR(LOG_TAG, "Invalid chars in header name: %.*s", (int)name->n, name->p);
         return STATUS_FAILURE;
     }
 
-    /* Check value */
+    /* Check value chars */
     if(!SANITIZER_POLICY_HDR_VALUE_VALID(value->p, value->n))
     {
         EML_ERROR(LOG_TAG, "Invalid chars in header value: %.*s", (int)value->n, value->p);

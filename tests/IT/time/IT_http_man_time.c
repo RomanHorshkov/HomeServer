@@ -1,3 +1,7 @@
+#ifndef _GNU_SOURCE
+#define _GNU_SOURCE
+#endif
+
 #include <inttypes.h>
 #include <stdarg.h>
 #include <stddef.h>
@@ -12,13 +16,25 @@
 #include "http_manager.h"
 #include "http_man_test_utils.h"
 
-#define TIMING_RUNS 50
+
+#define TIMING_RUNS 1000
+#define WARMUP_RUNS 100
+
+/* Buffer sizes */
+const size_t sizes[] = {512, KiB(1U), KiB(4U), KiB(32U)};
 
 static uint64_t timespec_diff_ns(const struct timespec *start, const struct timespec *end)
 {
     uint64_t sec_diff = (uint64_t)(end->tv_sec - start->tv_sec);
-    uint64_t nsec_diff = (uint64_t)(end->tv_nsec - start->tv_nsec);
-    return sec_diff * 1000000000ULL + nsec_diff;
+    
+    if (end->tv_nsec < start->tv_nsec)
+    {
+        /* Borrow from seconds */
+        sec_diff -= 1;
+        return (sec_diff * 1000000000ULL) + (1000000000ULL + end->tv_nsec - start->tv_nsec);
+    }
+    
+    return (sec_diff * 1000000000ULL) + (uint64_t)(end->tv_nsec - start->tv_nsec);
 }
 
 static int compare_u64(const void *a, const void *b)
@@ -72,7 +88,6 @@ static void print_timing_stats(size_t size, const uint64_t *samples, size_t coun
 static void test_http_manager_timing(void **state)
 {
     (void)state;
-    const size_t sizes[] = {512, 1024, 4096, 32768};
 
     for (size_t idx = 0; idx < sizeof(sizes) / sizeof(sizes[0]); ++idx)
     {
@@ -84,13 +99,20 @@ static void test_http_manager_timing(void **state)
         llhttp_parser_t parser;
         assert_int_equal(http_man_init(&parser), STATUS_SUCCESS);
 
+        /* Warmup */
+        for (size_t run = 0; run < WARMUP_RUNS; ++run)
+        {
+            assert_int_equal(http_man_execute(&parser, message, message_len), STATUS_SUCCESS);
+            http_man_reset(&parser);
+        }
+
         uint64_t samples[TIMING_RUNS];
         for (size_t run = 0; run < TIMING_RUNS; ++run)
         {
             struct timespec start, end;
-            assert_int_equal(clock_gettime(CLOCK_MONOTONIC, &start), 0);
+            clock_gettime(CLOCK_PROCESS_CPUTIME_ID, &start);
             assert_int_equal(http_man_execute(&parser, message, message_len), STATUS_SUCCESS);
-            assert_int_equal(clock_gettime(CLOCK_MONOTONIC, &end), 0);
+            clock_gettime(CLOCK_PROCESS_CPUTIME_ID, &end);
 
             samples[run] = timespec_diff_ns(&start, &end);
             http_man_reset(&parser);

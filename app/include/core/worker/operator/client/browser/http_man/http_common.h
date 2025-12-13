@@ -53,18 +53,26 @@
 
 /**
  * @brief Maximum HTTP header name length.
+ * 
+ * While not strictly necessary for memory safety (since
+ * HTTP_RECEIVE_BUFFER_LEN is a global limit), it is a very
+ * cheap "sanity check", no legitimate standard HTTP header
+ * name is longer than 64 bytes. If we see a 1KB header
+ * name, it is almost certainly garbage or an attack
+ * attempt to fail immediately.
  */
-#define HTTP_MAX_HEADER_NAME_LEN        128U
+#define HTTP_MAX_HEADER_NAME_LEN        64U
 
-/**
- * @brief Maximum HTTP header value length.
- */
-#define HTTP_MAX_HEADER_VALUE_LEN       KiB(4)
+// /**
+//  * @brief Maximum HTTP header value length.
+//  *
+//  */
+// #define HTTP_MAX_HEADER_VALUE_LEN       KiB(4)
 
-/**
- * @brief Maximum HTTP body size to buffer in RAM.
- */
-#define HTTP_MAX_BODY_RAM_CAPACITY      KiB(16)
+// /**
+//  * @brief Maximum HTTP body size to buffer in RAM.
+//  */
+// #define HTTP_MAX_BODY_RAM_CAPACITY      KiB(16)
 
 /****************************************************************************
  * ENUMERATED TYPEDEFS
