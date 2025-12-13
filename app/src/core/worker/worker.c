@@ -298,7 +298,9 @@ void worker_destroy(void)
 
     _worker.operators_threads = NULL;
     _worker.operators_count = 0;
+#ifdef HS_ENABLE_DB_APP
     db_app_shutdown();
+#endif
 }
 
 

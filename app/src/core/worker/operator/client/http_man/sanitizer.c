@@ -128,7 +128,7 @@ int sanitize_http_request(http_request_t *req)
 
 
 #ifdef MODE_DEBUG
-    EML_INFO(LOG_TAG,
+    EML_DBG(LOG_TAG,
              "sanitized request: METHOD=%s PATH=%.*s headers=%u",
              http_method_to_string(req->method),
              (int)req->path.n, req->path.p ? req->path.p : "",
