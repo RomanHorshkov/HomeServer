@@ -42,16 +42,22 @@
 int epoller_new(void)
 {
     int res = epoll_create1(0);
-    if(res < 0) return -errno;
-    return res;
+    if(epoll_create1(0) < 0)
+    {
+        EML_PERR(LOG_TAG, "epoll_create failed");
+        return -errno;
+    }
+    
+    return 0;
 }
 
-int epoller_wait(int epoll_fd, struct epoll_event *out_events)
+int epoller_wait(int epoll_fd, struct epoll_event *out_events, int max_events)
 {
-    int n = epoll_wait(epoll_fd, out_events, MAX_FAN_OUT_SOCKETS, -1);
+    int n = epoll_wait(epoll_fd, out_events, max_events, -1);
     if(n < 0)
     {
         EML_PERR(LOG_TAG, "epoll_wait interrupted");
+        return -errno;
     }
 
     return n;
@@ -67,7 +73,7 @@ int epoller_manage_fd(const int epoll_fd, const int target_fd, const int operati
     {
         case EPOLL_CTL_ADD:
         case EPOLL_CTL_MOD:
-
+            /* Do not add with null data, can just delete */
             if(data == NULL)
             {
                 EML_ERROR(LOG_TAG, "_manage_fd with NULL data, epoll_fd %d, "

@@ -15,8 +15,8 @@ target_include_directories(cmocka::cmocka INTERFACE ${CMOCKA_INCLUDE_DIRS})
 target_link_libraries(cmocka::cmocka INTERFACE ${CMOCKA_LIBRARIES})
 
 set(HTTP_MANAGER_SOURCES
-    ${CMAKE_SOURCE_DIR}/app/src/core/worker/operator/client/browser/http_man/http_manager.c
-    ${CMAKE_SOURCE_DIR}/app/src/core/worker/operator/client/browser/http_man/sanitizer.c
+    ${CMAKE_SOURCE_DIR}/app/src/core/worker/operator/client/http_man/http_manager.c
+    ${CMAKE_SOURCE_DIR}/app/src/core/worker/operator/client/http_man/sanitizer.c
 )
 
 add_library(http_manager_impl STATIC ${HTTP_MANAGER_SOURCES})

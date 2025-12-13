@@ -146,7 +146,7 @@ int operator_init(operator_t *op, uint8_t id)
     }
     
     /* Initialize operator's reactor */
-    if(reactor_init(&op->reactor, (size_t)MAX_FAN_OUT_SOCKETS) != STATUS_SUCCESS)
+    if(reactor_init(&op->reactor) != STATUS_SUCCESS)
     {
         EML_PERR(LOG_TAG, "[op %d] reactor_init failed", op->id);
         goto fail;
@@ -328,18 +328,17 @@ static int _operator_handle_wakeup_event(int fd, fd_ctx_t *ctx)
 
 static int _operator_handle_client_event(int fd, fd_ctx_t *ctx)
 {
-    operator_t *op = NULL;
     if(!ctx || !ctx->owner)
     {
+        EML_ERROR(LOG_TAG, "client event: invalid context");
         return STATUS_FAILURE;
     }
-    op = (operator_t *)ctx->owner;
-#ifdef MODE_DEBUG
-    EML_DBG(LOG_TAG, "[op %d] handle client event on fd %d", op->id, fd);
-#endif /* MODE_DEBUG */
+
+    operator_t *op = (operator_t *)ctx->owner;
 
     /* Calculate client slot from context pointer */
-    /* ctx is a member of client_t, so we can retrieve the container */
+    /* ctx is a member of client_t, so we can retrieve the container
+    by jumping straight to the client_t structure */
     client_t *cli = (client_t *)((char *)ctx - offsetof(client_t, ctx));
 
     /* Sanity check */

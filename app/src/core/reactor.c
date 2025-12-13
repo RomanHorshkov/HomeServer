@@ -71,7 +71,7 @@ static int _manage_fd(const reactor_t *reactor_ptr, const int watch_fd, const in
  ****************************************************************************
  */
 
-int reactor_init(reactor_t *reactor_ptr, size_t max_events)
+int reactor_init(reactor_t *reactor_ptr)
 {
     /* Result variable */
     int res = STATUS_FAILURE;
@@ -93,7 +93,7 @@ int reactor_init(reactor_t *reactor_ptr, size_t max_events)
     }
 
     /* Allocate the events buffer (one slot per possible registration) */
-    reactor_ptr->events = calloc(max_events, sizeof(struct epoll_event));
+    reactor_ptr->events = calloc((size_t)MAX_FAN_OUT_SOCKETS, sizeof(struct epoll_event));
 
     if(!reactor_ptr->events)
     {
