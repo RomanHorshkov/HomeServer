@@ -2,6 +2,7 @@
 #include <stddef.h>
 #include <setjmp.h>
 #include <stdlib.h>
+#include <string.h>
 
 #include <cmocka.h>
 
@@ -42,9 +43,15 @@ static int execute_in_chunks(llhttp_parser_t *parser, const char *buffer, size_t
 {
     static const size_t weights[] = {1, 2, 4, 8, 16};
     const size_t total_weight = 31;
-    size_t offset = 0;
+    size_t processed = 0;
 
-    for (size_t idx = 0; idx < 5 && offset < length; ++idx)
+    char *recv_buf = calloc(length, 1);
+    if (!recv_buf)
+    {
+        return STATUS_FAILURE;
+    }
+
+    for (size_t idx = 0; idx < 5 && processed < length; ++idx)
     {
         size_t chunk;
         if (idx < 4)
@@ -54,14 +61,14 @@ static int execute_in_chunks(llhttp_parser_t *parser, const char *buffer, size_t
             {
                 chunk = 1;
             }
-            if (chunk > length - offset)
+            if (chunk > length - processed)
             {
-                chunk = length - offset;
+                chunk = length - processed;
             }
         }
         else
         {
-            chunk = length - offset;
+            chunk = length - processed;
         }
 
         if (chunk == 0)
@@ -69,15 +76,18 @@ static int execute_in_chunks(llhttp_parser_t *parser, const char *buffer, size_t
             break;
         }
 
-        int rc = http_man_execute(parser, buffer + offset, chunk);
-        offset += chunk;
+        memcpy(recv_buf + processed, buffer + processed, chunk);
+        int rc = http_man_execute(parser, recv_buf, chunk);
+        processed += chunk;
         if (rc != STATUS_SUCCESS)
         {
+            free(recv_buf);
             return rc;
         }
     }
 
-    return offset == length ? STATUS_SUCCESS : STATUS_FAILURE;
+    free(recv_buf);
+    return processed == length ? STATUS_SUCCESS : STATUS_FAILURE;
 }
 
 static void test_single_read_small(void **state)
