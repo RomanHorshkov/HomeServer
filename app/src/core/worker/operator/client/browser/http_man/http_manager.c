@@ -415,15 +415,7 @@ static int on_body(llhttp_t *parser, const char *at, size_t length)
         EML_ERROR(LOG_TAG, "on_body: null context");
         return HPE_USER;
     }
-
-    /* If sv_append uses a fixed buffer, you probably track that inside it.
-       But at least check the logical length to avoid ridiculous bodies. */
-    if(ctx->current_body.n + length > HTTP_MAX_BODY_RAM_CAPACITY)
-    {
-        EML_ERROR(LOG_TAG, "Body exceeds max capacity while parsing");
-        return HPE_INTERNAL; /* abort parsing immediately */
-    }
-
+    
     /* Append or set new */
     PARSER_SAVE(ctx->current_body, at, length);
 

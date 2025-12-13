@@ -117,7 +117,7 @@ int handler_whoami(const Http_request_t *req, HttpResponse *res)
     yyjson_mut_val *hdrs = yyjson_mut_obj(doc);
     yyjson_mut_obj_add_val(doc, root, "headers", hdrs);
     char header_name_buf[HTTP_MAX_HEADER_NAME_LEN];
-    char header_value_buf[HTTP_MAX_HEADER_VALUE_LEN];
+    char header_value_buf[KiB(4)];
     for(int i = 0; i < req->header_count; ++i)
     {
         _sv_to_cstr(header_name_buf, sizeof header_name_buf, &req->header_names[i]);

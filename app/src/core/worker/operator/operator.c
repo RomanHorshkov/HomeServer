@@ -38,6 +38,8 @@
 
 #define OPERATOR_RING_CAPACITY 8U
 
+#define REACTOR_DEL_MAX_RETRIES 3
+
 /****************************************************************************
  * PRIVATE STUCTURED VARIABLES
  ****************************************************************************
@@ -336,20 +338,21 @@ static int _operator_handle_client_event(int fd, fd_ctx_t *ctx)
     EML_DBG(LOG_TAG, "[op %d] handle client event on fd %d", op->id, fd);
 #endif /* MODE_DEBUG */
 
-    /* Find the client slot */
-    client_t *cli = NULL;
-    for(unsigned int i = 0; i < op->active_clients; ++i)
+    /* Calculate client slot from context pointer */
+    /* ctx is a member of client_t, so we can retrieve the container */
+    client_t *cli = (client_t *)((char *)ctx - offsetof(client_t, ctx));
+
+    /* Sanity check */
+    if (cli->ctx.fd != fd)
     {
-        if(op->clients[i].ctx.fd == fd)
-        {
-            cli = &op->clients[i];
-            break;
-        }
+        EML_ERROR(LOG_TAG, "[op %d] client event: fd mismatch (ctx=%d, event=%d)",
+                  op->id, cli->ctx.fd, fd);
+        return STATUS_FAILURE;
     }
-    if(!cli)
+    
+    if (!cli->is_busy)
     {
-        EML_ERROR(LOG_TAG, "[op %d] client event: no client slot found for fd %d",
-                  op->id, fd);
+        EML_ERROR(LOG_TAG, "[op %d] client event: slot not busy for fd %d", op->id, fd);
         return STATUS_FAILURE;
     }
 
@@ -451,10 +454,19 @@ static int _operator_add_client(operator_t *op, int client_fd)
 
 static int _operator_remove_client_by_idx(operator_t *op, unsigned int idx)
 {
-    /* Delete client from reactor */
-    if(reactor_del(&op->reactor, op->clients[idx].ctx.fd) != STATUS_SUCCESS)
+    /* Delete client from reactor with retries */
+    int retries = 0;
+    while(reactor_del(&op->reactor, op->clients[idx].ctx.fd) != STATUS_SUCCESS)
     {
-        EML_PERR(LOG_TAG, "[op %d] reactor_del failed fd %d", op->id, op->clients[idx].ctx.fd);
+        EML_PERR(LOG_TAG, "[op %d] reactor_del failed fd %d (attempt %d/%d)", 
+                 op->id, op->clients[idx].ctx.fd, retries + 1, REACTOR_DEL_MAX_RETRIES);
+        
+        if(++retries >= REACTOR_DEL_MAX_RETRIES)
+        {
+            EML_ERROR(LOG_TAG, "[op %d] reactor_del failed permanently for fd %d, proceeding with shutdown", 
+                      op->id, op->clients[idx].ctx.fd);
+            break;
+        }
     }
 
     /* Shutdown client */
@@ -472,29 +484,81 @@ static int _operator_remove_client_by_fd(operator_t *op, int client_fd)
     unsigned int idx;
     for(idx = 0; idx < WORKER_MAX_CLIENTS; ++idx)
     {
-        /* continue if client slot empty */
-        if(!op->clients[idx].is_busy)
-        {
-            if(idx >= WORKER_MAX_CLIENTS - 1)
-            {
-                EML_ERROR(LOG_TAG, "[op %d] remove client: no client slot found for fd %d",
-                          op->id, client_fd);
-                return STATUS_FAILURE;
-            }
-
-            continue;
-        }
-        
-        if(op->clients[idx].ctx.fd == client_fd)
+        if(op->clients[idx].is_busy && op->clients[idx].ctx.fd == client_fd)
         {
             break;
         }
     }
 
-    /* Delete client from reactor */
-    if(reactor_del(&op->reactor, op->clients[idx].ctx.fd) != STATUS_SUCCESS)
+    if(idx >= WORKER_MAX_CLIENTS)
     {
-        EML_PERR(LOG_TAG, "[op %d] reactor_del failed fd %d", op->id, op->clients[idx].ctx.fd);
+        EML_ERROR(LOG_TAG, "[op %d] remove client: no client slot found for fd %d",
+                  op->id, client_fd);
+        return STATUS_FAILURE;
+    }
+
+    /* Delete client from reactor with retries */
+    int retries = 0;
+    while(reactor_del(&op->reactor, op->clients[idx].ctx.fd) != STATUS_SUCCESS)
+    {
+        EML_PERR(LOG_TAG, "[op %d] reactor_del failed fd %d (attempt %d/%d)", 
+                 op->id, op->clients[idx].ctx.fd, retries + 1, REACTOR_DEL_MAX_RETRIES);
+        
+        if(++retries >= REACTOR_DEL_MAX_RETRIES)
+        {
+            EML_ERROR(LOG_TAG, "[op %d] reactor_del failed permanently for fd %d, proceeding with shutdown", 
+                      op->id, op->clients[idx].ctx.fd);
+            break;
+        }
+    }
+
+    /* Shutdown client */
+    client_shutdown(&op->clients[idx]);
+    
+    /* Decrease this operator's active client count by 1 */
+    atomic_fetch_sub_explicit(&op->active_clients, 1U, memory_order_relaxed);
+
+
+#ifdef MODE_DEBUG
+    unsigned active_clients = atomic_load_explicit(&op->active_clients, memory_order_relaxed);
+    EML_DBG(LOG_TAG, "[op %u] removed client fd %d (active=%u)", op->id, client_fd, active_clients);
+#endif /* MODE_DEBUG */
+
+    _operator_state_update(op);
+
+    return STATUS_SUCCESS;
+}
+
+static int _operator_remove_client_by_fd(operator_t *op, int client_fd)
+{
+    /* find client by fd */
+    unsigned int idx;
+    for(idx = 0; idx < WORKER_MAX_CLIENTS; ++idx)
+    {
+        if(op->clients[idx].is_busy && op->clients[idx].ctx.fd == client_fd)
+        {
+            break;
+        }
+    }
+
+    if(idx >= WORKER_MAX_CLIENTS)
+    {
+        EML_ERROR(LOG_TAG, "[op %d] remove client: no client slot found for fd %d",
+                  op->id, client_fd);
+        return STATUS_FAILURE;
+    }
+
+    /* Delete client from reactor */
+    int retry_cnt = 0;
+    while(reactor_del(&op->reactor, op->clients[idx].ctx.fd) != STATUS_SUCCESS)
+    {
+        if(++retry_cnt >= REACTOR_DEL_MAX_RETRIES)
+        {
+            EML_PERR(LOG_TAG, "[op %d] reactor_del failed fd %d (giving up)", op->id, op->clients[idx].ctx.fd);
+            /* Do not return failure if client not removed */
+            break;
+        }
+        EML_WARN(LOG_TAG, "[op %d] reactor_del failed fd %d (retry %d)", op->id, op->clients[idx].ctx.fd, retry_cnt);
     }
 
     /* Shutdown client */

@@ -19,7 +19,7 @@ char* hs_build_http_request_exact_len(size_t target_len, size_t *out_len)
     const size_t base_len = sizeof(cs_base_request) - 1;
     const size_t endline_len = 4; /* \r\n\r\n */
     const size_t min_line_len = 13; /* "X-FILL-00: " + "\r\n" */
-    const size_t header_value_cap = HTTP_MAX_HEADER_VALUE_LEN - 1;
+    const size_t header_value_cap = KiB(4) - 1;
 
     if (target_len < base_len + endline_len + min_line_len)
     {

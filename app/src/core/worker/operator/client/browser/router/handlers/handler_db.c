@@ -32,7 +32,6 @@ static inline int db_request_init_from_http(const Http_request_t* in, uint64_t n
                                             db_hdr_kv_t* headers_out, DB_request_t* out);
 static void http_response_from_db(HttpResponse* http_res, DB_response_t* db_res);
 static void cleanup_db_response(DB_response_t* db_res);
-static void copy_sv_to_buf(const sv_t* sv, char* dst, size_t cap);
 static const char* http_reason_phrase(int status);
 
 /****************************************************************************
@@ -159,10 +158,10 @@ static void http_response_from_db(HttpResponse* http_res, DB_response_t* db_res)
                                                                 : HTTP_MAX_HEADERS_OUT;
         for(int i = 0; i < limit; ++i)
         {
-            copy_sv_to_buf(&db_res->headers[i].key, http_res->header_names[i],
-                           HTTP_MAX_HEADER_NAME_LEN);
-            copy_sv_to_buf(&db_res->headers[i].value, http_res->header_values[i],
-                           HTTP_MAX_HEADER_VALUE_LEN);
+            // copy_sv_to_buf(&db_res->headers[i].key, http_res->header_names[i],
+            //                HTTP_MAX_HEADER_NAME_LEN);
+            // copy_sv_to_buf(&db_res->headers[i].value, http_res->header_values[i],
+            //                HTTP_MAX_HEADER_VALUE_LEN);
             http_res->header_count++;
         }
 
@@ -205,22 +204,6 @@ static void cleanup_db_response(DB_response_t* db_res)
 
     db_res->header_count = 0;
     db_res->content_type = (sv_t){0, 0};
-}
-
-static void copy_sv_to_buf(const sv_t* sv, char* dst, size_t cap)
-{
-    if(!dst || cap == 0)
-    {
-        return;
-    }
-
-    size_t len = 0;
-    if(sv && sv->p && sv->n > 0)
-    {
-        len = sv->n < (cap - 1) ? sv->n : (cap - 1);
-        memcpy(dst, sv->p, len);
-    }
-    dst[len] = '\0';
 }
 
 static const char* http_reason_phrase(int status)

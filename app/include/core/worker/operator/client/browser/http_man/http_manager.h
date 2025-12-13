@@ -75,8 +75,8 @@ typedef struct
     uint8_t body_owned; /* 1 if body must be free()'d by caller */
 
     /* generic headers (e.g., Set-Cookie) */
-    char header_names[HTTP_MAX_HEADERS_OUT][HTTP_MAX_HEADER_NAME_LEN];
-    char header_values[HTTP_MAX_HEADERS_OUT][HTTP_MAX_HEADER_VALUE_LEN];
+    // char header_names[HTTP_MAX_HEADERS_OUT][HTTP_MAX_HEADER_NAME_LEN];
+    // char header_values[HTTP_MAX_HEADERS_OUT][HTTP_MAX_HEADER_VALUE_LEN];
     int header_count;
 } HttpResponse;
 
@@ -90,18 +90,6 @@ typedef struct
  * FUNCTIONS DECLARATIONS
  ****************************************************************************
  */
-
-static inline int http_response_add_header(HttpResponse* r, const char* name, const char* val)
-{
-    if(!r || !name || !val) return -1;
-    if(r->header_count >= (int)HTTP_MAX_HEADERS_OUT) return -1;
-    int i = r->header_count++;
-    strncpy(r->header_names[i], name, HTTP_MAX_HEADER_NAME_LEN - 1);
-    r->header_names[i][HTTP_MAX_HEADER_NAME_LEN - 1] = 0;
-    strncpy(r->header_values[i], val, HTTP_MAX_HEADER_VALUE_LEN - 1);
-    r->header_values[i][HTTP_MAX_HEADER_VALUE_LEN - 1] = 0;
-    return 0;
-}
 
 static inline const char* http_method_to_string(http_method_t method)
 {
