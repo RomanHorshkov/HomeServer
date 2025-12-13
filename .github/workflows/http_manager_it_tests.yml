@@ -17,7 +17,7 @@ jobs:
           sudo apt-get install -y libcmocka0 libcmocka-dev pkg-config
 
       - name: Build and run HTTP manager IT tests
-        run: ./utils/tests/run
+        run: ./utils/tests/run.sh
 
       - name: Run HTTP manager timing tests
-        run: ./utils/tests/run_timing
+        run: ./utils/tests/run_timing.sh

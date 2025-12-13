@@ -42,18 +42,18 @@
 int epoller_new(void)
 {
     int res = epoll_create1(0);
-    if(epoll_create1(0) < 0)
+    if(res < 0)
     {
         EML_PERR(LOG_TAG, "epoll_create failed");
         return -errno;
     }
-    
-    return 0;
+
+    return res;
 }
 
-int epoller_wait(int epoll_fd, struct epoll_event *out_events, int max_events)
+int epoller_wait(int epoll_fd, struct epoll_event *out_events)
 {
-    int n = epoll_wait(epoll_fd, out_events, max_events, -1);
+    int n = epoll_wait(epoll_fd, out_events, MAX_FAN_OUT_SOCKETS, -1);
     if(n < 0)
     {
         EML_PERR(LOG_TAG, "epoll_wait interrupted");
@@ -82,7 +82,7 @@ int epoller_manage_fd(const int epoll_fd, const int target_fd, const int operati
             }
             else
             {
-                EML_INFO(LOG_TAG, "_manage_fd with data, epoll_fd %d, target_fd "
+                EML_DBG(LOG_TAG, "_manage_fd with data, epoll_fd %d, target_fd "
                     "%d, epoll_ctl_operation %d",
                     epoll_fd, target_fd, operation);
                 ev.events = event;
@@ -95,7 +95,7 @@ int epoller_manage_fd(const int epoll_fd, const int target_fd, const int operati
         default:
 #ifdef MODE_DEBUG
             /* Explicit the DEL operation */
-            EML_INFO(LOG_TAG, "_manage_fd Deleting, epoll_fd %d, target_fd %d, op "
+            EML_DBG(LOG_TAG, "_manage_fd Deleting, epoll_fd %d, target_fd %d, op "
                 "%d",
                 epoll_fd, target_fd, operation);
 #endif

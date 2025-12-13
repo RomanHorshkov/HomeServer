@@ -18,10 +18,10 @@
 
 
 #define TIMING_RUNS 1000
-#define WARMUP_RUNS 100
+#define WARMUP_RUNS 50
 
 /* Buffer sizes */
-const size_t sizes[] = {512, KiB(1U), KiB(4U), KiB(32U)};
+const size_t sizes[] = {128, KiB(1U), KiB(4U), KiB(32U)};
 
 static uint64_t timespec_diff_ns(const struct timespec *start, const struct timespec *end)
 {

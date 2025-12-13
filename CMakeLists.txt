@@ -92,7 +92,6 @@ set(SERVER_SOURCES
     ${CMAKE_SOURCE_DIR}/app/src/core/worker/operator/client/http_man/sanitizer.c
     ${CMAKE_SOURCE_DIR}/app/src/core/worker/operator/client/router/router.c
     ${CMAKE_SOURCE_DIR}/app/src/core/worker/operator/client/router/route_register.c
-    ${CMAKE_SOURCE_DIR}/app/src/core/worker/operator/client/router/handlers/handler_db.c
     ${CMAKE_SOURCE_DIR}/app/src/core/worker/operator/client/router/handlers/handler_static.c
     ${CMAKE_SOURCE_DIR}/app/src/core/worker/operator/client/router/handlers/handler_utils.c
     ${CMAKE_SOURCE_DIR}/app/src/core/worker/operator/client/router/handlers/handler_whoami.c
@@ -101,6 +100,13 @@ set(SERVER_SOURCES
     ${CMAKE_SOURCE_DIR}/app/src/utils/time_helper.c
 )
 
+option(HS_ENABLE_DB_APP "Enable the external db_app route and libraries" ON)
+if(HS_ENABLE_DB_APP)
+    list(APPEND SERVER_SOURCES
+        ${CMAKE_SOURCE_DIR}/app/src/core/worker/operator/client/router/handlers/handler_db.c
+    )
+endif()
+
 set(SERVER_INCLUDE_DIRS
     ${CMAKE_SOURCE_DIR}/app/include
     ${CMAKE_SOURCE_DIR}/app/include/core
@@ -108,8 +114,8 @@ set(SERVER_INCLUDE_DIRS
     ${CMAKE_SOURCE_DIR}/app/include/core/worker
     ${CMAKE_SOURCE_DIR}/app/include/core/worker/operator
     ${CMAKE_SOURCE_DIR}/app/include/core/worker/operator/client
-    ${CMAKE_SOURCE_DIR}/app/include/core/worker/operator/client
     ${CMAKE_SOURCE_DIR}/app/include/core/worker/operator/client/router
+    ${CMAKE_SOURCE_DIR}/app/include/core/worker/operator/client/router/handlers
     ${CMAKE_SOURCE_DIR}/app/include/core/worker/operator/client/handlers
     ${CMAKE_SOURCE_DIR}/app/include/core/worker/operator/client/http_man
     ${CMAKE_SOURCE_DIR}/app/include/utils
@@ -134,44 +140,50 @@ list(REMOVE_DUPLICATES DB_APP_INCLUDE_DIRS)
 list(APPEND SERVER_INCLUDE_DIRS ${DB_APP_INCLUDE_DIRS})
 
 # Prebuilt DB_app libraries (debug tree)
-set(DB_PREBUILT_LIB_DIR $ENV{DB_APP_PREBUILT_DIR})
-if(NOT DB_PREBUILT_LIB_DIR)
-    set(DB_PREBUILT_LIB_DIR ${CMAKE_SOURCE_DIR}/app/external/DB_app/build_user_dbg/lib)
+if(HS_ENABLE_DB_APP)
+    set(DB_PREBUILT_LIB_DIR $ENV{DB_APP_PREBUILT_DIR})
+    if(NOT DB_PREBUILT_LIB_DIR)
+        set(DB_PREBUILT_LIB_DIR ${CMAKE_SOURCE_DIR}/app/external/DB_app/build_user_dbg/lib)
+    endif()
+    if(NOT EXISTS ${DB_PREBUILT_LIB_DIR}/libdb_app.a)
+        # Fallback for legacy build path (may be read-only if produced by sudo; prefer build_user_dbg).
+        set(DB_PREBUILT_LIB_DIR ${CMAKE_SOURCE_DIR}/app/external/DB_app/build_dbg/lib)
+    endif()
+    if(NOT EXISTS ${DB_PREBUILT_LIB_DIR}/libdb_app.a)
+        message(FATAL_ERROR "Missing prebuilt db_app.a in ${DB_PREBUILT_LIB_DIR}; build the DB_app project (debug) first (export DB_APP_PREBUILT_DIR to override).")
+    endif()
+    add_library(db_app_prebuilt STATIC IMPORTED GLOBAL)
+    set_target_properties(db_app_prebuilt PROPERTIES
+        IMPORTED_LOCATION ${DB_PREBUILT_LIB_DIR}/libdb_app.a
+        INTERFACE_INCLUDE_DIRECTORIES "${CMAKE_SOURCE_DIR}/app/external/DB_app/app/include"
+    )
+    add_library(db_core_prebuilt STATIC IMPORTED GLOBAL)
+    set_target_properties(db_core_prebuilt PROPERTIES
+        IMPORTED_LOCATION ${DB_PREBUILT_LIB_DIR}/libdb_core.a
+    )
+    add_library(uuid7_prebuilt STATIC IMPORTED GLOBAL)
+    set_target_properties(uuid7_prebuilt PROPERTIES
+        IMPORTED_LOCATION ${DB_PREBUILT_LIB_DIR}/libuuid7.a
+    )
+
+    find_package(OpenSSL REQUIRED COMPONENTS Crypto)
+    find_library(LMDB_LIBRARY NAMES lmdb)
+    if(NOT LMDB_LIBRARY)
+        message(FATAL_ERROR "Unable to locate lmdb library")
+    endif()
+    find_library(SODIUM_LIBRARY NAMES sodium)
+    if(NOT SODIUM_LIBRARY)
+        message(FATAL_ERROR "Unable to locate libsodium")
+    endif()
+else()
+    message(STATUS "HS_ENABLE_DB_APP=OFF -> skipping db_app prebuilt libs and LMDB/Sodium resolution.")
 endif()
-if(NOT EXISTS ${DB_PREBUILT_LIB_DIR}/libdb_app.a)
-    # Fallback for legacy build path (may be read-only if produced by sudo; prefer build_user_dbg).
-    set(DB_PREBUILT_LIB_DIR ${CMAKE_SOURCE_DIR}/app/external/DB_app/build_dbg/lib)
-endif()
-if(NOT EXISTS ${DB_PREBUILT_LIB_DIR}/libdb_app.a)
-    message(FATAL_ERROR "Missing prebuilt db_app.a in ${DB_PREBUILT_LIB_DIR}; build the DB_app project (debug) first (export DB_APP_PREBUILT_DIR to override).")
-endif()
-add_library(db_app_prebuilt STATIC IMPORTED GLOBAL)
-set_target_properties(db_app_prebuilt PROPERTIES
-    IMPORTED_LOCATION ${DB_PREBUILT_LIB_DIR}/libdb_app.a
-    INTERFACE_INCLUDE_DIRECTORIES "${CMAKE_SOURCE_DIR}/app/external/DB_app/app/include"
-)
-add_library(db_core_prebuilt STATIC IMPORTED GLOBAL)
-set_target_properties(db_core_prebuilt PROPERTIES
-    IMPORTED_LOCATION ${DB_PREBUILT_LIB_DIR}/libdb_core.a
-)
-add_library(uuid7_prebuilt STATIC IMPORTED GLOBAL)
-set_target_properties(uuid7_prebuilt PROPERTIES
-    IMPORTED_LOCATION ${DB_PREBUILT_LIB_DIR}/libuuid7.a
-)
+
 add_library(yyjson_prebuilt STATIC IMPORTED GLOBAL)
 set_target_properties(yyjson_prebuilt PROPERTIES
-    IMPORTED_LOCATION ${DB_PREBUILT_LIB_DIR}/libyyjson.a
+    IMPORTED_LOCATION ${CMAKE_SOURCE_DIR}/app/external/DB_app/app/external/yyjson/libyyjson.a
+    INTERFACE_INCLUDE_DIRECTORIES "${CMAKE_SOURCE_DIR}/app/external/DB_app/app/external/yyjson"
 )
-
-find_package(OpenSSL REQUIRED COMPONENTS Crypto)
-find_library(LMDB_LIBRARY NAMES lmdb)
-if(NOT LMDB_LIBRARY)
-    message(FATAL_ERROR "Unable to locate lmdb library")
-endif()
-find_library(SODIUM_LIBRARY NAMES sodium)
-if(NOT SODIUM_LIBRARY)
-    message(FATAL_ERROR "Unable to locate libsodium")
-endif()
 
 # -----------------------------------------------------------------------------
 # Server target
@@ -191,17 +203,24 @@ target_link_libraries(
         emlog_shared
         spsc_ring_static
         llhttp
-        "-Wl,--whole-archive"
-        db_app_prebuilt
-        db_core_prebuilt
-        uuid7_prebuilt
         yyjson_prebuilt
-        "-Wl,--no-whole-archive"
-        OpenSSL::Crypto
-        ${LMDB_LIBRARY}
-        ${SODIUM_LIBRARY}
         Threads::Threads
 )
+
+if(HS_ENABLE_DB_APP)
+    target_link_libraries(
+        server
+        PRIVATE
+            "-Wl,--whole-archive"
+            db_app_prebuilt
+            db_core_prebuilt
+            uuid7_prebuilt
+            "-Wl,--no-whole-archive"
+            OpenSSL::Crypto
+            ${LMDB_LIBRARY}
+            ${SODIUM_LIBRARY}
+    )
+endif()
 target_compile_options(
     server
     PRIVATE

@@ -1,6 +1,14 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# -----------------------------------------------------------------------------
+# Description
+#   Configure, compile, and run the cmocka HTTP manager integration tests.
+#   The build happens in ${repo_root}/build/tests/http_manager and reuses the
+#   cmake/target defined under HS_BUILD_HTTP_IT.
+# Usage:
+#   ./utils/tests/run.sh
+# -----------------------------------------------------------------------------
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 repo_root="$(cd "${script_dir}/../.." && pwd)"
 build_dir="${repo_root}/build/tests/http_manager"
