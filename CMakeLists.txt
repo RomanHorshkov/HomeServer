@@ -88,14 +88,14 @@ set(SERVER_SOURCES
     ${CMAKE_SOURCE_DIR}/app/src/core/worker/worker.c
     ${CMAKE_SOURCE_DIR}/app/src/core/worker/operator/operator.c
     ${CMAKE_SOURCE_DIR}/app/src/core/worker/operator/client/client.c
-    ${CMAKE_SOURCE_DIR}/app/src/core/worker/operator/client/browser/http_man/http_manager.c
-    ${CMAKE_SOURCE_DIR}/app/src/core/worker/operator/client/browser/http_man/sanitizer.c
-    ${CMAKE_SOURCE_DIR}/app/src/core/worker/operator/client/browser/router/router.c
-    ${CMAKE_SOURCE_DIR}/app/src/core/worker/operator/client/browser/router/route_register.c
-    ${CMAKE_SOURCE_DIR}/app/src/core/worker/operator/client/browser/router/handlers/handler_db.c
-    ${CMAKE_SOURCE_DIR}/app/src/core/worker/operator/client/browser/router/handlers/handler_static.c
-    ${CMAKE_SOURCE_DIR}/app/src/core/worker/operator/client/browser/router/handlers/handler_utils.c
-    ${CMAKE_SOURCE_DIR}/app/src/core/worker/operator/client/browser/router/handlers/handler_whoami.c
+    ${CMAKE_SOURCE_DIR}/app/src/core/worker/operator/client/http_man/http_manager.c
+    ${CMAKE_SOURCE_DIR}/app/src/core/worker/operator/client/http_man/sanitizer.c
+    ${CMAKE_SOURCE_DIR}/app/src/core/worker/operator/client/router/router.c
+    ${CMAKE_SOURCE_DIR}/app/src/core/worker/operator/client/router/route_register.c
+    ${CMAKE_SOURCE_DIR}/app/src/core/worker/operator/client/router/handlers/handler_db.c
+    ${CMAKE_SOURCE_DIR}/app/src/core/worker/operator/client/router/handlers/handler_static.c
+    ${CMAKE_SOURCE_DIR}/app/src/core/worker/operator/client/router/handlers/handler_utils.c
+    ${CMAKE_SOURCE_DIR}/app/src/core/worker/operator/client/router/handlers/handler_whoami.c
     ${CMAKE_SOURCE_DIR}/app/src/utils/socket_helper.c
     ${CMAKE_SOURCE_DIR}/app/src/utils/epoller.c
     ${CMAKE_SOURCE_DIR}/app/src/utils/time_helper.c
@@ -108,10 +108,10 @@ set(SERVER_INCLUDE_DIRS
     ${CMAKE_SOURCE_DIR}/app/include/core/worker
     ${CMAKE_SOURCE_DIR}/app/include/core/worker/operator
     ${CMAKE_SOURCE_DIR}/app/include/core/worker/operator/client
-    ${CMAKE_SOURCE_DIR}/app/include/core/worker/operator/client/browser
-    ${CMAKE_SOURCE_DIR}/app/include/core/worker/operator/client/browser/router
-    ${CMAKE_SOURCE_DIR}/app/include/core/worker/operator/client/browser/handlers
-    ${CMAKE_SOURCE_DIR}/app/include/core/worker/operator/client/browser/http_man
+    ${CMAKE_SOURCE_DIR}/app/include/core/worker/operator/client
+    ${CMAKE_SOURCE_DIR}/app/include/core/worker/operator/client/router
+    ${CMAKE_SOURCE_DIR}/app/include/core/worker/operator/client/handlers
+    ${CMAKE_SOURCE_DIR}/app/include/core/worker/operator/client/http_man
     ${CMAKE_SOURCE_DIR}/app/include/utils
     ${CMAKE_SOURCE_DIR}/app/external/DB_app/app/include
     ${CMAKE_SOURCE_DIR}/app/external/DB_app/app/external/yyjson

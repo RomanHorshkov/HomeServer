@@ -127,7 +127,7 @@ int listener_init(const char *port/*, void *pipeline_ptr*/)
     strncpy(_listener.port, port, sizeof(_listener.port) - 1);
 
     /* Init listener's reactor */
-    if(reactor_init(&_listener.reactor, (size_t)MAX_FAN_OUT_SOCKETS) != STATUS_SUCCESS)
+    if(reactor_init(&_listener.reactor) != STATUS_SUCCESS)
     {
         EML_PERR(LOG_TAG, "listener_init: reactor_init failed");
         return STATUS_FAILURE;

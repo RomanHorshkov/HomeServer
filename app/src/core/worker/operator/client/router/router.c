@@ -27,11 +27,16 @@
 #include <unistd.h>    // access
 
 #include "handlers_interface.h"
-#include "handlers_int.h"
 #include "route_register.h"
 #include "emlog.h"
 
-#define LOG_TAG "router"
+/****************************************************************************
+ * PRIVATE DEFINES
+ ****************************************************************************
+ */
+
+#define LOG_TAG "srv_router"
+
 
 static int sv_starts_with(const sv_t *sv, const char *prefix, size_t prefix_len)
 {
@@ -87,21 +92,25 @@ static int call_api_handler(const http_request_t *request, HttpResponse *respons
 
 int router_handle_request(const http_request_t *request, HttpResponse *response)
 {
-    /* Return variable */
-    int res = STATUS_FAILURE;
-
-    /* Check input validity */
-    if(!request || !response)
+    /* Check input request validity */
+    if(!request || !request->message_complete)
     {
-        EML_ERROR(LOG_TAG, "[router]: router_handle_request: invalid arguments");
+        EML_ERROR(LOG_TAG, "_handle_request: invalid request");
+        return STATUS_FAILURE;
+    }
+
+    /* Check input response validity */
+    if(!response)
+    {
+        EML_ERROR(LOG_TAG, "_handle_request: invalid response");
+        return STATUS_FAILURE;
     }
 
     /* Try API routes first */
-    else if(sv_starts_with(&request->path, "/api/", 5))
+    if(memcmp(&request->path.p, "/api/", 5) == 0)
     {
 #ifdef MODE_DEBUG
-        EML_INFO(LOG_TAG, "[router] API request detected %.*s, searching handler",
-                 (int)request->path.n, request->path.p ? request->path.p : "");
+        EML_INFO(LOG_TAG, "_handle_request: API request detected, searching handler");
 #endif
         res = call_api_handler(request, response);
     }

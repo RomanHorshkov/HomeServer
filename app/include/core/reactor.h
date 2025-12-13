@@ -1,8 +1,19 @@
+/**
+ * @file reactor.h
+ * 
+ * @brief Event reactor interface using epoll for I/O multiplexing.
+ * Provides APIs to initialize, register, modify, and remove file descriptors,
+ * as well as to run the event loop dispatching callbacks on readiness events.
+ * 
+ * Designed for use in worker threads to handle multiple client connections
+ * in an event-driven manner.
+ */
+
 #ifndef SERVER_REACTOR_H
 #define SERVER_REACTOR_H
 
 /****************************************************************************
- * PUBLIC INCLUDES
+ * INCLUDES
  ****************************************************************************
  */
 #include <stdint.h>
@@ -11,24 +22,15 @@
 #include "config_core.h"
 
 /****************************************************************************
- * PUBLIC DEFINES
+ * DEFINES
  ****************************************************************************
  */
 /* None */
 
 /****************************************************************************
- * PUBLIC ENUMERATED VARIABLES
+ * ENUMERATED TYPEDEFS
  ****************************************************************************
  */
-// typedef enum {
-//     FD_TYPE_NONE = 0,
-//     FD_TYPE_LISTENER,
-//     FD_TYPE_CLIENT,
-//     FD_TYPE_PIPE,
-//     FD_TYPE_EVENTFD,
-//     FD_TYPE_TIMER,
-//     FD_TYPE_TLS_WRAPPER,
-// } fd_type_e;
 
 typedef struct fd_ctx fd_ctx_t;
 
@@ -46,7 +48,7 @@ struct fd_ctx
 };
 
 /****************************************************************************
- * PUBLIC STRUCTURED VARIABLES
+ * STRUCTURED TYPEDEFS
  ****************************************************************************
  */
 
@@ -72,7 +74,8 @@ typedef struct
 
 /****************************************************************************
  * PUBLIC FUNCTIONS DECLARATIONS
- ****************************************************************************/
+ ****************************************************************************
+ */
 
 /**
  * @brief Initialize a reactor structure.
@@ -81,16 +84,53 @@ typedef struct
  * to handle file descriptor event registration.
  *
  * @param reactor_ptr  Pointer to an allocated reactor_t structure.
- * @param max_events   Maximum number of events.
+ * 
  * @retval  0  Success.
  * @retval -1  Failure to initialize (e.g., epoll_create failure).
  */
-int reactor_init(reactor_t *reactor_ptr, size_t max_events);
+int reactor_init(reactor_t *reactor_ptr);
 
+/**
+ * @brief Register a file descriptor for read (EPOLLIN) events.
+ *
+ * Adds the specified file descriptor to the reactor's monitoring set,
+ * associating it with the provided user context and callback.
+ *
+ * @param reactor_ptr   Pointer to the reactor instance.
+ * @param fd    File descriptor to monitor.
+ * @param ctx   User-defined context associated with the fd.
+ * @retval  0  Success.
+ * @retval -1  Failure (e.g., epoll_ctl failure).
+ */
 int reactor_add_in(const reactor_t *reactor_ptr, const int fd, fd_ctx_t *ctx);
 
+/**
+ * @brief Register a client file descriptor for read (EPOLLIN) events
+ *        with additional hangup/error monitoring.
+ *
+ * Similar to reactor_add_in(), but also monitors for peer shutdown
+ * and error conditions, suitable for client sockets.
+ *
+ * @param reactor_ptr   Pointer to the reactor instance.
+ * @param fd    Client file descriptor to monitor.
+ * @param ctx   User-defined context associated with the fd.
+ * @retval  0  Success.
+ * @retval -1  Failure (e.g., epoll_ctl failure).
+ */
 int reactor_add_in_client(const reactor_t *reactor_ptr, int fd, fd_ctx_t *ctx);
 
+/**
+ * @brief Register a file descriptor for write (EPOLLOUT) events.
+ *
+ * Adds the specified file descriptor to the reactor's monitoring set,
+ * associating it with the provided user context and callback.
+ *
+ * @param reactor_ptr   Pointer to the reactor instance.
+ * @param fd    File descriptor to monitor.
+ * @param ctx   User-defined context associated with the fd.
+ * @retval  0  Success.
+ * @retval -1  Failure (e.g., epoll_ctl failure).
+ */
 int reactor_add_out(const reactor_t *reactor_ptr, int fd, fd_ctx_t *ctx);
 
 /**

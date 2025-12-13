@@ -41,30 +41,13 @@ typedef enum
 
 
 /**
- * @brief Fan-Out: the number of independent endpoints that can become
- * ready at the same time—e.g. how many client sockets might have data
- * waiting when call epoll_wait().
- * one slot per possible registration */
-#define MAX_FAN_OUT_SOCKETS 8U
-
-/****************************************************************************
- * CORE PROPERTIES
- ****************************************************************************
+ * @brief Max Epoll Batch Size: The maximum number of events to retrieve
+ * and process in a single epoll_wait() call.
+ * 
+ * This is NOT a limit on the number of connected clients.
+ * A larger batch size reduces syscall overhead under high load.
  */
-/* Server timeout */
-#define SERVER_KEEPALIVE_TIMEOUT_ALONE 60U
-#define SERVER_KEEPALIVE_TIMEOUT_NOT_ALONE 10U
-
-/****************************************************************************
- * PIPELINE PROPERTIES
- ****************************************************************************
- */
-
-/* Capacity of the SPSC ring buffer for file descriptors */
-#define PIPELINE_SPSC_RING_CAPACITY 8U
-
-/* Total sockets needed for the pipeline */
-#define PIPELINE_MAX_SOCKETS 3  // wakeup_fd and pipe
+#define MAX_FAN_OUT_SOCKETS 64U
 
 /****************************************************************************
  * LISTENER PROPERTIES
