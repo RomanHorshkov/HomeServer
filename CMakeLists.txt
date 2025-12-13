@@ -40,26 +40,28 @@ set(SPSCRING_BUILD_STATIC ON CACHE BOOL "" FORCE)
 add_subdirectory(app/external/SPSCring/app)
 
 # -----------------------------------------------------------------------------
-# llhttp (prebuilt)
+# llhttp (built from source)
 # -----------------------------------------------------------------------------
-function(add_prebuilt_static target include_dir lib_path)
-    if(NOT EXISTS "${lib_path}")
-        message(FATAL_ERROR "Missing prebuilt library: ${lib_path}")
-    endif()
-    add_library(${target} STATIC IMPORTED GLOBAL)
-    set_target_properties(
-        ${target}
-        PROPERTIES
-            IMPORTED_LOCATION "${lib_path}"
-            INTERFACE_INCLUDE_DIRECTORIES "${include_dir}"
-    )
-endfunction()
+set(LLHTTP_SOURCE_DIR ${CMAKE_SOURCE_DIR}/app/external/llhttp)
+set(LLHTTP_BUILD_DIR ${LLHTTP_SOURCE_DIR}/build)
+set(LLHTTP_SHARED_LIB ${LLHTTP_BUILD_DIR}/libllhttp.so)
 
-add_prebuilt_static(
-    llhttp
-    ${CMAKE_SOURCE_DIR}/app/external/llhttp
-    ${CMAKE_SOURCE_DIR}/app/external/llhttp/libllhttp.a
+add_custom_command(
+    OUTPUT ${LLHTTP_SHARED_LIB}
+    COMMAND bash ${LLHTTP_SOURCE_DIR}/build.sh
+    WORKING_DIRECTORY ${LLHTTP_SOURCE_DIR}
+    BYPRODUCTS ${LLHTTP_SHARED_LIB} ${LLHTTP_BUILD_DIR}/libllhttp.a
+    COMMENT "Building llhttp"
+    VERBATIM
 )
+add_custom_target(llhttp_build DEPENDS ${LLHTTP_SHARED_LIB})
+
+add_library(llhttp_shared SHARED IMPORTED GLOBAL)
+set_target_properties(llhttp_shared PROPERTIES
+    IMPORTED_LOCATION ${LLHTTP_SHARED_LIB}
+    INTERFACE_INCLUDE_DIRECTORIES ${LLHTTP_SOURCE_DIR}/include
+)
+add_dependencies(llhttp_shared llhttp_build)
 
 # -----------------------------------------------------------------------------
 # Contract header (generated from contract/manifest.json, mirrors Makefile rule)
@@ -124,7 +126,7 @@ set(SERVER_INCLUDE_DIRS
     ${CMAKE_SOURCE_DIR}/app/external/DB_app/app/external/UUID7/include
     ${CMAKE_SOURCE_DIR}/app/external/EMlog/app/include
     ${CMAKE_SOURCE_DIR}/app/external/SPSCring/app/include
-    ${CMAKE_SOURCE_DIR}/app/external/llhttp
+    ${CMAKE_SOURCE_DIR}/app/external/llhttp/include
 )
 
 # Pull in all nested DB_app include folders so headers like db_config.h resolve.
@@ -190,6 +192,7 @@ set_target_properties(yyjson_prebuilt PROPERTIES
 # -----------------------------------------------------------------------------
 add_executable(server ${SERVER_SOURCES})
 add_dependencies(server contract_header)
+add_dependencies(server llhttp_build)
 target_include_directories(server PRIVATE ${SERVER_INCLUDE_DIRS})
 set_target_properties(
     server
@@ -202,7 +205,7 @@ target_link_libraries(
     PRIVATE
         emlog_shared
         spsc_ring_static
-        llhttp
+        llhttp_shared
         yyjson_prebuilt
         Threads::Threads
 )

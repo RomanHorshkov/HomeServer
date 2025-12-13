@@ -34,7 +34,7 @@ target_link_libraries(http_manager_integration_tests
     PRIVATE
         http_manager_impl
         http_man_test_utils
-        llhttp
+        llhttp_shared
         emlog_shared
         Threads::Threads
         cmocka::cmocka
@@ -50,7 +50,7 @@ target_link_libraries(http_manager_timing_tests
     PRIVATE
         http_manager_impl
         http_man_test_utils
-        llhttp
+        llhttp_shared
         emlog_shared
         Threads::Threads
         cmocka::cmocka
