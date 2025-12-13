@@ -60,6 +60,8 @@ BUILDDIR  := build
 OBJDIR    := $(BUILDDIR)/obj
 BINDIR    := $(BUILDDIR)/bin
 TARGET    := server
+LLHTTP_SRC := $(APP_DIR)/external/llhttp
+LLHTTP_BUILD := $(LLHTTP_SRC)/build/libllhttp.so
 
 # External include roots (headers live here)
 INCDIRS  := \
@@ -69,13 +71,13 @@ INCDIRS  := \
 	$(APP_DIR)/include/utils \
 	$(APP_DIR)/include/browser/handlers \
 	$(APP_DIR)/include/browser/router \
-	$(APP_DIR)/external/llhttp \
+	$(LLHTTP_SRC)/include \
 	$(APP_DIR)/external/cjson \
 	$(APP_DIR)/external/SPSCring/app/include
 
 # External library search paths
 LDFLAGS  += \
-  -L$(APP_DIR)/external/llhttp \
+  -L$(LLHTTP_SRC)/build \
   -L$(APP_DIR)/external/cjson \
   -L$(APP_DIR)/external/spsc_ring \
 #   -L$(APP_DIR)/external/db
@@ -127,7 +129,7 @@ ifeq ($(SODIUM_LIBS),-lsodium)
 endif
 
 # Link ---------------------------------------------------------------
-$(BINDIR)/$(TARGET): $(OBJECTS) $(DB_LIB)
+$(BINDIR)/$(TARGET): $(OBJECTS) $(DB_LIB) $(LLHTTP_BUILD)
 	@mkdir -p $(BINDIR)
 	$(CC) $(CFLAGS) $^ $(LDFLAGS) $(LDLIBS) -o $@
 
@@ -139,6 +141,9 @@ $(OBJDIR)/%.o: %.c | $(OBJDIR) $(CONTRACT_HDR)
 
 $(OBJDIR):
 	@mkdir -p $(OBJDIR)
+
+$(LLHTTP_BUILD):
+	@bash $(LLHTTP_SRC)/build.sh
 
 # ------ Convenience ------
 debug: clean all
