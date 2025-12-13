@@ -26,7 +26,7 @@
 #include <sys/stat.h>  // stat, S_ISDIR, S_ISREG
 #include <unistd.h>    // access
 
-#include "handlers_interface.h"
+// #include "handlers_interface.h"
 #include "route_register.h"
 #include "emlog.h"
 
@@ -36,14 +36,6 @@
  */
 
 #define LOG_TAG "srv_router"
-
-
-static int sv_starts_with(const sv_t *sv, const char *prefix, size_t prefix_len)
-{
-    if(!sv || !sv->p || !prefix) return 0;
-    if(sv->n < prefix_len) return 0;
-    return memcmp(sv->p, prefix, prefix_len) == 0;
-}
 
 /****************************************************************************
  * PRIVATE STRUCTURED VARIABLES
@@ -77,8 +69,6 @@ extern size_t used;
  ****************************************************************************
  */
 
-static int call_api_handler(const http_request_t *request, HttpResponse *response);
-
 /****************************************************************************
  * PRIVATE VARIABLES
  ****************************************************************************
@@ -106,13 +96,14 @@ int router_handle_request(const http_request_t *request, HttpResponse *response)
         return STATUS_FAILURE;
     }
 
+    int res = STATUS_FAILURE;
     /* Try API routes first */
     if(memcmp(&request->path.p, "/api/", 5) == 0)
     {
 #ifdef MODE_DEBUG
         EML_INFO(LOG_TAG, "_handle_request: API request detected, searching handler");
 #endif
-        res = call_api_handler(request, response);
+        // res = call_api_handler(request, response);
     }
 
     else
@@ -125,7 +116,7 @@ int router_handle_request(const http_request_t *request, HttpResponse *response)
         *copy_req = *request;  // shallow copy all fields
         copy_req->path.p = "/";
         copy_req->path.n = 1;
-        res = handler_static(copy_req, response);
+        // res = handler_static(copy_req, response);
 
         free(copy_req);
 
@@ -141,56 +132,58 @@ int router_handle_request(const http_request_t *request, HttpResponse *response)
  ****************************************************************************
  */
 
-static int call_api_handler(const Http_request_t *request, HttpResponse *response)
-{
-    /* Return variable */
-    int res = STATUS_FAILURE;
+// static int call_api_handler(const Http_request_t *request, HttpResponse *response)
+// {
+//     /* Return variable */
+//     int res = STATUS_FAILURE;
 
-    size_t count = 0;
-    const route_t *table = router_get_table(&count);
+//     size_t count = 0;
+//     const route_t *table = router_get_table(&count);
 
-    /* Check if any api have been registered */
-    if(count <= 0)
-    {
-        EML_ERROR(LOG_TAG, "[router] no entries in api table");
-        if(response) send_404(response);
-        return res;
-    }
+//     /* Check if any api have been registered */
+//     if(count <= 0)
+//     {
+//         EML_ERROR(LOG_TAG, "[router] no entries in api table");
+//         // if(response) send_404(response);
+//         return res;
+//     }
 
-    /* Compare each table entry to request */
-    for(size_t i = 0; i < count; ++i)
-    {
-        /* Check if any table entry corresponds to request */
-        if(sv_starts_with(&request->path, table[i].path, table[i].path_len))
-        {
-            char next = '\0';
-            if(request->path.p && request->path.n > table[i].path_len)
-            {
-                next = request->path.p[table[i].path_len];
-            }
-            /* Check if next char is a / or \0, to avoid /api/whoami123 as ok */
-            if(next == '\0' || next == '/')
-            {
-#ifdef MODE_DEBUG
-                EML_INFO(LOG_TAG, "[router] api path %.*s, table path %s",
-                         (int)request->path.n, request->path.p ? request->path.p : "", table[i].path);
-#endif
-                res = table[i].handler(request, response);
-            }
+//     /* Compare each table entry to request */
+//     for(size_t i = 0; i < count; ++i)
+//     {
+//         /* Check if any table entry corresponds to request */
+//         if(sv_starts_with(&request->path, table[i].path, table[i].path_len))
+//         {
+//             char next = '\0';
+//             if(request->path.p && request->path.n > table[i].path_len)
+//             {
+//                 next = request->path.p[table[i].path_len];
+//             }
+//             /* Check if next char is a / or \0, to avoid /api/whoami123 as ok */
+//             if(next == '\0' || next == '/')
+//             {
+// #ifdef MODE_DEBUG
+//                 EML_INFO(LOG_TAG, "[router] api path %.*s, table path %s",
+//                          (int)request->path.n, request->path.p ? request->path.p : "", table[i].path);
+// #endif
+//                 res = table[i].handler(request, response);
+//             }
 
-            else
-            {
-                EML_ERROR(LOG_TAG, "[router] wrong api request");
-            }
+//             else
+//             {
+//                 EML_ERROR(LOG_TAG, "[router] wrong api request");
+//             }
 
-            break;
-        }
-    }
+//             break;
+//         }
+//     }
 
-    if(res != STATUS_SUCCESS && response && response->status_code == 0)
-    {
-        send_404(response);
-    }
+//     if(res != STATUS_SUCCESS && response && response->status_code == 0)
+//     {
+//         EML_ERROR(LOG_TAG, "[router] api handler not found for %.*s",
+//                   (int)request->path.n, request->path.p ? request->path.p : "");
+//         // send_404(response);
+//     }
 
-    return res;
-}
+//     return res;
+// }
