@@ -491,7 +491,7 @@ static int _operator_remove_client_by_fd(operator_t *op, int client_fd)
 
     if(idx >= WORKER_MAX_CLIENTS)
     {
-        EML_ERROR(LOG_TAG, "[op %d] remove client: no client slot found for fd %d",
+        EML_ERROR(LOG_TAG, "[op %d] _remove_client_by_fd: no client slot found for fd %d",
                   op->id, client_fd);
         return STATUS_FAILURE;
     }
@@ -500,64 +500,15 @@ static int _operator_remove_client_by_fd(operator_t *op, int client_fd)
     int retries = 0;
     while(reactor_del(&op->reactor, op->clients[idx].ctx.fd) != STATUS_SUCCESS)
     {
-        EML_PERR(LOG_TAG, "[op %d] reactor_del failed fd %d (attempt %d/%d)", 
+        EML_PERR(LOG_TAG, "[op %d] _remove_client_by_fd: reactor_del failed fd %d (attempt %d/%d)", 
                  op->id, op->clients[idx].ctx.fd, retries + 1, REACTOR_DEL_MAX_RETRIES);
         
         if(++retries >= REACTOR_DEL_MAX_RETRIES)
         {
-            EML_ERROR(LOG_TAG, "[op %d] reactor_del failed permanently for fd %d, proceeding with shutdown", 
+            EML_ERROR(LOG_TAG, "[op %d] _remove_client_by_fd: reactor_del failed permanently for fd %d, proceeding with shutdown", 
                       op->id, op->clients[idx].ctx.fd);
             break;
         }
-    }
-
-    /* Shutdown client */
-    client_shutdown(&op->clients[idx]);
-    
-    /* Decrease this operator's active client count by 1 */
-    atomic_fetch_sub_explicit(&op->active_clients, 1U, memory_order_relaxed);
-
-
-#ifdef MODE_DEBUG
-    unsigned active_clients = atomic_load_explicit(&op->active_clients, memory_order_relaxed);
-    EML_DBG(LOG_TAG, "[op %u] removed client fd %d (active=%u)", op->id, client_fd, active_clients);
-#endif /* MODE_DEBUG */
-
-    _operator_state_update(op);
-
-    return STATUS_SUCCESS;
-}
-
-static int _operator_remove_client_by_fd(operator_t *op, int client_fd)
-{
-    /* find client by fd */
-    unsigned int idx;
-    for(idx = 0; idx < WORKER_MAX_CLIENTS; ++idx)
-    {
-        if(op->clients[idx].is_busy && op->clients[idx].ctx.fd == client_fd)
-        {
-            break;
-        }
-    }
-
-    if(idx >= WORKER_MAX_CLIENTS)
-    {
-        EML_ERROR(LOG_TAG, "[op %d] remove client: no client slot found for fd %d",
-                  op->id, client_fd);
-        return STATUS_FAILURE;
-    }
-
-    /* Delete client from reactor */
-    int retry_cnt = 0;
-    while(reactor_del(&op->reactor, op->clients[idx].ctx.fd) != STATUS_SUCCESS)
-    {
-        if(++retry_cnt >= REACTOR_DEL_MAX_RETRIES)
-        {
-            EML_PERR(LOG_TAG, "[op %d] reactor_del failed fd %d (giving up)", op->id, op->clients[idx].ctx.fd);
-            /* Do not return failure if client not removed */
-            break;
-        }
-        EML_WARN(LOG_TAG, "[op %d] reactor_del failed fd %d (retry %d)", op->id, op->clients[idx].ctx.fd, retry_cnt);
     }
 
     /* Shutdown client */
