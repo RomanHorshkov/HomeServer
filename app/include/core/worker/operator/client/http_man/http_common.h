@@ -20,6 +20,7 @@
  */
 #include "config_core.h"
 #include "string_view.h"
+#include "llhttp.h" /* for status codes */
 
 /****************************************************************************
  * DEFINES
@@ -29,11 +30,15 @@
 /*
  * HTTP PROPERTIES
  */
+/**
+ * @brief Maximum length of the HTTP send buffer.
+ */
+#define HTTP_SEND_BUFFER_LEN KiB(32)
 
 /**
  * @brief Maximum length of the HTTP receive buffer.
  */
-#define HTTP_RECEIVE_BUFFER_LEN KiB(32)
+#define HTTP_RECV_BUFFER_LEN KiB(32)
 
 /**
  * @brief Maximum lengths and counts for HTTP parsing.
@@ -55,7 +60,7 @@
  * @brief Maximum HTTP header name length.
  * 
  * While not strictly necessary for memory safety (since
- * HTTP_RECEIVE_BUFFER_LEN is a global limit), it is a very
+ * HTTP_RECV_BUFFER_LEN is a global limit), it is a very
  * cheap "sanity check", no legitimate standard HTTP header
  * name is longer than 64 bytes. If we see a 1KB header
  * name, it is almost certainly garbage or an attack
@@ -100,11 +105,11 @@ typedef enum
  */
 typedef enum
 {
-    HTTP_METHOD_GET,    /* GET method */
-    HTTP_METHOD_PUT,    /* PUT method */
-    HTTP_METHOD_POST,   /* POST method */
-    HTTP_METHOD_DELETE, /* DELETE method */
-    HTTP_METHOD_UNKNOWN /* Unknown method */
+    HTTP_METHOD_GET = HTTP_GET,         /* GET method */
+    HTTP_METHOD_PUT = HTTP_PUT,         /* PUT method */
+    HTTP_METHOD_POST = HTTP_POST,       /* POST method */
+    HTTP_METHOD_DELETE = HTTP_DELETE,   /* DELETE method */
+    HTTP_METHOD_UNKNOWN = 255           /* Unknown method */
 } http_method_t;
 
 /**
@@ -116,19 +121,28 @@ typedef struct
     uint64_t timestamp;                     /* request timestamp (epoch) */
     uint32_t remote_ip_be;                  /* peer IPv4 (network order), optional */
     uint16_t remote_port_be;                /* peer port (network order), optional */
-    uint8_t header_count;                   /* Number of headers parsed */
-    http_method_t method;                   /* HTTP method (GET, POST, etc.) */
+    uint8_t method;                         /* HTTP method (GET, POST, etc.) */
     sv_t path;                              /* Request path */
+    uint8_t header_count;                   /* Number of headers parsed */
     sv_t header_names[HTTP_MAX_HEADERS_IN]; /* Header names */
     sv_t header_values[HTTP_MAX_HEADERS_IN];/* Header values */
     sv_t body;                              /* Request body buffer */
-
     uint8_t connection_policy;              /* Connection policy (keep-alive or close) */
+
     uint8_t message_complete;               /* set when llhttp signals completion */
 
 } http_request_t;
 
-typedef http_request_t Http_request_t;
+
+/**
+ * @brief HTTP response to be sent to the client.
+ */
+typedef struct
+{
+    int status_code;  /* HTTP status code (e.g., 200, 404) */
+    sv_t send_sv;    /* buffer containing the full response to send */
+
+} http_response_t;
 
 /****************************************************************************
  * ENUMERATED VARIABLES

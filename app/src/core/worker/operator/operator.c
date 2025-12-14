@@ -174,6 +174,10 @@ int operator_init(operator_t *op, uint8_t id)
             EML_ERROR(LOG_TAG, "[op %d] http_man_init failed", op->id);
             goto fail;
         }
+
+        /* point response sv_t to send_buf */
+        op->clients[cli_idx].send_resp.send_buf.p = op->clients[cli_idx].send_buf;
+        op->clients[cli_idx].send_resp.send_buf.n = 0;
     }
 
     /* Set operator status to ACTIVE */
@@ -356,7 +360,7 @@ static int _operator_handle_client_event(int fd, fd_ctx_t *ctx)
     }
 
     /* Handle the client */
-    if(client_handle(cli) != STATUS_SUCCESS)
+    if(client_handle(cli, op->id) != STATUS_SUCCESS)
     {
         _operator_remove_client_by_fd(op, cli->ctx.fd);
     }

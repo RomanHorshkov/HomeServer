@@ -71,7 +71,7 @@
  * @param slot Client slot containing parser state and buffers.
  * @return STATUS_SUCCESS to keep connection; STATUS_FAILURE to drop it.
  */
-int client_handle(client_t *cli)
+int client_handle(client_t *cli, uint8_t thread_id)
 {
     if(!cli)
     {
@@ -86,13 +86,13 @@ int client_handle(client_t *cli)
     if(p_ctx->parsing) start_buf_idx = p_ctx->buf_used;
 
     /* Ensure we always receive into the same stable buffer and avoid overrun */
-    if(start_buf_idx >= HTTP_RECEIVE_BUFFER_LEN)
+    if(start_buf_idx >= HTTP_RECV_BUFFER_LEN)
     {
         EML_ERROR(LOG_TAG, "recv buffer overflow for fd %d", cli->ctx.fd);
         goto hell;
     }
 
-    size_t available_space = HTTP_RECEIVE_BUFFER_LEN - start_buf_idx;
+    size_t available_space = HTTP_RECV_BUFFER_LEN - start_buf_idx;
     ssize_t read_bytes = socket_read_nonblocking(cli->ctx.fd, cli->recv_buf + start_buf_idx, available_space);
 
     if(read_bytes > 0)
@@ -101,7 +101,7 @@ int client_handle(client_t *cli)
         EML_DBG(LOG_TAG, "fd %d received %zd bytes, executing http parser", cli->ctx.fd, read_bytes);
 #endif
         /* Set client's last activity */
-        cli->last_activity = (uint32_t)time_helper_get_now();
+        cli->last_activity = (uint64_t)time_helper_get_now();
 
         /* Execute http parser over the request and store the state if msg is incomplete */
         if(http_man_execute(&cli->http_parser, cli->recv_buf, (size_t)read_bytes) != STATUS_SUCCESS)
@@ -122,6 +122,18 @@ int client_handle(client_t *cli)
         {
             /* Increase completed request counts */
             cli->request_count++;
+
+            /* Prepare the request context for routing */
+            http_request_t *req = &p_ctx->req;
+            req->thread_id = thread_id;
+            req->timestamp = cli->last_activity;
+
+            /* TODO */
+            req->remote_ip_be = 0;
+            req->remote_port_be = 0;
+
+            /* Everything else of the request is filled up by llhttp parser */
+            
 
             /* Call the router */
 
@@ -160,7 +172,7 @@ int client_handle(client_t *cli)
             /* Clean client's recv buffer and reset status */
             cli->last_activity = 0;
             cli->request_count = 0;
-            memset(cli->recv_buf, 0, HTTP_RECEIVE_BUFFER_LEN);
+            memset(cli->recv_buf, 0, HTTP_RECV_BUFFER_LEN);
 
             return STATUS_SUCCESS;
         }
@@ -196,7 +208,10 @@ void client_shutdown(client_t *cli)
         cli->is_busy = 0;
         cli->last_activity = 0;
         cli->request_count = 0;
-        memset(cli->recv_buf, 0, HTTP_RECEIVE_BUFFER_LEN);
+        memset(cli->recv_buf, 0, HTTP_RECV_BUFFER_LEN);
+        memset(cli->send_buf, 0, HTTP_SEND_BUFFER_LEN);
+        sv_reset(&cli->send_resp.send_sv);
+        cli->send_resp.status_code = 0;
     }
 }
 

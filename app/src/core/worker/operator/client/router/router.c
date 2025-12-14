@@ -26,7 +26,7 @@
 #include <sys/stat.h>  // stat, S_ISDIR, S_ISREG
 #include <unistd.h>    // access
 
-// #include "handlers_interface.h"
+#include "handlers_interface.h"
 #include "route_register.h"
 #include "emlog.h"
 
@@ -80,7 +80,7 @@ extern size_t used;
  ****************************************************************************
  */
 
-int router_handle_request(const http_request_t *request, HttpResponse *response)
+int router_handle_request(const http_request_t *request, http_response_t *response)
 {
     /* Check input request validity */
     if(!request || !request->message_complete)
@@ -103,7 +103,7 @@ int router_handle_request(const http_request_t *request, HttpResponse *response)
 #ifdef MODE_DEBUG
         EML_INFO(LOG_TAG, "_handle_request: API request detected, searching handler");
 #endif
-        // res = call_api_handler(request, response);
+        res = call_api_handler(request, response);
     }
 
     else
