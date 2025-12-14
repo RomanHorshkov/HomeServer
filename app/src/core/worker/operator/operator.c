@@ -176,8 +176,8 @@ int operator_init(operator_t *op, uint8_t id)
         }
 
         /* point response sv_t to send_buf */
-        op->clients[cli_idx].send_resp.send_buf.p = op->clients[cli_idx].send_buf;
-        op->clients[cli_idx].send_resp.send_buf.n = 0;
+        op->clients[cli_idx].send_resp.send_sv.p = op->clients[cli_idx].send_buf;
+        op->clients[cli_idx].send_resp.send_sv.n = 0;
     }
 
     /* Set operator status to ACTIVE */
@@ -664,17 +664,17 @@ static void _operator_timer_update(operator_t *op)
 
 static void _clean_clients(operator_t *op)
 {
-    uint32_t now = (uint32_t)time_helper_get_now();
+    uint64_t now = (uint64_t)time_helper_get_now();
     for(unsigned int cli_idx = 0; cli_idx < op->active_clients; cli_idx++)
     {
         if (!op->clients[cli_idx].is_busy) continue;
         
-        uint32_t timeout = (op->clients[cli_idx].request_count == 0) ? WORKER_CLIENT_TIMEOUT_SHORT
+        uint64_t timeout = (op->clients[cli_idx].request_count == 0) ? WORKER_CLIENT_TIMEOUT_SHORT
                                                    : WORKER_CLIENT_TIMEOUT_LONG;
         if((now - op->clients[cli_idx].last_activity) > timeout)
         {
 #ifdef MODE_DEBUG
-            EML_DBG(LOG_TAG, "[op %d] timeout closing idle fd %d (last=%u, now=%u, to=%u)",
+            EML_DBG(LOG_TAG, "[op %d] timeout closing idle fd %d (last=%lu, now=%lu, to=%lu)",
                     op->id, op->clients[cli_idx].ctx.fd, op->clients[cli_idx].last_activity, now, timeout);
 #endif
             _operator_remove_client_by_idx(op, cli_idx);

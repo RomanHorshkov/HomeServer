@@ -42,6 +42,8 @@
  ****************************************************************************
  */
 
+inline static void _client_cleanup(client_t *cli);
+
 // static int _send_response(int fd, const http_request_t *req, const HttpResponse *resp);
 // static ssize_t _send_all(int fd, const void *buf, size_t len);
 // static void _free_response_body(HttpResponse *resp);
@@ -92,102 +94,77 @@ int client_handle(client_t *cli, uint8_t thread_id)
         goto hell;
     }
 
+    /* Set client's last activity before even parsing or collecting data,
+    at epoll trigger set the client's last_activity */
+    cli->last_activity = (uint64_t)time_helper_get_now();
+
     size_t available_space = HTTP_RECV_BUFFER_LEN - start_buf_idx;
     ssize_t read_bytes = socket_read_nonblocking(cli->ctx.fd, cli->recv_buf + start_buf_idx, available_space);
 
-    if(read_bytes > 0)
+    if(read_bytes <= 0)
     {
-#ifdef MODE_DEBUG
-        EML_DBG(LOG_TAG, "fd %d received %zd bytes, executing http parser", cli->ctx.fd, read_bytes);
-#endif
-        /* Set client's last activity */
-        cli->last_activity = (uint64_t)time_helper_get_now();
-
-        /* Execute http parser over the request and store the state if msg is incomplete */
-        if(http_man_execute(&cli->http_parser, cli->recv_buf, (size_t)read_bytes) != STATUS_SUCCESS)
-        {
-            EML_ERROR(LOG_TAG, "HTTP parse failed on fd %d", cli->ctx.fd);
-            goto hell;
-        }
-
-        /* If the message is not complete, wait for more data */
-        if(!p_ctx->req.message_complete && p_ctx->parsing)
-        {
-            EML_DBG(LOG_TAG, "fd %d: message not complete yet, waiting for more data", cli->ctx.fd);
-            return STATUS_SUCCESS;  /* need more data */
-        }
-
-        /* At this point ctx->req is fully populated and sanitized */
-        if(p_ctx->req.message_complete && !p_ctx->parsing)
-        {
-            /* Increase completed request counts */
-            cli->request_count++;
-
-            /* Prepare the request context for routing */
-            http_request_t *req = &p_ctx->req;
-            req->thread_id = thread_id;
-            req->timestamp = cli->last_activity;
-
-            /* TODO */
-            req->remote_ip_be = 0;
-            req->remote_port_be = 0;
-
-            /* Everything else of the request is filled up by llhttp parser */
-            
-
-            /* Call the router */
-
-            /* Send the response */
-
-
-            // HttpResponse response = {0};
-
-            // int route_rc = router_handle_request(&cli->http_parser.req, &response);
-
-            // if(route_rc != STATUS_SUCCESS && response.status_code == 0)
-            // {
-            //     EML_ERROR(LOG_TAG, "router_handle_request failed for fd %d", cli->ctx.fd);
-            //     _fill_500(&response);
-            // }
-
-            // if(_send_response(cli->ctx.fd, &cli->http_parser.req, &response) != STATUS_SUCCESS)
-            // {
-            //     _free_response_body(&response);
-            //     return STATUS_FAILURE;
-            // }
-
-            // _free_response_body(&response);
-            // http_man_reset(&cli->http_parser);
-
-            // if(cli->http_parser.req.connection_policy == HTTP_CONNECTION_CLOSE)
-            // {
-            //     return STATUS_FAILURE; /* close after reply */
-            // }
-
-            /* Clean buffers */
-            
-            /* After using the request reset parser for next message */
-            http_man_reset(&cli->http_parser);
-
-            /* Clean client's recv buffer and reset status */
-            cli->last_activity = 0;
-            cli->request_count = 0;
-            memset(cli->recv_buf, 0, HTTP_RECV_BUFFER_LEN);
-
-            return STATUS_SUCCESS;
-        }
-        else
-        {
-            EML_ERROR(LOG_TAG, "fd %d: unexpected parser state after execute", cli->ctx.fd);
-            goto hell;
-        }
-    }
-    else
-    {
-        EML_ERROR(LOG_TAG, "socket_read_nonblocking failed for fd %d", cli->ctx.fd);
+        
+        EML_ERROR(LOG_TAG, "fd %d: unexpected parser state after execute", cli->ctx.fd);
         goto hell;
     }
-    
+#ifdef MODE_DEBUG
+    EML_DBG(LOG_TAG, "fd %d received %zd bytes, executing http parser", cli->ctx.fd, read_bytes);
+#endif
+
+    /* Execute http parser over the request and store the state if msg is incomplete */
+    if(http_man_execute(&cli->http_parser, cli->recv_buf, (size_t)read_bytes) != STATUS_SUCCESS)
+    {
+        EML_ERROR(LOG_TAG, "HTTP parse failed on fd %d", cli->ctx.fd);
+        goto hell;
+    }
+
+    /* If the message is not complete, wait for more data */
+    if(!p_ctx->req.message_complete && p_ctx->parsing)
+    {
+        EML_DBG(LOG_TAG, "fd %d: message not complete yet, waiting for more data", cli->ctx.fd);
+        return STATUS_SUCCESS;  /* need more data */
+    }
+
+    /* At this point ctx->req is fully populated and sanitized */
+    if(p_ctx->req.message_complete && !p_ctx->parsing)
+    {
+        /* Increase completed request counts */
+        cli->request_count++;
+
+        /* Prepare the request context for routing */
+        http_request_t *req = &p_ctx->req;
+        req->thread_id = thread_id;
+        req->timestamp = cli->last_activity;
+
+        /* TODO:
+        set ip and port */
+        req->remote_ip_be = 0;
+        req->remote_port_be = 0;
+
+        /* Everything else of the request is filled up by llhttp parser */
+
+        /* Call the router */
+        if(router_handle_request(req, &cli->send_resp) != STATUS_SUCCESS)
+        {
+            EML_ERROR(LOG_TAG, "router_handle_request failed for fd %d", cli->ctx.fd);
+            goto hell;
+        }
+        
+        /* Send the client's correct response */
+        EML_WARN(LOG_TAG, "Response sending not implemented yet.");
+
+        /* TODO: Implement response sending */
+        EML_DBG(LOG_TAG, "response: %s", cli->send_resp.send_sv.p);
+
+        /* Clean buffers
+        After using the request reset parser for next message
+        and clean the client's receive AND SEND buffer */
+        _client_cleanup(cli);
+
+        return STATUS_SUCCESS;
+    }
+
+    EML_ERROR(LOG_TAG, "socket_read_nonblocking failed for fd %d", cli->ctx.fd);
 
 hell:
     client_shutdown(cli);
@@ -203,96 +180,30 @@ void client_shutdown(client_t *cli)
 
     if(cli->is_busy)
     {
-        http_man_reset(&cli->http_parser);
+        _client_cleanup(cli);
+
         socket_shutdown_and_close(cli->ctx.fd);
         cli->is_busy = 0;
         cli->last_activity = 0;
         cli->request_count = 0;
-        memset(cli->recv_buf, 0, HTTP_RECV_BUFFER_LEN);
-        memset(cli->send_buf, 0, HTTP_SEND_BUFFER_LEN);
         sv_reset(&cli->send_resp.send_sv);
         cli->send_resp.status_code = 0;
     }
 }
 
-// static int _send_response(int fd, const Http_request_t *req, const HttpResponse *resp)
-// {
-//     if(!resp) return STATUS_FAILURE;
+/****************************************************************************
+ * PRIVATE FUNCTIONS DEFINITIONS
+ ****************************************************************************
+ */
 
-//     const int status = resp->status_code ? resp->status_code : 500;
-//     const char *reason = resp->status_text ? resp->status_text : "OK";
-//     const char *ctype = resp->content_type ? resp->content_type : "application/octet-stream";
-//     const char *conn =
-//         (req && req->connection_policy == HTTP_CONNECTION_CLOSE) ? "close" : "keep-alive";
+inline static void _client_cleanup(client_t *cli)
+{
+    /* After using the request reset parser for next message */
+    http_man_reset(&cli->http_parser);
 
-//     char hdr_buf[2048];
-//     size_t offset = 0;
+    /* Clean client's recv buffer and hold the status */
+    memset(cli->recv_buf, 0, HTTP_RECV_BUFFER_LEN);
 
-//     int written = snprintf(hdr_buf, sizeof(hdr_buf),
-//                            "HTTP/1.1 %d %s\r\n"
-//                            "Content-Type: %s\r\n"
-//                            "Content-Length: %zu\r\n",
-//                            status,
-//                            reason,
-//                            ctype,
-//                            resp->body ? resp->body_length : 0);
-//     if(written < 0 || (size_t)written >= sizeof(hdr_buf)) return STATUS_FAILURE;
-//     offset = (size_t)written;
-
-//     for(int i = 0; i < resp->header_count; ++i)
-//     {
-//         written = snprintf(hdr_buf + offset,
-//                            sizeof(hdr_buf) - offset,
-//                            "%s: %s\r\n",
-//                            resp->header_names[i],
-//                            resp->header_values[i]);
-//         if(written < 0 || (size_t)written >= sizeof(hdr_buf) - offset) return STATUS_FAILURE;
-//         offset += (size_t)written;
-//     }
-
-//     written = snprintf(hdr_buf + offset,
-//                        sizeof(hdr_buf) - offset,
-//                        "Connection: %s\r\n\r\n",
-//                        conn);
-//     if(written < 0 || (size_t)written >= sizeof(hdr_buf) - offset) return STATUS_FAILURE;
-//     offset += (size_t)written;
-
-//     if(_send_all(fd, hdr_buf, offset) < 0) return STATUS_FAILURE;
-//     if(resp->body && resp->body_length > 0)
-//     {
-//         if(_send_all(fd, resp->body, resp->body_length) < 0) return STATUS_FAILURE;
-//     }
-
-//     return STATUS_SUCCESS;
-// }
-
-// static ssize_t _send_all(int fd, const void *buf, size_t len)
-// {
-//     const char *ptr = (const char *)buf;
-//     size_t total = 0;
-
-//     while(total < len)
-//     {
-//         ssize_t sent = send(fd, ptr + total, len - total, 0);
-//         if(sent < 0)
-//         {
-//             if(errno == EINTR) continue;
-//             return -1;
-//         }
-//         total += (size_t)sent;
-//     }
-
-//     return (ssize_t)total;
-// }
-
-// static void _free_response_body(HttpResponse *resp)
-// {
-//     if(!resp) return;
-//     if(resp->body_owned && resp->body)
-//     {
-//         free(resp->body);
-//     }
-//     resp->body = NULL;
-//     resp->body_length = 0;
-//     resp->body_owned = 0;
-// }
+    /* Clean client's send buffer */
+    memset(cli->send_buf, 0, HTTP_SEND_BUFFER_LEN);
+}

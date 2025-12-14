@@ -1,6 +1,6 @@
 /**
- * @file route_register.c
- * @brief HTTP route registration implementation.
+ * @file handler_db.c
+ * @brief Database application HTTP handler.
  * 
  * @author  Roman Horshkov <github.com/RomanHorshkov>
  * @date    dec 2025
@@ -12,19 +12,17 @@
  * INCLUDES
  ****************************************************************************
  */
+#include "handler_db_app.h"
 
-#include "route_register.h"
-
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
+#include "app_interface_2.h" /* db_app_run, db_app_status_t */
+#include "route_register.h"  /* REGISTER_ROUTE */
 
 /****************************************************************************
  * DEFINES
  ****************************************************************************
  */
 
-#define LOG_TAG "srv_route_register"
+#define LOG_TAG "handler_db_app"
 
 /****************************************************************************
  * ENUMERATED TYPES
@@ -51,16 +49,6 @@
 /* None */
 
 /****************************************************************************
- * VARIABLES
- ****************************************************************************
- */
-
-
-static route_t *vec = NULL;
-static uint8_t used = 0;  /* items filled */
-static uint8_t alloc = 0; /* items allocated */
-
-/****************************************************************************
  * PRIVATE FUNCTIONS PROTOTYPES
  ****************************************************************************
  */
@@ -71,35 +59,37 @@ static uint8_t alloc = 0; /* items allocated */
  ****************************************************************************
  */
 
-void router_register(const char *path, route_handler_t handler)
+int handler_database(const http_request_t* req, http_response_t* res)
 {
-    /* TODO: this is quite dangerous multiplying indefinitely on uint8_t */
-    if(used == alloc)
+    if(!req || !res)
     {
-        /* grow vector (8, 16, 32 …) */
-        alloc = alloc ? alloc * 2 : 2;
-        vec = realloc(vec, alloc * sizeof *vec);
-        if(!vec)
-        {
-            perror("realloc");
-            exit(EXIT_FAILURE);
-        }
+        EML_ERROR(LOG_TAG, "Invalid input to handler_database");
+        return -1;
     }
 
-    /* Register new route */
-    vec[used++] = (route_t) {
-        .path = path,
-        .path_len = strlen(path),
-        .handler = handler
-    };
+    EML_WARN(LOG_TAG, "DB app handler invoked.");
 
-#ifdef MODE_DEBUG
-    EML_DBG(LOG_TAG, "Registered route: %s, N routes = %u", path, used);
-#endif
+    return 0;
+
+    // db_app_status_t status = db_app_run((DB_request_t*)req, (DB_response_t*)res);
+
+    // EML_WARN(LOG_TAG, "DB app returned status %d, to implement response.", status);
+
+    // return (status == DB_APP_OK) ? 0 : -1;
 }
 
-const route_t *router_get_table(size_t *out_count)
-{
-    if(out_count) *out_count = used;
-    return vec; /* read‑only outside this translation unit */
-}
+
+/****************************************************************************
+ * PRIVATE FUNCTIONS DEFINITIONS
+ ****************************************************************************
+ */
+/* None */
+
+/****************************************************************************
+ * PRIVATE FUNCTIONS DEFINITIONS
+ ****************************************************************************/
+
+/****************************************************************************
+ * ROUTE REGISTRATION
+ ****************************************************************************/
+REGISTER_ROUTE("/api/db_app/", handler_database)

@@ -102,6 +102,7 @@ typedef enum
 
 /**
  * @brief Supported HTTP methods.
+ * Set as in llhttp.h for easy mapping.
  */
 typedef enum
 {

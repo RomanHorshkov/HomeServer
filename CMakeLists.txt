@@ -94,9 +94,7 @@ set(SERVER_SOURCES
     ${CMAKE_SOURCE_DIR}/app/src/core/worker/operator/client/http_man/sanitizer.c
     ${CMAKE_SOURCE_DIR}/app/src/core/worker/operator/client/router/router.c
     ${CMAKE_SOURCE_DIR}/app/src/core/worker/operator/client/router/route_register.c
-    ${CMAKE_SOURCE_DIR}/app/src/core/worker/operator/client/router/handlers/handler_static.c
-    ${CMAKE_SOURCE_DIR}/app/src/core/worker/operator/client/router/handlers/handler_utils.c
-    ${CMAKE_SOURCE_DIR}/app/src/core/worker/operator/client/router/handlers/handler_whoami.c
+    ${CMAKE_SOURCE_DIR}/app/src/core/worker/operator/client/router/handlers/handler_db_app.c
     ${CMAKE_SOURCE_DIR}/app/src/utils/socket_helper.c
     ${CMAKE_SOURCE_DIR}/app/src/utils/epoller.c
     ${CMAKE_SOURCE_DIR}/app/src/utils/time_helper.c
@@ -105,7 +103,7 @@ set(SERVER_SOURCES
 option(HS_ENABLE_DB_APP "Enable the external db_app route and libraries" ON)
 if(HS_ENABLE_DB_APP)
     list(APPEND SERVER_SOURCES
-        ${CMAKE_SOURCE_DIR}/app/src/core/worker/operator/client/router/handlers/handler_db.c
+        ${CMAKE_SOURCE_DIR}/app/src/core/worker/operator/client/router/handlers/handler_db_app.c
     )
 endif()
 
@@ -118,7 +116,6 @@ set(SERVER_INCLUDE_DIRS
     ${CMAKE_SOURCE_DIR}/app/include/core/worker/operator/client
     ${CMAKE_SOURCE_DIR}/app/include/core/worker/operator/client/router
     ${CMAKE_SOURCE_DIR}/app/include/core/worker/operator/client/router/handlers
-    ${CMAKE_SOURCE_DIR}/app/include/core/worker/operator/client/handlers
     ${CMAKE_SOURCE_DIR}/app/include/core/worker/operator/client/http_man
     ${CMAKE_SOURCE_DIR}/app/include/utils
     ${CMAKE_SOURCE_DIR}/app/external/DB_app/app/include
