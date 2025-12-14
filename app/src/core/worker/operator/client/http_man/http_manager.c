@@ -245,10 +245,10 @@ int http_man_execute(llhttp_parser_t *pstate, const char *in_buf, size_t read_by
     }
 
     size_t total_bytes = start_buf_idx + read_bytes;
-    if(total_bytes > HTTP_RECEIVE_BUFFER_LEN)
+    if(total_bytes > HTTP_RECV_BUFFER_LEN)
     {
         EML_ERROR(LOG_TAG, "_execute: buffer overflow detected (%zu bytes, limit %zu)",
-                  total_bytes, (size_t)HTTP_RECEIVE_BUFFER_LEN);
+                  total_bytes, (size_t)HTTP_RECV_BUFFER_LEN);
         return STATUS_FAILURE;
     }
 

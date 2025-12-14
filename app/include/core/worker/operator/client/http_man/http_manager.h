@@ -62,23 +62,6 @@ typedef struct
     llhttp_parser_ctx_t parser_ctx;     /* populated request */
 } llhttp_parser_t;
 
-/**
- * @brief HTTP response to be sent to the client.
- */
-typedef struct
-{
-    int status_code;
-    const char* status_text;
-    const char* content_type;
-    char* body;
-    size_t body_length;
-    uint8_t body_owned; /* 1 if body must be free()'d by caller */
-
-    /* generic headers (e.g., Set-Cookie) */
-    // char header_names[HTTP_MAX_HEADERS_OUT][HTTP_MAX_HEADER_NAME_LEN];
-    // char header_values[HTTP_MAX_HEADERS_OUT][HTTP_MAX_HEADER_VALUE_LEN];
-    int header_count;
-} HttpResponse;
 
 /****************************************************************************
  * ENUMERATED VARIABLES

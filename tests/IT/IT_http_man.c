@@ -108,7 +108,7 @@ static void test_single_read_limit(void **state)
 {
     llhttp_parser_t *parser = *state;
     size_t message_len = 0;
-    size_t target = HTTP_RECEIVE_BUFFER_LEN;
+    size_t target = HTTP_RECV_BUFFER_LEN;
     char *message = hs_build_http_request_exact_len(target, &message_len);
     assert_non_null(message);
 
@@ -123,7 +123,7 @@ static void test_single_read_overflow(void **state)
 {
     llhttp_parser_t *parser = *state;
     size_t message_len = 0;
-    size_t target = HTTP_RECEIVE_BUFFER_LEN + 1;
+    size_t target = HTTP_RECV_BUFFER_LEN + 1;
     char *message = hs_build_http_request_exact_len(target, &message_len);
     assert_non_null(message);
 
@@ -151,7 +151,7 @@ static void test_multi_read_limit(void **state)
 {
     llhttp_parser_t *parser = *state;
     size_t message_len = 0;
-    size_t target = HTTP_RECEIVE_BUFFER_LEN;
+    size_t target = HTTP_RECV_BUFFER_LEN;
     char *message = hs_build_http_request_exact_len(target, &message_len);
     assert_non_null(message);
 
@@ -165,7 +165,7 @@ static void test_multi_read_overflow(void **state)
 {
     llhttp_parser_t *parser = *state;
     size_t message_len = 0;
-    size_t target = HTTP_RECEIVE_BUFFER_LEN + 1;
+    size_t target = HTTP_RECV_BUFFER_LEN + 1;
     char *message = hs_build_http_request_exact_len(target, &message_len);
     assert_non_null(message);
 

@@ -291,7 +291,7 @@ For each item you will find **the underlying cause**, **the practical impact/a
 
 | Aspect     | Details                                                                                                                                                                                                          |
 | ---------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Cause**  | `HTTP_RECEIVE_BUFFER_LEN` is 4 KiB, `HTTP_MAX_HEADERS_IN` is 20. Modern browsers can send 10 KiB cookie headers easily.                                                                                        |
+| **Cause**  | `HTTP_RECV_BUFFER_LEN` is 4 KiB, `HTTP_MAX_HEADERS_IN` is 20. Modern browsers can send 10 KiB cookie headers easily.                                                                                        |
 | **Impact** | Oversized request truncates in the middle of a header → parse error → vague 400 or crash → trivial DoS.                                                                                                          |
 | **Fixes**  | ① Grow the buffer dynamically (`realloc`) until a sane max (e.g. 64 KiB). ② If limit is hit, reply `431 Request Header Fields Too Large`. ③ Stream‑parse with `llhttp_execute()` as bytes arrive.               |
 

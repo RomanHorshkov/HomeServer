@@ -35,7 +35,7 @@ static inline int db_request_init_from_http(const Http_request_t* in, uint64_t n
  * PUBLIC FUNCTIONS DEFINITIONS
  ****************************************************************************/
 
-int handler_database(const Http_request_t* req, HttpResponse* res)
+int handler_database(const http_request_t* req, http_response_t* res)
 {
     if(!req || !res)
     {
