@@ -12,7 +12,6 @@
 #include <string.h>
 
 #include "http_common.h"
-#include "llhttp.h"
 
 /****************************************************************************
  * DEFINES

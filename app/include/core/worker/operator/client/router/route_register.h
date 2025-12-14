@@ -1,16 +1,55 @@
+/**
+ * @file    route_register.h
+ * 
+ * @brief   HTTP route registration API for operator client path.
+ * Provides macros and functions to register HTTP routes and their handlers.
+ * 
+ * @author  Roman Horshkov <github.com/RomanHorshkov>
+ * @date    dec 2025
+ * (c) 2025
+ */
 #ifndef SERVER_ROUTER_ROUTE_REGISTER_H
 #define SERVER_ROUTER_ROUTE_REGISTER_H
 
-#include <stddef.h>
+/****************************************************************************
+ * INCLUDES
+ ****************************************************************************
+ */
 
-#include "http_manager.h" /* <- pulls in the typedefs; safe here,
-                               no circular dependency because this header
-                               contains *no* struct definitions */
+#include <stddef.h>
+#include "http_common.h"
+
+/****************************************************************************
+ * DEFINES
+ ****************************************************************************
+ */
+/* None */
+
+/****************************************************************************
+ * TYPEDEFS
+ ****************************************************************************
+ */
 
 /* ---------- Handler signature ---------- */
-typedef int (*route_handler_t)(const Http_request_t *, HttpResponse *);
+typedef int (*route_handler_t)(const http_request_t *, http_response_t *);
 
-/* ---------- metadata struct ---------- */
+/****************************************************************************
+ * ENUMERATED TYPEDEFS
+ ****************************************************************************
+ */
+/* None */
+
+/****************************************************************************
+ * ENUMERATED VARIABLES
+ ****************************************************************************
+ */
+/* None */
+
+/****************************************************************************
+ * STRUCTURED TYPEDEFS
+ ****************************************************************************
+ */
+
 typedef struct
 {
     const char *path; /* string literal, never freed      */
@@ -18,7 +57,17 @@ typedef struct
     route_handler_t handler;
 } route_t;
 
-/* ---------- Functions exposed to router.c ---------- */
+/****************************************************************************
+ * STRUCTURED VARIABLES
+ ****************************************************************************
+ */
+/* None */
+
+/****************************************************************************
+ * FUNCTIONS DECLARATIONS
+ ****************************************************************************
+ */
+
 void router_register(const char *path, route_handler_t h);
 
 const route_t *router_get_table(size_t *out_count);

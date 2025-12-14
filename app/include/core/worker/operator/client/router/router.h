@@ -1,9 +1,7 @@
 #ifndef SERVER_ROUTER_H
 #define SERVER_ROUTER_H
 
-#include "http_manager.h" /* <- pulls in the typedefs; safe here,
-                               no circular dependency because this header
-                               contains *no* struct definitions */
+#include "http_common.h"
 
 /**
  * @brief Route an HTTP request to the appropriate handler.
@@ -16,6 +14,6 @@
  * @retval 0        Success.
  * @retval -1       No matching route (404).
  */
-int router_handle_request(const Http_request_t* request, HttpResponse* response);
+int router_handle_request(const http_request_t* request, http_response_t* response);
 
 #endif /* SERVER_ROUTER_H */
