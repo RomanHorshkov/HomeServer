@@ -93,8 +93,8 @@ void router_register(const char *path, route_handler_t handler)
         .handler = handler
     };
 
-#ifdef MODE_DEBUG
-    EML_DBG(LOG_TAG, "Registered route: %s, N routes = %u", path, used);
+#ifdef DEBUG
+    EML_DEBUG(LOG_TAG, "Registered route: %s, N routes = %u", path, used);
 #endif
 }
 

@@ -81,7 +81,4 @@ typedef enum
 #define OPERATOR_TIMER_PERIOD_LONG Minutes(5U)
 
 
-
-
-
 #endif /* SERVER_CONFIG_CORE_H */

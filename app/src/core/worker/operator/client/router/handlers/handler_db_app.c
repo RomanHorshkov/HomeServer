@@ -69,6 +69,8 @@ int handler_database(const http_request_t* req, http_response_t* res)
 
     EML_WARN(LOG_TAG, "DB app handler invoked.");
 
+    (DB_APP_request_t*)req
+
     return 0;
 
     // db_app_status_t status = db_app_run((DB_request_t*)req, (DB_response_t*)res);

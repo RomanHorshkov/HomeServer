@@ -233,7 +233,7 @@ target_compile_options(
 )
 target_compile_definitions(server PRIVATE _POSIX_C_SOURCE=200809L)
 if(CMAKE_BUILD_TYPE STREQUAL "Debug")
-    target_compile_definitions(server PRIVATE MODE_DEBUG MODE_DEBUG)
+    target_compile_definitions(server PRIVATE DEBUG DEBUG)
 else()
     target_compile_definitions(server PRIVATE NDEBUG)
 endif()

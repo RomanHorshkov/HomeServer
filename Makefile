@@ -227,7 +227,7 @@ help:
 	@echo "Targets:"
 	@echo "  all            - build debug (default)"
 	@echo "  run            - run ./build/bin/server 3490"
-	@echo "  debug          - clean + build with MODE_DEBUG"
+	@echo "  debug          - clean + build with DEBUG"
 	@echo "  release        - clean + build optimized"
 	@echo "  format         - clang-format C sources/headers"
 	@echo "  lint           - cppcheck"
