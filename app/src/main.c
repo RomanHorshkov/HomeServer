@@ -17,9 +17,9 @@
  * (c) 2025
  */
 
-#ifdef MODE_DEBUG
+#ifdef DEBUG
 #    include <stdio.h> /* printf / fprintf / perror */
-#endif                 /* MODE_DEBUG */
+#endif                 /* DEBUG */
 
 #include "core.h" /* server_init / run / shutdown */
 
@@ -38,20 +38,17 @@ int main(int argc, char *argv[])
     /* Check input */
     if(argc != 2)
     {
-#ifdef MODE_DEBUG
+#ifdef DEBUG
         printf("Usage: %s <port>\n", argv[0]);
-#endif /* MODE_DEBUG */
-        return -1;
+#endif /* DEBUG */
+        return 1;
     }
 
     /* Initialize the server */
-    else if(server_init(argv[1]) != 0) return -1;
+    if(server_init(argv[1]) != 0) return 1;
 
     /* Run the server */
-    else
-    {
-        server_run();
-    }
+    server_run();
 
     return 0;
 }

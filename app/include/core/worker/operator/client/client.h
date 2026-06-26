@@ -7,21 +7,26 @@
 
 #include "config_core.h"
 #include "reactor.h" /* for fd_ctx_t */
-#include "http_manager.h"
+#include "DB_http.h"
 
 /**
  * @brief Per‑client state owned by an operator thread.
  */
 typedef struct
 {
-    uint8_t is_busy;            /**< slot in use */
-    fd_ctx_t ctx;               /**< per‑fd reactor context */
-    uint64_t last_activity;     /**< coarse ms timestamp of last I/O */
-    size_t request_count;       /**< number of HTTP requests handled */
-    char recv_buf[HTTP_RECV_BUFFER_LEN]; /**< buffer for socket reads */
-    char send_buf[HTTP_SEND_BUFFER_LEN]; /**< buffer for socket writes */
-    http_response_t send_resp;      /**< response to send */
-    llhttp_parser_t http_parser;    /**< per-connection HTTP parser state */
+    uint8_t         is_busy;                        /**< slot in use */
+    uint8_t         connection_policy;              /**< connection policy (keep alive / close) */
+    uint64_t        last_activity;                  /**< coarse ms timestamp of last I/O */
+    size_t          request_count;                  /**< number of HTTP requests handled */
+
+    fd_ctx_t        ctx;                            /**< per‑fd reactor context */
+    char            buf[DB_HTTP_MAX_BUFFER_LEN_B];  /**< buffer for socket reads */
+    size_t          buf_idx;                        /**< buffer written idx */
+    
+    // llhttp_parser_t http_parser_;                    /**< per-connection HTTP parser state */
+
+    DB_http_request_t http_request;                  /**< per-connecton structured http request */
+    DB_http_parser_t *http_parser;                   /**< per-connection HTTP parser state */
 } client_t;
 
 /**

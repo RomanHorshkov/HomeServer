@@ -179,7 +179,7 @@ int worker_init(uint8_t cpu_count)
     /* Set worker status to active */
     _worker.status = WORKER_STATUS_ACTIVE;
 
-    EML_DBG(LOG_TAG, "SKIPPING DB APP INIT");
+    EML_DEBUG(LOG_TAG, "SKIPPING DB APP INIT");
 
     // /* Initialize the DataBase app */
     // if(db_app_init(_worker.operators_count) != 0)
@@ -215,8 +215,7 @@ int worker_dispatch_to_operator(int client_fd)
     }
 
     /* Get least loaded operator */
-    operator_t *op = NULL;
-    op = _least_loaded_operator();
+    operator_t *op = _least_loaded_operator();
     if(!op)
     {
         EML_ERROR(LOG_TAG, "_to_operator: failed to get least loaded operator");
@@ -238,14 +237,15 @@ int worker_dispatch_to_operator(int client_fd)
     }
 
     /* Signal to operator a new client's fd presence on the ring */    
-    if(write(op->wakeup_ctx.fd, &(uint64_t){1U}, sizeof(uint64_t)) != sizeof(uint64_t))
+    uint64_t wakeup_var = 1U;
+    if(write(op->wakeup_ctx.fd, &wakeup_var, sizeof wakeup_var) != sizeof wakeup_var)
     {
         EML_PERR(LOG_TAG, "_to_operator: write to wakeup fd %d failed", op->wakeup_ctx.fd);
         /* continue anyway, operator will eventually notice the new fd */
     }
 
-#ifdef MODE_DEBUG
-    EML_DBG(LOG_TAG, "_to_operator: assigned client fd %d to operator %d",
+#ifdef DEBUG
+    EML_DEBUG(LOG_TAG, "_to_operator: assigned client fd %d to operator %d",
              client_fd, op->id);
 #endif
     return STATUS_SUCCESS;
@@ -324,8 +324,8 @@ static operator_t* _least_loaded_operator(void)
         /* when load is below the blind assignment limit just give it to the operator */
         if(load < BLIND_ASSIGNMENT_LIMIT_PERCENTAGE)
         {
-#ifdef MODE_DEBUG
-            EML_DBG(LOG_TAG, "selecting operator %u with load=%u (blind)",
+#ifdef DEBUG
+            EML_DEBUG(LOG_TAG, "selecting operator %u with load=%u (blind)",
                      (unsigned)i, load);
 #endif
             return &_worker.operators[i];
@@ -334,8 +334,8 @@ static operator_t* _least_loaded_operator(void)
         /* calculate min load over all operators */
         if(load < best_load)
         {
-#ifdef MODE_DEBUG
-            EML_DBG(LOG_TAG, "operator %u has new best load=%u",
+#ifdef DEBUG
+            EML_DEBUG(LOG_TAG, "operator %u has new best load=%u",
                      (unsigned)i, load);
 #endif
             best_load = load;
@@ -358,8 +358,8 @@ static operator_t* _least_loaded_operator(void)
         return NULL;
     }
 
-#ifdef MODE_DEBUG
-    EML_DBG(LOG_TAG, "[dispatch] selecting operator %u with load=%u",
+#ifdef DEBUG
+    EML_DEBUG(LOG_TAG, "[dispatch] selecting operator %u with load=%u",
                 (unsigned)best_idx, best_load);
 #endif
 

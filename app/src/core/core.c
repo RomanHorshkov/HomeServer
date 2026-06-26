@@ -97,7 +97,7 @@ static void _core_logger_bootstrap(void);
 
 static uint8_t _core_detect_cpu_count(void);
 
-#ifdef MODE_DEBUG
+#ifdef DEBUG
 static void _p_dbg_info_init(void);
 #endif
 
@@ -108,9 +108,9 @@ static void _p_dbg_info_init(void);
 
 int server_init(const char *port)
 {
-#ifdef MODE_DEBUG
+#ifdef DEBUG
     _p_dbg_info_init();
-#endif /* MODE_DEBUG */
+#endif /* DEBUG */
     
     _core_logger_bootstrap();
 
@@ -132,8 +132,9 @@ int server_init(const char *port)
     }
 
     /* Successful initialization */
-    EML_INFO(LOG_TAG, "🚀 C Server running on http://localhost:%s", port);
+    EML_INFO(LOG_TAG, "🚀 C Server initialized on http://localhost:%s", port);
     return STATUS_SUCCESS;
+    
 fail:
     return STATUS_FAILURE;
 }
@@ -162,7 +163,7 @@ static void _core_logger_bootstrap(void)
     static bool initialized = false;
     if(initialized) return;
 
-#ifdef MODE_DEBUG
+#ifdef DEBUG
     emlog_init(EML_LEVEL_DBG, true);
     emlog_set_writev_flush(true);
     EML_INFO(LOG_TAG, "Debug logger active; stdout/stderr sink");
@@ -196,7 +197,7 @@ static uint8_t _core_detect_cpu_count(void)
     return (uint8_t)cpus;
 }
 
-#ifdef MODE_DEBUG
+#ifdef DEBUG
 static void _p_dbg_info_init(void)
 {
     

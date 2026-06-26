@@ -82,7 +82,7 @@ int epoller_manage_fd(const int epoll_fd, const int target_fd, const int operati
             }
             else
             {
-                EML_DBG(LOG_TAG, "_manage_fd with data, epoll_fd %d, target_fd "
+                EML_DEBUG(LOG_TAG, "_manage_fd with data, epoll_fd %d, target_fd "
                     "%d, epoll_ctl_operation %d",
                     epoll_fd, target_fd, operation);
                 ev.events = event;
@@ -93,9 +93,9 @@ int epoller_manage_fd(const int epoll_fd, const int target_fd, const int operati
 
         case EPOLL_CTL_DEL:
         default:
-#ifdef MODE_DEBUG
+#ifdef DEBUG
             /* Explicit the DEL operation */
-            EML_DBG(LOG_TAG, "_manage_fd Deleting, epoll_fd %d, target_fd %d, op "
+            EML_DEBUG(LOG_TAG, "_manage_fd Deleting, epoll_fd %d, target_fd %d, op "
                 "%d",
                 epoll_fd, target_fd, operation);
 #endif

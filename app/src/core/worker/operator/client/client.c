@@ -23,7 +23,7 @@
 
 #include "client.h"
 
-#include "emlog.h"
+#include <emlog.h>
 
 // #include "http_manager.h" included in .h
 #include "router.h"
@@ -81,38 +81,25 @@ int client_handle(client_t *cli, uint8_t thread_id)
         return STATUS_FAILURE;
     }
 
-    llhttp_parser_ctx_t *p_ctx = &cli->http_parser.parser_ctx;
-    size_t start_buf_idx = 0;
-
-    /* If already in parsing state, continue writing after the bytes already present */
-    if(p_ctx->parsing) start_buf_idx = p_ctx->buf_used;
-
-    /* Ensure we always receive into the same stable buffer and avoid overrun */
-    if(start_buf_idx >= HTTP_RECV_BUFFER_LEN)
-    {
-        EML_ERROR(LOG_TAG, "recv buffer overflow for fd %d", cli->ctx.fd);
-        goto hell;
-    }
-
-    /* Set client's last activity before even parsing or collecting data,
-    at epoll trigger set the client's last_activity */
+    /* Set client's last activity before even parsing or collecting data */
     cli->last_activity = (uint64_t)time_helper_get_now();
 
-    size_t available_space = HTTP_RECV_BUFFER_LEN - start_buf_idx;
-    ssize_t read_bytes = socket_read_nonblocking(cli->ctx.fd, cli->recv_buf + start_buf_idx, available_space);
-
+    /* Read the client's socket */
+    ssize_t read_bytes = socket_read_nonblocking(cli->ctx.fd, cli->recv_buf + cli->buf_idx, DB_HTTP_MAX_BUFFER_LEN_B - cli->buf_idx);
     if(read_bytes <= 0)
     {
-        
         EML_ERROR(LOG_TAG, "fd %d: unexpected parser state after execute", cli->ctx.fd);
         goto hell;
     }
-#ifdef MODE_DEBUG
-    EML_DBG(LOG_TAG, "fd %d received %zd bytes, executing http parser", cli->ctx.fd, read_bytes);
+#ifdef DEBUG
+    EML_DEBUG(LOG_TAG, "fd %d received %zd bytes, executing http parser", cli->ctx.fd, read_bytes);
 #endif
 
+    /* Update client's red buffer */
+    cli->buf_idx += (size_t)read_bytes;
+
     /* Execute http parser over the request and store the state if msg is incomplete */
-    if(http_man_execute(&cli->http_parser, cli->recv_buf, (size_t)read_bytes) != STATUS_SUCCESS)
+    if(db_http_parser_exec(&cli->http_parser, cli->recv_buf, (size_t)read_bytes) != STATUS_SUCCESS)
     {
         EML_ERROR(LOG_TAG, "HTTP parse failed on fd %d", cli->ctx.fd);
         goto hell;
@@ -121,7 +108,7 @@ int client_handle(client_t *cli, uint8_t thread_id)
     /* If the message is not complete, wait for more data */
     if(!p_ctx->req.message_complete && p_ctx->parsing)
     {
-        EML_DBG(LOG_TAG, "fd %d: message not complete yet, waiting for more data", cli->ctx.fd);
+        EML_INFO(LOG_TAG, "fd %d: message not complete yet, waiting for more data", cli->ctx.fd);
         return STATUS_SUCCESS;  /* need more data */
     }
 
@@ -132,7 +119,7 @@ int client_handle(client_t *cli, uint8_t thread_id)
         cli->request_count++;
 
         /* Prepare the request context for routing */
-        http_request_t *req = &p_ctx->req;
+        DB_http_request_t *req = &p_ctx->req;
         req->thread_id = thread_id;
         req->timestamp = cli->last_activity;
 

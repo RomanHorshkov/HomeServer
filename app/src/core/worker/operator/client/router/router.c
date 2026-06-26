@@ -77,8 +77,8 @@ int router_handle_request(const http_request_t *request, http_response_t *respon
         return STATUS_FAILURE;
     }
     
-#ifdef MODE_DEBUG
-    EML_DBG(LOG_TAG, "_handle_request: handling request for path %.*s",
+#ifdef DEBUG
+    EML_DEBUG(LOG_TAG, "_handle_request: handling request for path %.*s",
             (int)request->path.n,
             request->path.p ? request->path.p : "");
 #endif
@@ -93,8 +93,8 @@ int router_handle_request(const http_request_t *request, http_response_t *respon
             if (request->path.n == route[i].path_len &&
                 memcmp(request->path.p, route[i].path, route[i].path_len) == 0)
             {
-#ifdef MODE_DEBUG
-                EML_DBG(LOG_TAG, "_handle_request: found route for path %.*s, executing.",
+#ifdef DEBUG
+                EML_DEBUG(LOG_TAG, "_handle_request: found route for path %.*s, executing.",
                         (int)request->path.n,
                         request->path.p ? request->path.p : "");
 #endif
