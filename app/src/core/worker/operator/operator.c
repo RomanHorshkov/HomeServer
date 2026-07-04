@@ -24,7 +24,9 @@
 
 #include "client.h"
 #include "reactor.h"
-#include "spsc_ring.h"
+
+#include <DB_http/DB_http.h>
+
 #include "socket_helper.h"
 #include "time_helper.h"
 #include "worker.h"
@@ -169,15 +171,7 @@ int operator_init(operator_t *op, uint8_t id)
     /* init each client's http parser */
     for(size_t cli_idx = 0; cli_idx < WORKER_MAX_CLIENTS; cli_idx++)
     {
-        if(http_man_init(&op->clients[cli_idx].http_parser) != STATUS_SUCCESS)
-        {
-            EML_ERROR(LOG_TAG, "[op %d] http_man_init failed", op->id);
-            goto fail;
-        }
-
-        /* point response sv_t to send_buf */
-        op->clients[cli_idx].send_resp.send_sv.p = op->clients[cli_idx].send_buf;
-        op->clients[cli_idx].send_resp.send_sv.n = 0;
+        if(db_http_parser_init(&op->clients[cli_idx].http_parser) != DB_http_status_OK) goto fail;
     }
 
     /* Set operator status to ACTIVE */
@@ -277,10 +271,12 @@ void operator_shutdown(operator_t *op)
         op->timer_fd = -1;
     }
     
-    /* Clean the clients */
-    for(size_t i = 0; i < op->active_clients; i++)
+    /* Clean the clients and their parser handles. */
+    for(size_t i = 0; i < WORKER_MAX_CLIENTS; i++)
     {
         client_shutdown(&op->clients[i]);
+        db_http_parser_kill(op->clients[i].http_parser);
+        op->clients[i].http_parser = NULL;
     }
 
     /* Clean reactor */
@@ -433,10 +429,14 @@ static int _operator_add_client(operator_t *op, int client_fd)
     }
 
     /* populate client's slot */
+    memset(free_slot->buf, 0, sizeof(free_slot->buf));
+    memset(&free_slot->http_request, 0, sizeof(free_slot->http_request));
+    free_slot->buf_idx = 0u;
+    free_slot->connection_policy = 0u;
     /* Set client's last activity to now */
-    free_slot->last_activity = (uint32_t)time_helper_get_now();
+    free_slot->last_activity = (uint64_t)time_helper_get_now();
     /* Set client's request count */
-    free_slot->request_count = 0;
+    free_slot->request_count = 0u;
     /* Mark client's slot as busy */
     free_slot->is_busy = (uint8_t)1U;
 

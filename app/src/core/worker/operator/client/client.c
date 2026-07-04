@@ -1,21 +1,11 @@
 /**
  * @file client.c
- * @brief Per‑connection I/O and HTTP parsing loop executed inside an operator.
+ * @brief Per-connection I/O and HTTP parsing loop executed inside an operator.
  *
- * Each operator holds an array of client slots. When epoll marks a socket
- * readable the operator invokes ::client_handle() which performs a bounded
- * recv()/parse loop:
- *   1. Read as much as fits in the slot buffer (non‑blocking).
- *   2. Feed bytes to the HTTP parser (llhttp wrapper) maintaining incremental state.
- *   3. On complete message: log request metadata, reset parser, and (currently)
- *      request connection closure (placeholder until routing layer integration).
- *
- * Design notes:
- * - Lock‑free: no shared state is mutated outside the owning operator thread.
- * - Backpressure: returns STATUS_SUCCESS when socket would block so reactor
- *   can yield; STATUS_FAILURE signals disposal (EOF / parse error / policy).
- * - Parser reset: we reset after a full message to support pipelining later;
- *   close-on-first-request is a temporary simplification.
+ * Each client owns one cumulative receive buffer and one DB_http parser handle.
+ * DB_http stores zero-copy string views into the cumulative buffer, so this
+ * layer appends new bytes, feeds only the new byte count, and keeps the buffer
+ * stable while the parsed request snapshot is inspected by higher layers.
  */
 #ifndef _GNU_SOURCE
 #define _GNU_SOURCE
@@ -23,10 +13,13 @@
 
 #include "client.h"
 
+#include <errno.h>
+#include <string.h>
+#include <unistd.h>
+
+#include <DB_http/DB_http.h>
 #include <emlog.h>
 
-// #include "http_manager.h" included in .h
-#include "router.h"
 #include "socket_helper.h"
 #include "time_helper.h"
 
@@ -42,119 +35,111 @@
  ****************************************************************************
  */
 
-inline static void _client_cleanup(client_t *cli);
-
-// static int _send_response(int fd, const http_request_t *req, const HttpResponse *resp);
-// static ssize_t _send_all(int fd, const void *buf, size_t len);
-// static void _free_response_body(HttpResponse *resp);
-// static void _fill_500(HttpResponse *resp);
-
+static void _client_reset_message(client_t *cli, int clear_stored_request);
+static int  _client_store_request(client_t *cli, const DB_http_request_t *req, uint8_t thread_id);
 
 /****************************************************************************
  * PUBLIC FUNCTIONS DEFINITIONS
  ****************************************************************************
  */
 
-
-/**
- * @brief Drain a readable client socket and advance HTTP parsing state.
- *
- * Loop semantics:
- *   - Continues reading while recv() yields positive byte counts.
- *   - Stops with STATUS_SUCCESS on EAGAIN/EWOULDBLOCK/EINTR (socket will remain).
- *   - Returns STATUS_FAILURE on EOF, fatal recv error, or HTTP parse failure.
- *   - On complete HTTP request: logs details, resets parser, and returns
- *     STATUS_FAILURE (current policy: close after one request).
- *
- * Timing/accounting:
- *   - Updates slot->last_activity with coarse millisecond timestamp.
- *   - Increments slot->request_count for timeout heuristics.
- *
- * @param slot Client slot containing parser state and buffers.
- * @return STATUS_SUCCESS to keep connection; STATUS_FAILURE to drop it.
- */
 int client_handle(client_t *cli, uint8_t thread_id)
 {
-    if(!cli)
+    if(!cli || !cli->http_parser || cli->ctx.fd < 0)
     {
         EML_ERROR(LOG_TAG, "client_handle: invalid input");
         return STATUS_FAILURE;
     }
 
-    /* Set client's last activity before even parsing or collecting data */
-    cli->last_activity = (uint64_t)time_helper_get_now();
-
-    /* Read the client's socket */
-    ssize_t read_bytes = socket_read_nonblocking(cli->ctx.fd, cli->recv_buf + cli->buf_idx, DB_HTTP_MAX_BUFFER_LEN_B - cli->buf_idx);
-    if(read_bytes <= 0)
+    for(;;)
     {
-        EML_ERROR(LOG_TAG, "fd %d: unexpected parser state after execute", cli->ctx.fd);
-        goto hell;
-    }
+        if(cli->buf_idx >= DB_HTTP_MAX_BUFFER_LEN_B)
+        {
+            EML_ERROR(LOG_TAG, "fd %d: receive buffer limit reached", cli->ctx.fd);
+            goto fail;
+        }
+
+        const size_t writable = DB_HTTP_MAX_BUFFER_LEN_B - cli->buf_idx;
+        ssize_t read_bytes = read(cli->ctx.fd, cli->buf + cli->buf_idx, writable);
+
+        if(read_bytes > 0)
+        {
+            DB_http_request_t *parsed_req = NULL;
+            const size_t new_bytes = (size_t)read_bytes;
+
+            cli->last_activity = (uint64_t)time_helper_get_now();
+            cli->buf_idx += new_bytes;
+
 #ifdef DEBUG
-    EML_DEBUG(LOG_TAG, "fd %d received %zd bytes, executing http parser", cli->ctx.fd, read_bytes);
+            EML_DEBUG(LOG_TAG, "fd %d received %zu bytes, buffered=%zu",
+                      cli->ctx.fd, new_bytes, cli->buf_idx);
 #endif
 
-    /* Update client's red buffer */
-    cli->buf_idx += (size_t)read_bytes;
+            DB_http_status_t parse_status = db_http_parser_exec(cli->http_parser, cli->buf, new_bytes, &parsed_req);
+            if(parse_status != DB_http_status_OK)
+            {
+                EML_ERROR(LOG_TAG, "fd %d: HTTP parse failed with status %d", cli->ctx.fd, parse_status);
+                goto fail;
+            }
 
-    /* Execute http parser over the request and store the state if msg is incomplete */
-    if(db_http_parser_exec(&cli->http_parser, cli->recv_buf, (size_t)read_bytes) != STATUS_SUCCESS)
-    {
-        EML_ERROR(LOG_TAG, "HTTP parse failed on fd %d", cli->ctx.fd);
-        goto hell;
-    }
+            if(!parsed_req)
+            {
+                EML_ERROR(LOG_TAG, "fd %d: DB_http returned no request DTO", cli->ctx.fd);
+                goto fail;
+            }
 
-    /* If the message is not complete, wait for more data */
-    if(!p_ctx->req.message_complete && p_ctx->parsing)
-    {
-        EML_INFO(LOG_TAG, "fd %d: message not complete yet, waiting for more data", cli->ctx.fd);
-        return STATUS_SUCCESS;  /* need more data */
-    }
+            if(parsed_req->message_complete)
+            {
+                if(_client_store_request(cli, parsed_req, thread_id) != STATUS_SUCCESS)
+                {
+                    goto fail;
+                }
 
-    /* At this point ctx->req is fully populated and sanitized */
-    if(p_ctx->req.message_complete && !p_ctx->parsing)
-    {
-        /* Increase completed request counts */
-        cli->request_count++;
+                db_http_parser_clear(cli->http_parser);
+                cli->buf_idx = 0u;
 
-        /* Prepare the request context for routing */
-        DB_http_request_t *req = &p_ctx->req;
-        req->thread_id = thread_id;
-        req->timestamp = cli->last_activity;
+                /* Set Http time as last activity */
+                parsed_req->timestamp = cli->last_activity;
 
-        /* TODO:
-        set ip and port */
-        req->remote_ip_be = 0;
-        req->remote_port_be = 0;
+#ifdef DEBUG
+                EML_DEBUG(LOG_TAG, "fd %d parsed request: method=%u path=%.*s headers=%u body=%zu policy=%u",
+                          cli->ctx.fd,
+                          (unsigned)cli->http_request.method,
+                          (int)cli->http_request.path.n,
+                          cli->http_request.path.p ? cli->http_request.path.p : "",
+                          (unsigned)cli->http_request.header_count,
+                          cli->http_request.body.n,
+                          (unsigned)cli->http_request.connection_policy);
+#endif
 
-        /* Everything else of the request is filled up by llhttp parser */
+                return STATUS_SUCCESS;
+            }
 
-        /* Call the router */
-        if(router_handle_request(req, &cli->send_resp) != STATUS_SUCCESS)
-        {
-            EML_ERROR(LOG_TAG, "router_handle_request failed for fd %d", cli->ctx.fd);
-            goto hell;
+            continue;
         }
-        
-        /* Send the client's correct response */
-        EML_WARN(LOG_TAG, "Response sending not implemented yet.");
 
-        /* TODO: Implement response sending */
-        EML_DBG(LOG_TAG, "response: %s", cli->send_resp.send_sv.p);
+        if(read_bytes == 0)
+        {
+            EML_INFO(LOG_TAG, "fd %d: peer closed connection", cli->ctx.fd);
+            goto fail;
+        }
 
-        /* Clean buffers
-        After using the request reset parser for next message
-        and clean the client's receive AND SEND buffer */
-        _client_cleanup(cli);
+        if(errno == EINTR)
+        {
+            continue;
+        }
 
-        return STATUS_SUCCESS;
+        if(errno == EAGAIN || errno == EWOULDBLOCK)
+        {
+            return STATUS_SUCCESS;
+        }
+
+        EML_PERR(LOG_TAG, "fd %d: read failed", cli->ctx.fd);
+        goto fail;
     }
 
-    EML_ERROR(LOG_TAG, "socket_read_nonblocking failed for fd %d", cli->ctx.fd);
-
-hell:
-    client_shutdown(cli);
+fail:
+    _client_reset_message(cli, 1);
     return STATUS_FAILURE;
 }
 
@@ -162,19 +147,23 @@ void client_shutdown(client_t *cli)
 {
     if(!cli)
     {
-        EML_ERROR(LOG_TAG, "_shutdown: invalid input");
+        EML_ERROR(LOG_TAG, "shutdown: invalid input");
+        return;
     }
 
     if(cli->is_busy)
     {
-        _client_cleanup(cli);
+        _client_reset_message(cli, 1);
 
         socket_shutdown_and_close(cli->ctx.fd);
-        cli->is_busy = 0;
-        cli->last_activity = 0;
-        cli->request_count = 0;
-        sv_reset(&cli->send_resp.send_sv);
-        cli->send_resp.status_code = 0;
+        cli->ctx.fd = -1;
+        cli->ctx.owner = NULL;
+        cli->ctx.handler = NULL;
+
+        cli->is_busy = 0u;
+        cli->connection_policy = 0u;
+        cli->last_activity = 0u;
+        cli->request_count = 0u;
     }
 }
 
@@ -183,14 +172,45 @@ void client_shutdown(client_t *cli)
  ****************************************************************************
  */
 
-inline static void _client_cleanup(client_t *cli)
+static int _client_store_request(client_t *cli, const DB_http_request_t *req, uint8_t thread_id)
 {
-    /* After using the request reset parser for next message */
-    http_man_reset(&cli->http_parser);
+    if(!cli || !req || !req->message_complete)
+    {
+        EML_ERROR(LOG_TAG, "store_request: invalid input");
+        return STATUS_FAILURE;
+    }
 
-    /* Clean client's recv buffer and hold the status */
-    memset(cli->recv_buf, 0, HTTP_RECV_BUFFER_LEN);
+    cli->http_request = *req;
+    cli->http_request.thread_id = thread_id;
+    cli->http_request.timestamp = cli->last_activity;
 
-    /* Clean client's send buffer */
-    memset(cli->send_buf, 0, HTTP_SEND_BUFFER_LEN);
+    /* TODO: populate peer address metadata when accept()/getpeername() state is wired into client_t. */
+    cli->http_request.remote_ip_be = 0u;
+    cli->http_request.remote_port_be = 0u;
+
+    cli->connection_policy = cli->http_request.connection_policy;
+    cli->request_count++;
+
+    return STATUS_SUCCESS;
+}
+
+static void _client_reset_message(client_t *cli, int clear_stored_request)
+{
+    if(!cli)
+    {
+        return;
+    }
+
+    if(cli->http_parser)
+    {
+        db_http_parser_clear(cli->http_parser);
+    }
+
+    cli->buf_idx = 0u;
+    memset(cli->buf, 0, sizeof(cli->buf));
+
+    if(clear_stored_request)
+    {
+        memset(&cli->http_request, 0, sizeof(cli->http_request));
+    }
 }

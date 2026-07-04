@@ -7,7 +7,8 @@
 
 #include "config_core.h"
 #include "reactor.h" /* for fd_ctx_t */
-#include "DB_http.h"
+
+#include <DB_http/DB_http.h>
 
 /**
  * @brief Per‑client state owned by an operator thread.
@@ -21,12 +22,10 @@ typedef struct
 
     fd_ctx_t        ctx;                            /**< per‑fd reactor context */
     char            buf[DB_HTTP_MAX_BUFFER_LEN_B];  /**< buffer for socket reads */
-    size_t          buf_idx;                        /**< buffer written idx */
-    
-    // llhttp_parser_t http_parser_;                    /**< per-connection HTTP parser state */
+    size_t          buf_idx;                        /**< cumulative bytes stored for current HTTP message */
 
-    DB_http_request_t http_request;                  /**< per-connecton structured http request */
-    DB_http_parser_t *http_parser;                   /**< per-connection HTTP parser state */
+    DB_http_request_t http_request;                 /**< last parser DTO snapshot; views point into buf */
+    DB_http_parser_t *http_parser;                  /**< per-connection HTTP parser state */
 } client_t;
 
 /**
