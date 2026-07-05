@@ -61,6 +61,17 @@ int worker_init(uint8_t cpu_count);
 
 int worker_dispatch_to_operator(int client_fd);
 
+/**
+ * @brief Number of operator threads sized by worker_init().
+ *
+ * Valid after a successful worker_init(); each operator's id doubles as
+ * the DB_app worker/transaction-slot index, so this is the value handed
+ * to db_app_init().
+ *
+ * @return Operator count; 0 before init.
+ */
+uint8_t worker_get_operators_count(void);
+
 int worker_run(void);
 
 void worker_destroy(void);

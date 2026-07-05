@@ -1,19 +1,95 @@
-#ifndef SERVER_ROUTER_H
-#define SERVER_ROUTER_H
+/**
+ * @file router.h
+ *
+ * @brief DB_server prefix router: byte transport → backend handler (§9.1).
+ *
+ * DB_server routes by prefix only; method filtering and everything
+ * semantic happens inside DB_app. The table is a small static const
+ * array — no registrar, no constructors. Everything unmatched is an
+ * immediate 404 (nginx serves static content; DB_server serves API only).
+ *
+ * @author  Roman Horshkov <github.com/RomanHorshkov>
+ * @date    jul 2026
+ * (c) 2026
+ */
+#ifndef SERVER_WORKER_CLIENT_ROUTER_ROUTER_H
+#define SERVER_WORKER_CLIENT_ROUTER_ROUTER_H
 
-#include "http_common.h"
+/****************************************************************************
+ * INCLUDES
+ ****************************************************************************
+ */
+#include <stddef.h>
+#include <stdint.h>
+
+#include "../client.h"
+
+/****************************************************************************
+ * DEFINES
+ ****************************************************************************
+ */
+
+/** @brief Route flag: body is streamed via spool ticket (§9.4). Not used in S2. */
+#define SRV_ROUTE_FLAG_STREAM_BODY (1u << 0)
+
+/****************************************************************************
+ * ENUMERATED TYPEDEFS
+ ****************************************************************************
+ */
 
 /**
- * @brief Route an HTTP request to the appropriate handler.
- *
- * Iterates through the routing table and dispatches the request to the first
- * matching handler. If no match is found, fills the response with a 404.
- *
- * @param request   Pointer to the parsed Http_request_t.
- * @param response  Pointer to the HttpResponse to populate.
- * @retval 0        Success.
- * @retval -1       No matching route (404).
+ * @brief Path match strategy for one route entry.
  */
-int router_handle_request(const http_request_t* request, http_response_t* response);
+typedef enum
+{
+    SRV_ROUTE_MATCH_EXACT = 0, /**< path equals route path                    */
+    SRV_ROUTE_MATCH_PREFIX     /**< path starts with route path               */
+} srv_route_match_t;
 
-#endif /* SERVER_ROUTER_H */
+/****************************************************************************
+ * ENUMERATED VARIABLES
+ ****************************************************************************
+ */
+/* None */
+
+/****************************************************************************
+ * STRUCTURED TYPEDEFS
+ ****************************************************************************
+ */
+
+/**
+ * @brief One transport-level route entry.
+ */
+typedef struct
+{
+    const char*       path;     /**< e.g. "/api/app"                          */
+    size_t            path_len; /**< strlen(path), precomputed                */
+    srv_route_match_t match;    /**< exact or prefix                          */
+    uint8_t           flags;    /**< SRV_ROUTE_FLAG_* OR-set                  */
+    int (*handler)(client_t* cli); /**< returns STATUS_SUCCESS to keep alive  */
+} srv_route_t;
+
+/****************************************************************************
+ * STRUCTURED VARIABLES
+ ****************************************************************************
+ */
+/* None */
+
+/****************************************************************************
+ * FUNCTIONS DECLARATIONS
+ ****************************************************************************
+ */
+
+/**
+ * @brief Route one complete parsed request to its transport handler.
+ *
+ * On a table miss, answers 404 itself and reports failure (close).
+ *
+ * @param[in,out] cli Client with a complete `http_request` snapshot.
+ *
+ * @return STATUS_SUCCESS when the response was sent and the connection may
+ *         continue per its policy; STATUS_FAILURE when it must drop.
+ */
+int srv_router_dispatch(client_t* cli);
+
+#endif /* SERVER_WORKER_CLIENT_ROUTER_ROUTER_H */

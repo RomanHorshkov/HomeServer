@@ -19,10 +19,10 @@
 
 #include "worker.h"
 
+#include <errno.h>
 #include <pthread.h>
 #include <stdlib.h>
 
-#include "app_interface.h"
 #include "emlog.h"
 #include "operator.h"
 
@@ -133,6 +133,11 @@ static operator_t* _least_loaded_operator(void);
  * PUBLIC FUNCTIONS DEFINITIONS
  ****************************************************************************
  */
+uint8_t worker_get_operators_count(void)
+{
+    return _worker.operators_count;
+}
+
 int worker_init(uint8_t cpu_count)
 {
     _worker.operators_count = _compute_operator_count(cpu_count);
@@ -179,14 +184,7 @@ int worker_init(uint8_t cpu_count)
     /* Set worker status to active */
     _worker.status = WORKER_STATUS_ACTIVE;
 
-    EML_DEBUG(LOG_TAG, "SKIPPING DB APP INIT");
 
-    // /* Initialize the DataBase app */
-    // if(db_app_init(_worker.operators_count) != 0)
-    // {
-    //     EML_ERROR(LOG_TAG, "init: db_app_init failed");
-    //     goto fail;
-    // }
 
     EML_INFO(LOG_TAG, "Worker ready with %u operator%s (cpus=%u)",
              _worker.operators_count,
@@ -245,7 +243,7 @@ int worker_dispatch_to_operator(int client_fd)
     }
 
 #ifdef DEBUG
-    EML_DEBUG(LOG_TAG, "_to_operator: assigned client fd %d to operator %d",
+    EML_DBG(LOG_TAG, "_to_operator: assigned client fd %d to operator %d",
              client_fd, op->id);
 #endif
     return STATUS_SUCCESS;
@@ -298,9 +296,6 @@ void worker_destroy(void)
 
     _worker.operators_threads = NULL;
     _worker.operators_count = 0;
-#ifdef HS_ENABLE_DB_APP
-    db_app_shutdown();
-#endif
 }
 
 
@@ -325,7 +320,7 @@ static operator_t* _least_loaded_operator(void)
         if(load < BLIND_ASSIGNMENT_LIMIT_PERCENTAGE)
         {
 #ifdef DEBUG
-            EML_DEBUG(LOG_TAG, "selecting operator %u with load=%u (blind)",
+            EML_DBG(LOG_TAG, "selecting operator %u with load=%u (blind)",
                      (unsigned)i, load);
 #endif
             return &_worker.operators[i];
@@ -335,7 +330,7 @@ static operator_t* _least_loaded_operator(void)
         if(load < best_load)
         {
 #ifdef DEBUG
-            EML_DEBUG(LOG_TAG, "operator %u has new best load=%u",
+            EML_DBG(LOG_TAG, "operator %u has new best load=%u",
                      (unsigned)i, load);
 #endif
             best_load = load;
@@ -359,7 +354,7 @@ static operator_t* _least_loaded_operator(void)
     }
 
 #ifdef DEBUG
-    EML_DEBUG(LOG_TAG, "[dispatch] selecting operator %u with load=%u",
+    EML_DBG(LOG_TAG, "[dispatch] selecting operator %u with load=%u",
                 (unsigned)best_idx, best_load);
 #endif
 

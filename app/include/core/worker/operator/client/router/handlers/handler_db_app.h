@@ -1,32 +1,68 @@
 /**
- * @file    handler_db_app.h
- * 
- * @brief   Database application HTTP handler interface.
+ * @file handler_db_app.h
  *
- * @author  Roman Horshkov <roman.horshkov@gmail.com>
- * @date    2025-05-11
+ * @brief Transport handler bridging one client request into DB_app (§9.3).
+ *
+ * @author  Roman Horshkov <github.com/RomanHorshkov>
+ * @date    jul 2026
+ * (c) 2026
  */
-#ifndef SERVER_ROUTER_HANDLER_DB_APP_H
-#define SERVER_ROUTER_HANDLER_DB_APP_H
+#ifndef SERVER_WORKER_CLIENT_ROUTER_HANDLERS_HANDLER_DB_APP_H
+#define SERVER_WORKER_CLIENT_ROUTER_HANDLERS_HANDLER_DB_APP_H
 
 /****************************************************************************
- * PUBLIC INCLUDES
+ * INCLUDES
  ****************************************************************************
  */
-
-#include "http_common.h"   /* http_request_t, http_response_t, method, ... */
+#include "../../client.h"
 
 /****************************************************************************
- * PUBLIC STRUCTURED VARIABLES DECLARATIONS
+ * DEFINES
  ****************************************************************************
  */
 /* None */
 
 /****************************************************************************
- * PUBLIC FUNCTIONS DECLARATIONS
+ * ENUMERATED TYPEDEFS
+ ****************************************************************************
+ */
+/* None */
+
+/****************************************************************************
+ * ENUMERATED VARIABLES
+ ****************************************************************************
+ */
+/* None */
+
+/****************************************************************************
+ * STRUCTURED TYPEDEFS
+ ****************************************************************************
+ */
+/* None */
+
+/****************************************************************************
+ * STRUCTURED VARIABLES
+ ****************************************************************************
+ */
+/* None */
+
+/****************************************************************************
+ * FUNCTIONS DECLARATIONS
  ****************************************************************************
  */
 
-int handler_database(const http_request_t* req, http_response_t* res);
+/**
+ * @brief Adapt the parsed request, run DB_app, serialize and send the answer.
+ *
+ * The §9.3 sequence: `db_app_request_from_db_http()` →
+ * `db_app_response_init()` → `db_app_run()` → `response_writer_send()` →
+ * `db_app_response_clear()` (always).
+ *
+ * @param[in,out] cli Client with a complete `http_request` snapshot.
+ *
+ * @return STATUS_SUCCESS when the response was fully sent;
+ *         STATUS_FAILURE when the connection must drop.
+ */
+int handler_db_app(client_t* cli);
 
-#endif /* SERVER_ROUTER_HANDLER_DB_APP_H */
+#endif /* SERVER_WORKER_CLIENT_ROUTER_HANDLERS_HANDLER_DB_APP_H */

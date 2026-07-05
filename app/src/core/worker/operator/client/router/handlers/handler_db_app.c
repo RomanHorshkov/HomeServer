@@ -1,49 +1,45 @@
 /**
- * @file handler_db.c
- * @brief Database application HTTP handler.
- * 
+ * @file handler_db_app.c
+ *
+ * @brief The DB_app bridge: adapt → run → serialize → clear (§9.3).
+ *
  * @author  Roman Horshkov <github.com/RomanHorshkov>
- * @date    dec 2025
- * 
- * (c) 2025
+ * @date    jul 2026
+ * (c) 2026
  */
 
 /****************************************************************************
- * INCLUDES
+ * PRIVATE INCLUDES
  ****************************************************************************
  */
+#include <emlog.h>
+
+#include <db_app.h>
+
 #include "handler_db_app.h"
 
-#include "app_interface_2.h" /* db_app_run, db_app_status_t */
-#include "route_register.h"  /* REGISTER_ROUTE */
+#include "../../response_writer.h"
 
 /****************************************************************************
- * DEFINES
+ * PRIVATE DEFINES
  ****************************************************************************
  */
-
-#define LOG_TAG "handler_db_app"
-
-/****************************************************************************
- * ENUMERATED TYPES
- ****************************************************************************
- */
-/* None */
+#define LOG_TAG "srv_handler_db_app"
 
 /****************************************************************************
- * ENUMERATED VARIABLES
+ * PRIVATE ENUMERATED TYPEDEFS
  ****************************************************************************
  */
 /* None */
 
 /****************************************************************************
- * STRUCTURED TYPES
+ * PRIVATE STRUCTURED TYPEDEFS
  ****************************************************************************
  */
 /* None */
 
 /****************************************************************************
- * STRUCTURED VARIABLES
+ * PRIVATE VARIABLES
  ****************************************************************************
  */
 /* None */
@@ -59,39 +55,32 @@
  ****************************************************************************
  */
 
-int handler_database(const http_request_t* req, http_response_t* res)
+int handler_db_app(client_t* cli)
 {
-    if(!req || !res)
+    if(!cli)
     {
-        EML_ERROR(LOG_TAG, "Invalid input to handler_database");
-        return -1;
+        EML_ERROR(LOG_TAG, "NULL client");
+        return STATUS_FAILURE;
     }
 
-    EML_WARN(LOG_TAG, "DB app handler invoked.");
+    DB_app_request_t req;
+    if(db_app_request_from_db_http(&cli->http_request, &req) != 0)
+    {
+        EML_ERROR(LOG_TAG, "fd %d: request adapt failed", cli->ctx.fd);
+        return response_writer_error(cli, 500u);
+    }
 
-    (DB_APP_request_t*)req
+    DB_app_response_t res;
+    db_app_response_init(&res);
+    (void)db_app_run(&req, &res); /* res always carries the outcome */
 
-    return 0;
-
-    // db_app_status_t status = db_app_run((DB_request_t*)req, (DB_response_t*)res);
-
-    // EML_WARN(LOG_TAG, "DB app returned status %d, to implement response.", status);
-
-    // return (status == DB_APP_OK) ? 0 : -1;
+    int rc = response_writer_send(cli, &res);
+    db_app_response_clear(&res);
+    return rc;
 }
-
 
 /****************************************************************************
  * PRIVATE FUNCTIONS DEFINITIONS
  ****************************************************************************
  */
 /* None */
-
-/****************************************************************************
- * PRIVATE FUNCTIONS DEFINITIONS
- ****************************************************************************/
-
-/****************************************************************************
- * ROUTE REGISTRATION
- ****************************************************************************/
-REGISTER_ROUTE("/api/db_app/", handler_database)

@@ -20,6 +20,8 @@
 #include <DB_http/DB_http.h>
 #include <emlog.h>
 
+#include "response_writer.h"
+#include "router/router.h"
 #include "socket_helper.h"
 #include "time_helper.h"
 
@@ -71,7 +73,7 @@ int client_handle(client_t *cli, uint8_t thread_id)
             cli->buf_idx += new_bytes;
 
 #ifdef DEBUG
-            EML_DEBUG(LOG_TAG, "fd %d received %zu bytes, buffered=%zu",
+            EML_DBG(LOG_TAG, "fd %d received %zu bytes, buffered=%zu",
                       cli->ctx.fd, new_bytes, cli->buf_idx);
 #endif
 
@@ -79,6 +81,9 @@ int client_handle(client_t *cli, uint8_t thread_id)
             if(parse_status != DB_http_status_OK)
             {
                 EML_ERROR(LOG_TAG, "fd %d: HTTP parse failed with status %d", cli->ctx.fd, parse_status);
+                /* Terse 400 on the wire (includes rejected pipelining and
+                 * chunked bodies), loud detail above; connection closes. */
+                (void)response_writer_error(cli, 400u);
                 goto fail;
             }
 
@@ -95,14 +100,8 @@ int client_handle(client_t *cli, uint8_t thread_id)
                     goto fail;
                 }
 
-                db_http_parser_clear(cli->http_parser);
-                cli->buf_idx = 0u;
-
-                /* Set Http time as last activity */
-                parsed_req->timestamp = cli->last_activity;
-
 #ifdef DEBUG
-                EML_DEBUG(LOG_TAG, "fd %d parsed request: method=%u path=%.*s headers=%u body=%zu policy=%u",
+                EML_DBG(LOG_TAG, "fd %d parsed request: method=%u path=%.*s headers=%u body=%zu policy=%u",
                           cli->ctx.fd,
                           (unsigned)cli->http_request.method,
                           (int)cli->http_request.path.n,
@@ -111,6 +110,25 @@ int client_handle(client_t *cli, uint8_t thread_id)
                           cli->http_request.body.n,
                           (unsigned)cli->http_request.connection_policy);
 #endif
+
+                /* §9.2 sequence: dispatch runs db_app_run() while the request
+                 * views into cli->buf are alive, then serializes the response
+                 * INTO cli->buf. The parser is cleared only afterwards. */
+                int dispatch_rc = srv_router_dispatch(cli);
+
+                db_http_parser_clear(cli->http_parser);
+                cli->buf_idx = 0u;
+                memset(&cli->http_request, 0, sizeof(cli->http_request));
+
+                if(dispatch_rc != STATUS_SUCCESS)
+                {
+                    goto fail;
+                }
+                if(cli->connection_policy == (uint8_t)HTTP_CONNECTION_CLOSE)
+                {
+                    /* Clean close after a fully sent response. */
+                    goto fail;
+                }
 
                 return STATUS_SUCCESS;
             }

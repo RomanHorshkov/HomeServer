@@ -219,7 +219,7 @@ void *operator_thread(void *arg)
             if(out_fd != -1)
             {
 #ifdef DEBUG
-                EML_DEBUG(LOG_TAG, "[op %d] reactor requested close for fd %d", op->id, out_fd);
+                EML_DBG(LOG_TAG, "[op %d] reactor requested close for fd %d", op->id, out_fd);
 #endif
                 /* shuts down the client and removes from operator's reactor */
                 _operator_remove_client_by_fd(op, out_fd);
@@ -313,7 +313,7 @@ static int _operator_handle_wakeup_event(int fd, fd_ctx_t *ctx)
         }
         
 #ifdef DEBUG
-        EML_DEBUG(LOG_TAG, "[op %d] wakeup, adding new client on fd %d",
+        EML_DBG(LOG_TAG, "[op %d] wakeup, adding new client on fd %d",
                 op->id, client_fd);
 #endif /* DEBUG */
         if(_operator_add_client(op, client_fd) != STATUS_SUCCESS)
@@ -445,7 +445,7 @@ static int _operator_add_client(operator_t *op, int client_fd)
 
 #ifdef DEBUG
     unsigned active_clients = atomic_load_explicit(&op->active_clients, memory_order_relaxed);
-    EML_DEBUG(LOG_TAG, "[op %u] added client fd %d (active=%u)",
+    EML_DBG(LOG_TAG, "[op %u] added client fd %d (active=%u)",
             op->id, client_fd, active_clients);
 #endif /* DEBUG */
 
@@ -524,7 +524,7 @@ static int _operator_remove_client_by_fd(operator_t *op, int client_fd)
 
 #ifdef DEBUG
     unsigned active_clients = atomic_load_explicit(&op->active_clients, memory_order_relaxed);
-    EML_DEBUG(LOG_TAG, "[op %u] removed client fd %d (active=%u)", op->id, client_fd, active_clients);
+    EML_DBG(LOG_TAG, "[op %u] removed client fd %d (active=%u)", op->id, client_fd, active_clients);
 #endif /* DEBUG */
 
     _operator_state_update(op);
@@ -623,7 +623,7 @@ static void _operator_status_update(operator_t *op)
     {
         op->status = OPERATOR_STATUS_FULL;
 #ifdef DEBUG
-        EML_DEBUG(LOG_TAG, "[op %d] status set to FULL", op->id);
+        EML_DBG(LOG_TAG, "[op %d] status set to FULL", op->id);
 #endif /* DEBUG */
     }
 
@@ -631,7 +631,7 @@ static void _operator_status_update(operator_t *op)
     {
         op->status = OPERATOR_STATUS_ACTIVE;
 #ifdef DEBUG
-        EML_DEBUG(LOG_TAG, "[op %d] status set to ACTIVE", op->id);
+        EML_DBG(LOG_TAG, "[op %d] status set to ACTIVE", op->id);
 #endif /* DEBUG */
     }
 }
@@ -648,7 +648,7 @@ static void _operator_timer_update(operator_t *op)
     {
         _operator_set_timer(op, OPERATOR_TIMER_PERIOD_SHORT);
 #ifdef DEBUG
-        EML_DEBUG(LOG_TAG, "[op %d] switched timer to short period", op->id);
+        EML_DBG(LOG_TAG, "[op %d] switched timer to short period", op->id);
 #endif /* DEBUG */
     }
 
@@ -657,7 +657,7 @@ static void _operator_timer_update(operator_t *op)
     {
         _operator_set_timer(op, OPERATOR_TIMER_PERIOD_LONG);
 #ifdef DEBUG
-        EML_DEBUG(LOG_TAG, "[op %d] switched timer to long period", op->id);
+        EML_DBG(LOG_TAG, "[op %d] switched timer to long period", op->id);
 #endif /* DEBUG */
     }
 }
@@ -674,7 +674,7 @@ static void _clean_clients(operator_t *op)
         if((now - op->clients[cli_idx].last_activity) > timeout)
         {
 #ifdef DEBUG
-            EML_DEBUG(LOG_TAG, "[op %d] timeout closing idle fd %d (last=%lu, now=%lu, to=%lu)",
+            EML_DBG(LOG_TAG, "[op %d] timeout closing idle fd %d (last=%lu, now=%lu, to=%lu)",
                     op->id, op->clients[cli_idx].ctx.fd, op->clients[cli_idx].last_activity, now, timeout);
 #endif
             _operator_remove_client_by_idx(op, cli_idx);

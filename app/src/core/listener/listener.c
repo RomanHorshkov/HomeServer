@@ -250,11 +250,11 @@ static int _init_listening_sockets(const char *port)
         if(addr)
         {
             inet_ntop(cur->ai_family, addr, ip_str, sizeof(ip_str));
-            EML_DEBUG(LOG_TAG, "listening on %s:%s", ip_str, port);
+            EML_DBG(LOG_TAG, "listening on %s:%s", ip_str, port);
         }
         else
         {
-            EML_DEBUG(LOG_TAG, "listening socket created (%s)", ipver);
+            EML_DBG(LOG_TAG, "listening socket created (%s)", ipver);
         }
 #endif /* DEBUG */
     }
@@ -293,7 +293,7 @@ static int _handle_listen_event(int fd, fd_ctx_t *ctx)
 {
     (void)ctx;
 #ifdef DEBUG
-    EML_DEBUG(LOG_TAG, "listen event on fd %d", fd);
+    EML_DBG(LOG_TAG, "listen event on fd %d", fd);
 #endif /* DEBUG */
 
     int client_fd = accept(fd, NULL, NULL);

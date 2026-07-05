@@ -42,6 +42,8 @@
 #include "emlog.h"
 #include "listener.h"
 #include "worker.h"
+
+#include <db_app.h>
 #include "config_core.h"
 #include "socket_helper.h"
 
@@ -131,6 +133,14 @@ int server_init(const char *port)
         goto fail;
     }
 
+    /* Initialize DB_app with one transaction slot per operator thread
+     * (operator id == DB_app worker_no, §9.3). */
+    if(db_app_init(worker_get_operators_count()) != 0)
+    {
+        EML_PERR(LOG_TAG, "db_app failed to init.");
+        goto fail;
+    }
+
     /* Successful initialization */
     EML_INFO(LOG_TAG, "🚀 C Server initialized on http://localhost:%s", port);
     return STATUS_SUCCESS;
@@ -151,6 +161,7 @@ void server_run(void)
     pthread_join(server.listener_thread, NULL);
 
     worker_destroy();
+    db_app_shutdown();
 }
 
 /****************************************************************************

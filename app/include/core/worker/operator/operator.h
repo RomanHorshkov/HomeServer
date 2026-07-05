@@ -11,7 +11,7 @@
 
 #include "config_core.h"
 #include "reactor.h"
-#include "spsc_ring.h"
+#include <spscring.h>
 #include "client.h"
 
 

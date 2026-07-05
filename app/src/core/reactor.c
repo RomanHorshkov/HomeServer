@@ -103,7 +103,7 @@ int reactor_init(reactor_t *reactor_ptr)
     }
 
 #ifdef DEBUG
-    EML_DEBUG(LOG_TAG, "_init: reactor initialized successfully");
+    EML_DBG(LOG_TAG, "_init: reactor initialized successfully");
 #endif /* DEBUG */
 
     return STATUS_SUCCESS;
@@ -216,7 +216,7 @@ int reactor_run(reactor_t *reactor_ptr, int *out_fd)
             /* signal the fd to close */
             *out_fd = ctx->fd;
 #ifdef DEBUG
-            EML_DEBUG(LOG_TAG, "_run: epoll fd %d to close, continue.", ctx->fd);
+            EML_DBG(LOG_TAG, "_run: epoll fd %d to close, continue.", ctx->fd);
 #endif
             goto fail;
         }

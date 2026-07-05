@@ -325,7 +325,16 @@ int socket_client_init(const int *client_fd)
         
     }
     
-    /* Additional per-client options can be set here */
+    /* Accepted sockets INHERIT SO_LINGER from the listener on Linux; the
+     * listener uses {on, 0} (RST on close) for fast restarts. A client
+     * socket must close gracefully or the response written just before
+     * close() is discarded with the RST — reset to the default. */
+    struct linger sl = {.l_onoff = 0, .l_linger = 0};
+    if(setsockopt(*client_fd, SOL_SOCKET, SO_LINGER, &sl, sizeof(sl)) == -1)
+    {
+        EML_PERR(LOG_TAG, "_client_init: failed to reset SO_LINGER");
+        return STATUS_FAILURE;
+    }
 
     return STATUS_SUCCESS;
 }
