@@ -2,13 +2,11 @@
  * @file worker.h
  * @brief APIs for managing, accepting, and tearing down server client sockets.
  *
- * This header defines the interface for the worker subsystem, which is responsible
- * for managing all active client connections. The worker receives new client sockets
- * from the listener via a non-blocking pipe, registers them with epoll, and handles
- * all client I/O in an event-driven manner.
+ * This header defines the interface for the worker subsystem, which is responsible for managing all active client connections. The worker
+ * receives new client sockets from the listener via a non-blocking pipe, registers them with epoll, and handles all client I/O in an
+ * event-driven manner.
  *
- * The worker supports scalable, concurrent client management, robust error handling,
- * and clean shutdown via atomic status flags.
+ * The worker supports scalable, concurrent client management, robust error handling, and clean shutdown via atomic status flags.
  *
  * @author  Roman Horshkov <roman.horshkov@gmail.com>
  * @date    2025-05-11
@@ -19,35 +17,32 @@
 
 #include <stdint.h>
 
-/****************************************************************************
+/*****************************************************************************************************************************************
  * PUBLIC TYPES
- ****************************************************************************
+ *****************************************************************************************************************************************
  */
 
 typedef enum
 {
     WORKER_STATUS_INACTIVE = 0, /* worker is inactive */
-    WORKER_STATUS_ACTIVE = 1,   /* worker is active */
-    WORKER_STATUS_FULL = 2,     /* worker is full */
+    WORKER_STATUS_ACTIVE   = 1, /* worker is active */
+    WORKER_STATUS_FULL     = 2, /* worker is full */
     WORKER_STATUS_SHUTDOWN = 3, /* worker to shutdown */
-    WORKER_STATUS_INVALID = 4,  /* max value for worker status */
+    WORKER_STATUS_INVALID  = 4, /* max value for worker status */
 } worker_status_t;
 
-
-/****************************************************************************
+/*****************************************************************************************************************************************
  * PUBLIC FUNCTIONS DECLARATIONS
- ****************************************************************************
+ *****************************************************************************************************************************************
  */
 
 /**
  * @brief Initialise the worker subsystem and prepare for client management.
  *
- * This function allocates and configures a new worker instance, sets up the
- * event-driven infrastructure (epoll), and prepares the worker to receive new
- * client sockets from the listener via the provided non-blocking pipe.
+ * This function allocates and configures a new worker instance, sets up the event-driven infrastructure (epoll), and prepares the worker to
+ * receive new client sockets from the listener via the provided non-blocking pipe.
  *
- * On success, the worker is ready to be run in its own thread via
- * @ref worker_run(). On failure, all resources are cleaned up and it is
+ * On success, the worker is ready to be run in its own thread via @ref worker_run(). On failure, all resources are cleaned up and it is
  * safe for the caller to terminate.
  *
  * @param worker_ptr_ptr      Address of a pointer to a worker_t; will be allocated.
@@ -64,9 +59,8 @@ int worker_dispatch_to_operator(int client_fd);
 /**
  * @brief Number of operator threads sized by worker_init().
  *
- * Valid after a successful worker_init(); each operator's id doubles as
- * the DB_app worker/transaction-slot index, so this is the value handed
- * to db_app_init().
+ * Valid after a successful worker_init(); each operator's id doubles as the DB_app worker/transaction-slot index, so this is the value
+ * handed to db_app_init().
  *
  * @return Operator count; 0 before init.
  */

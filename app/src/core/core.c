@@ -1,13 +1,8 @@
-#define _GNU_SOURCE
-
-#include "core.h"
-
 /**
  * @file core.c
  * @brief Core server logic and concurrency management.
  *
- * This module manages the primary components of the micro-HTTP server,
- * including the listener, worker, and control threads. It provides a
+ * This module manages the primary components of the micro-HTTP server, including the listener, worker, and control threads. It provides a
  * unified interface for initialization and runtime operations.
  *
  * Usage:
@@ -23,8 +18,12 @@
  * (c) 2025
  */
 
-#ifndef _GNU_SOURCE
 #define _GNU_SOURCE
+
+#include "core.h"
+
+#ifndef _GNU_SOURCE
+#    define _GNU_SOURCE
 #endif /* _GNU_SOURCE */
 
 #include <errno.h>
@@ -37,7 +36,7 @@
 #include <stdlib.h>     /* malloc(), calloc(), NULL etc */
 #include <sys/socket.h> /* socklen_t, socket(), bind(), setsockopt(), etc. */
 #include <sys/types.h>
-#include <unistd.h> /* fork(), close(), pipe(), read(), write(), getlogin(), getcwd(), system() etc. */
+#include <unistd.h>     /* fork(), close(), pipe(), read(), write(), getlogin(), getcwd(), system() etc. */
 
 #include "emlog.h"
 #include "listener.h"
@@ -47,24 +46,23 @@
 #include "config_core.h"
 #include "socket_helper.h"
 
-/****************************************************************************
+/*****************************************************************************************************************************************
  * PRIVATE DEFINES
- ****************************************************************************
+ *****************************************************************************************************************************************
  */
 
 #define LOG_TAG "srv_core"
 
-/****************************************************************************
+/*****************************************************************************************************************************************
  * PRIVATE STRUCTURED TYPES
- ****************************************************************************
+ *****************************************************************************************************************************************
  */
 
- /**
-  * 
-  * idea: core possesses listener, worker, and pipeline.
-  * then, listener and worker gets pointer to pipeline from core during init.
-  * core also manages the threads for listener, worker.
-  */
+/**
+ *
+ * idea: core possesses listener, worker, and pipeline. then, listener and worker gets pointer to pipeline from core during init. core also
+ * manages the threads for listener, worker.
+ */
 typedef struct
 {
     /* listener thread */
@@ -76,23 +74,22 @@ typedef struct
     // future: config_t *config, tls_t *tls, etc.
 } server_t;
 
-/****************************************************************************
+/*****************************************************************************************************************************************
  * PRIVATE VARIABLES DEFINITIONS
- ****************************************************************************
+ *****************************************************************************************************************************************
  */
 
 /**
  * @brief Singleton instance of the main server structure.
  *
- * Holds all core components (listener, worker, control threads, and pipe)
- * for the lifetime of the server process. This instance is private to the
- * core module and should not be accessed directly from outside.
+ * Holds all core components (listener, worker, control threads, and pipe) for the lifetime of the server process. This instance is private
+ * to the core module and should not be accessed directly from outside.
  */
 static server_t server;
 
-/****************************************************************************
+/*****************************************************************************************************************************************
  * PRIVATE FUNCTIONS PROTOTYPES
- ****************************************************************************
+ *****************************************************************************************************************************************
  */
 
 static void _core_logger_bootstrap(void);
@@ -103,24 +100,24 @@ static uint8_t _core_detect_cpu_count(void);
 static void _p_dbg_info_init(void);
 #endif
 
-/****************************************************************************
+/*****************************************************************************************************************************************
  * PUBLIC FUNCTIONS DEFINITIONS
- ****************************************************************************
+ *****************************************************************************************************************************************
  */
 
-int server_init(const char *port)
+int server_init(const char* port)
 {
 #ifdef DEBUG
     _p_dbg_info_init();
 #endif /* DEBUG */
-    
+
     _core_logger_bootstrap();
 
     /* Detect available CPUs and keep the value for thread sizing */
     server.cpu_count = _core_detect_cpu_count();
 
     /* Initialize the listener */
-    if(listener_init(port/*, server.pipeline*/) != STATUS_SUCCESS)
+    if(listener_init(port /*, server.pipeline*/) != STATUS_SUCCESS)
     {
         EML_PERR(LOG_TAG, "listener failed to init.");
         goto fail;
@@ -144,7 +141,7 @@ int server_init(const char *port)
     /* Successful initialization */
     EML_INFO(LOG_TAG, "🚀 C Server initialized on http://localhost:%s", port);
     return STATUS_SUCCESS;
-    
+
 fail:
     return STATUS_FAILURE;
 }
@@ -164,9 +161,9 @@ void server_run(void)
     db_app_shutdown();
 }
 
-/****************************************************************************
+/*****************************************************************************************************************************************
  * PRIVATE FUNCTIONS DEFINITIONS
- ****************************************************************************
+ *****************************************************************************************************************************************
  */
 
 static void _core_logger_bootstrap(void)
@@ -192,18 +189,17 @@ static uint8_t _core_detect_cpu_count(void)
 {
     long cpus = sysconf(_SC_NPROCESSORS_ONLN);
 
-    EML_INFO(LOG_TAG, "Detected %ld CPU%s available",
-             cpus, (cpus == 1) ? "" : "s");
+    EML_INFO(LOG_TAG, "Detected %ld CPU%s available", cpus, (cpus == 1) ? "" : "s");
     if(cpus < 1)
     {
         EML_PERR(LOG_TAG, "sysconf(_SC_NPROCESSORS_ONLN) failed, defaulting to 1 CPU");
         return 1;
     }
-    if (cpus > 255)
+    if(cpus > 255)
     {
         EML_WARN(LOG_TAG, "Detected CPU count %ld exceeds max supported 255, capping to 255", cpus);
         return 255;
-    }    
+    }
 
     return (uint8_t)cpus;
 }
@@ -211,12 +207,11 @@ static uint8_t _core_detect_cpu_count(void)
 #ifdef DEBUG
 static void _p_dbg_info_init(void)
 {
-    
     // all this is a partial representation of the server's core folder and
     // what is visible in it, from which user it is running, and the current working directory.
     /* Print current user */
-    uid_t uid = geteuid();
-    const struct passwd *pw = getpwuid(uid);
+    uid_t                uid = geteuid();
+    const struct passwd* pw  = getpwuid(uid);
     if(pw)
     {
         printf(LOG_TAG "running as user: %s\n", pw->pw_name);
@@ -228,8 +223,7 @@ static void _p_dbg_info_init(void)
 
     /* Print current working directory */
     char cwd[PATH_MAX];
-    if(getcwd(cwd, sizeof(cwd)) != NULL)
-        printf(LOG_TAG "cwd: %s\n", cwd);
+    if(getcwd(cwd, sizeof(cwd)) != NULL) printf(LOG_TAG "cwd: %s\n", cwd);
 
     /* List directory contents */
     printf(LOG_TAG "ls -la:\n");

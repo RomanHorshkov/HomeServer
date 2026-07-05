@@ -2,9 +2,8 @@
  * @file listener.c
  * @brief TCP listener implementation for accepting incoming client connections.
  *
- * This module manages the server's listening sockets across multiple address families
- * (IPv4/IPv6). It uses a reactor pattern to monitor accept events and forwards new
- * client connections to the worker pipeline for processing.
+ * This module manages the server's listening sockets across multiple address families (IPv4/IPv6). It uses a reactor pattern to monitor
+ * accept events and forwards new client connections to the worker pipeline for processing.
  *
  * @author  Roman Horshkov <roman.horshkov@gmail.com>
  * @date    2025
@@ -23,65 +22,63 @@
 #include <string.h>
 #include <unistd.h>
 
-#include "emlog.h"
 #include "config_core.h"
+#include "emlog.h"
 #include "reactor.h"
 #include "socket_helper.h"
 #include "worker.h"
 
-/****************************************************************************
+/*****************************************************************************************************************************************
  * PRIVATE DEFINES
- ****************************************************************************
+ *****************************************************************************************************************************************
  */
 
 #define LOG_TAG "srv_listener"
 
-/****************************************************************************
+/*****************************************************************************************************************************************
  * PRIVATE STRUCTURED VARIABLES
- ****************************************************************************
+ *****************************************************************************************************************************************
  */
 
 /**
  * @brief Internal listener state structure.
  *
- * Manages the lifecycle of listening sockets, reactor instance, and pipeline
- * integration for accepting and forwarding client connections.
+ * Manages the lifecycle of listening sockets, reactor instance, and pipeline integration for accepting and forwarding client connections.
  */
 typedef struct
 {
-    listener_status_t status;                                    /**< Current listener status */
-    reactor_t reactor;                                           /**< Reactor for monitoring accept events */
-    char port[6];                                                /**< Port number as string */
-    int sockets_fds[SERVER_CORE_MAX_LISTENING_SOCKETS];          /**< Array of listening socket FDs */
-    uint32_t active_sockets_no;                                  /**< Number of active listening sockets */
+    listener_status_t status;                                         /**< Current listener status */
+    reactor_t         reactor;                                        /**< Reactor for monitoring accept events */
+    char              port[6];                                        /**< Port number as string */
+    int               sockets_fds[SERVER_CORE_MAX_LISTENING_SOCKETS]; /**< Array of listening socket FDs */
+    uint32_t          active_sockets_no;                              /**< Number of active listening sockets */
     // pipeline_t *pipeline;                                        /**< Pointer to worker pipeline */
 } listener_t;
 
 static listener_t _listener = {0};
 
-/****************************************************************************
+/*****************************************************************************************************************************************
  * PRIVATE FUNCTIONS DECLARATIONS
- ****************************************************************************
+ *****************************************************************************************************************************************
  */
 
 /**
  * @brief Initialize listening sockets for the given port.
  *
- * Creates and binds TCP listening sockets for all available address families
- * (IPv4 and IPv6), configures socket options, and stores file descriptors in
- * the listener state.
+ * Creates and binds TCP listening sockets for all available address families (IPv4 and IPv6), configures socket options, and stores file
+ * descriptors in the listener state.
  *
  * @param[in] port Port number to bind to (as string).
  * @retval STATUS_SUCCESS At least one listening socket was successfully created.
  * @retval STATUS_FAILURE No listening sockets could be initialized.
  */
-static int _init_listening_sockets(const char *port);
+static int _init_listening_sockets(const char* port);
 
 /**
  * @brief Register all listening sockets with the reactor.
  *
- * Allocates context structures for each listening socket and registers them
- * with the reactor for monitoring EPOLLIN events (incoming connections).
+ * Allocates context structures for each listening socket and registers them with the reactor for monitoring EPOLLIN events (incoming
+ * connections).
  *
  * @retval STATUS_SUCCESS All listening sockets registered successfully.
  * @retval STATUS_FAILURE Failed to register one or more sockets.
@@ -91,15 +88,15 @@ static int _register_listening_sockets(void);
 /**
  * @brief Handle accept events on a listening socket.
  *
- * Called by the reactor when a new connection is available. Accepts the client
- * connection, initializes the client socket, and pushes it to the worker pipeline.
+ * Called by the reactor when a new connection is available. Accepts the client connection, initializes the client socket, and pushes it to
+ * the worker pipeline.
  *
  * @param[in] fd       File descriptor of the listening socket.
  * @param[in] ctx      Context associated with the listening socket.
  * @retval STATUS_SUCCESS Client connection accepted and queued successfully.
  * @retval STATUS_FAILURE Failed to accept or queue the connection.
  */
-static int _handle_listen_event(int fd, fd_ctx_t *ctx);
+static int _handle_listen_event(int fd, fd_ctx_t* ctx);
 
 /**
  * @brief Stop the listener and close all listening sockets.
@@ -108,14 +105,14 @@ static int _handle_listen_event(int fd, fd_ctx_t *ctx);
  *
  * @param[in,out] l Pointer to the listener structure.
  */
-static void _stop_listener(listener_t *l);
+static void _stop_listener(listener_t* l);
 
-/****************************************************************************
+/*****************************************************************************************************************************************
  * PUBLIC FUNCTIONS DEFINITIONS
- ****************************************************************************
+ *****************************************************************************************************************************************
  */
 
-int listener_init(const char *port/*, void *pipeline_ptr*/)
+int listener_init(const char* port /*, void *pipeline_ptr*/)
 {
     if(!port || port[0] == '\0' /*|| pipeline_ptr == NULL*/)
     {
@@ -154,7 +151,7 @@ int listener_init(const char *port/*, void *pipeline_ptr*/)
     return STATUS_SUCCESS;
 }
 
-void *listener_run(void *arg)
+void* listener_run(void* arg)
 {
     (void)arg;
 
@@ -171,15 +168,15 @@ void *listener_run(void *arg)
     return NULL;
 }
 
-/****************************************************************************
+/*****************************************************************************************************************************************
  * PRIVATE FUNCTIONS DEFINITIONS
- ****************************************************************************
+ *****************************************************************************************************************************************
  */
 
-static int _init_listening_sockets(const char *port)
+static int _init_listening_sockets(const char* port)
 {
-    struct addrinfo hints;
-    struct addrinfo *ai = NULL;
+    struct addrinfo  hints;
+    struct addrinfo* ai = NULL;
 
     if(socket_listener_set_hints(&hints) != STATUS_SUCCESS)
     {
@@ -193,7 +190,7 @@ static int _init_listening_sockets(const char *port)
         return STATUS_FAILURE;
     }
 
-    for(const struct addrinfo *cur = ai; cur != NULL; cur = cur->ai_next)
+    for(const struct addrinfo* cur = ai; cur != NULL; cur = cur->ai_next)
     {
         if(_listener.active_sockets_no >= SERVER_CORE_MAX_LISTENING_SOCKETS)
         {
@@ -232,20 +229,20 @@ static int _init_listening_sockets(const char *port)
         _listener.sockets_fds[_listener.active_sockets_no++] = fd;
 
 #ifdef DEBUG
-        char ip_str[INET6_ADDRSTRLEN];
-        void *addr = NULL;
-        const char *ipver = "";
+        char        ip_str[INET6_ADDRSTRLEN];
+        void*       addr  = NULL;
+        const char* ipver = "";
         if(cur->ai_family == AF_INET)
         {
-            struct sockaddr_in *ipv4 = (struct sockaddr_in *)cur->ai_addr;
-            addr = &(ipv4->sin_addr);
-            ipver = "IPv4";
+            struct sockaddr_in* ipv4 = (struct sockaddr_in*)cur->ai_addr;
+            addr                     = &(ipv4->sin_addr);
+            ipver                    = "IPv4";
         }
         else if(cur->ai_family == AF_INET6)
         {
-            struct sockaddr_in6 *ipv6 = (struct sockaddr_in6 *)cur->ai_addr;
-            addr = &(ipv6->sin6_addr);
-            ipver = "IPv6";
+            struct sockaddr_in6* ipv6 = (struct sockaddr_in6*)cur->ai_addr;
+            addr                      = &(ipv6->sin6_addr);
+            ipver                     = "IPv6";
         }
         if(addr)
         {
@@ -267,15 +264,15 @@ static int _register_listening_sockets(void)
 {
     for(uint32_t i = 0; i < _listener.active_sockets_no; ++i)
     {
-        int fd = _listener.sockets_fds[i];
-        fd_ctx_t *ctx = calloc(1, sizeof(*ctx));
+        int       fd  = _listener.sockets_fds[i];
+        fd_ctx_t* ctx = calloc(1, sizeof(*ctx));
         if(!ctx)
         {
             EML_PERR(LOG_TAG, "listener: calloc ctx failed");
             return STATUS_FAILURE;
         }
-        ctx->fd = fd;
-        ctx->owner = &_listener;
+        ctx->fd      = fd;
+        ctx->owner   = &_listener;
         ctx->handler = _handle_listen_event;
 
         if(reactor_add_in(&_listener.reactor, fd, ctx) != STATUS_SUCCESS)
@@ -289,7 +286,7 @@ static int _register_listening_sockets(void)
     return STATUS_SUCCESS;
 }
 
-static int _handle_listen_event(int fd, fd_ctx_t *ctx)
+static int _handle_listen_event(int fd, fd_ctx_t* ctx)
 {
     (void)ctx;
 #ifdef DEBUG
@@ -323,7 +320,7 @@ fail:
     return STATUS_FAILURE;
 }
 
-static void _stop_listener(listener_t *l)
+static void _stop_listener(listener_t* l)
 {
     if(!l) return;
 

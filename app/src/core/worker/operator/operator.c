@@ -31,96 +31,96 @@
 #include "time_helper.h"
 #include "worker.h"
 
-/****************************************************************************
+/*****************************************************************************************************************************************
  * PRIVATE DEFINES
- ****************************************************************************
+ *****************************************************************************************************************************************
  */
 
-#define LOG_TAG "srv_wrkr_operator"
+#define LOG_TAG                 "srv_wrkr_operator"
 
-#define OPERATOR_RING_CAPACITY 8U
+#define OPERATOR_RING_CAPACITY  8U
 
 #define REACTOR_DEL_MAX_RETRIES 3
 
-/****************************************************************************
+/*****************************************************************************************************************************************
  * PRIVATE STUCTURED VARIABLES
- ****************************************************************************
+ *****************************************************************************************************************************************
  */
 
-/****************************************************************************
+/*****************************************************************************************************************************************
  * PRIVATE FUNCTION DECLARATIONS
- ****************************************************************************
+ *****************************************************************************************************************************************
  */
 
 /**
  * @brief Start and register the wakeup eventfd to reactor.
  */
-static int _operator_wakeup_init(operator_t *op);
+static int _operator_wakeup_init(operator_t* op);
 
 /**
  * @brief Initialize timerfd and add it to reactor.
  */
-static int _operator_timer_init(operator_t *op);
+static int _operator_timer_init(operator_t* op);
 
 /**
  * @brief Reactor callback for the wakeup eventfd. Drains the eventfd and
  *        dequeues all pending client FDs from the SPSC ring, registering
  *        them with the operator reactor.
  */
-static int _operator_handle_wakeup_event(int fd, fd_ctx_t *ctx);
+static int _operator_handle_wakeup_event(int fd, fd_ctx_t* ctx);
 
 /**
  * @brief Reactor callback for client sockets. Delegates to client handler.
  */
-static int _operator_handle_client_event(int fd, fd_ctx_t *ctx);
+static int _operator_handle_client_event(int fd, fd_ctx_t* ctx);
 
 /**
  * @brief Reactor callback for timer ticks. Adjusts timer cadence and
  *        closes idle clients that exceeded their timeout.
  */
-static int _operator_handle_timer_event(int fd, fd_ctx_t *ctx);
+static int _operator_handle_timer_event(int fd, fd_ctx_t* ctx);
 
 /**
  * @brief Find an available client slot or NULL if full.
  */
-static client_t* _get_available_client_slot(operator_t *op);
+static client_t* _get_available_client_slot(operator_t* op);
 
 /**
  * @brief Register a new client socket with the operator reactor.
  *        Updates @c active_clients with relaxed atomics.
  */
-static int _operator_add_client(operator_t *op, int client_fd);
+static int _operator_add_client(operator_t* op, int client_fd);
 
 /**
  * @brief Unregister and close a client socket. Compacts the slot array and
  *        decrements @c active_clients with relaxed atomics.
  */
-static int _operator_remove_client_by_fd(operator_t *op, int client_fd);
+static int _operator_remove_client_by_fd(operator_t* op, int client_fd);
 
-static void _operator_state_update(operator_t *op);
-static void _operator_status_update(operator_t *op);
+static void _operator_state_update(operator_t* op);
+static void _operator_status_update(operator_t* op);
 
 /**
  * @brief Switch timer cadence between idle and active based on load.
  */
-static void _operator_timer_update(operator_t *op);
+static void _operator_timer_update(operator_t* op);
 
 /**
  * @brief Close clients that exceeded per‑client inactivity timeouts.
  */
-static void _clean_clients(operator_t *op);
+static void _clean_clients(operator_t* op);
 
 /**
  * @brief Arm timerfd with a new frequency if it changed.
  */
-static void _operator_set_timer(operator_t *op, uint32_t freq);
+static void _operator_set_timer(operator_t* op, uint32_t freq);
 
-/****************************************************************************
+/*****************************************************************************************************************************************
  * PUBLIC FUNCTION DEFINITIONS
- ****************************************************************************
+ *****************************************************************************************************************************************
  */
 
-int operator_init(operator_t *op, uint8_t id)
+int operator_init(operator_t* op, uint8_t id)
 {
     if(op == NULL)
     {
@@ -129,13 +129,13 @@ int operator_init(operator_t *op, uint8_t id)
     }
 
     /* Set operator ID */
-    op->id = id;
+    op->id            = id;
     /* Initialize wakeup context fd */
     op->wakeup_ctx.fd = -1;
     /* Initialize timer fd */
-    op->timer_fd = -1;
+    op->timer_fd      = -1;
     /* Initialize timer frequency */
-    op->timer_period = OPERATOR_TIMER_PERIOD_LONG;
+    op->timer_period  = OPERATOR_TIMER_PERIOD_LONG;
     /* Initialize active clients count */
     atomic_store(&op->active_clients, 0);
 
@@ -146,7 +146,7 @@ int operator_init(operator_t *op, uint8_t id)
         EML_ERROR(LOG_TAG, "init: ring alloc failed");
         goto fail;
     }
-    
+
     /* Initialize operator's reactor */
     if(reactor_init(&op->reactor) != STATUS_SUCCESS)
     {
@@ -192,9 +192,9 @@ fail:
  *  - timerfd: periodic housekeeping (timeouts)
  *  - client sockets: read/parse HTTP and drive request lifecycle
  */
-void *operator_thread(void *arg)
+void* operator_thread(void* arg)
 {
-    operator_t *op = (operator_t *)arg;
+    operator_t* op = (operator_t*)arg;
     if(!op)
     {
         EML_ERROR(LOG_TAG, "thread: invalid operator");
@@ -205,9 +205,8 @@ void *operator_thread(void *arg)
 
     /* Main loop */
     /**
-     * Run while ACTIVE or FULL.
-     * FULL will not receive new clients, reject if requested by worker,
-     * and will just proceed with active clients until a slot frees up.
+     * Run while ACTIVE or FULL. FULL will not receive new clients, reject if requested by worker, and will just proceed with active clients
+     * until a slot frees up.
      */
     while(op->status == OPERATOR_STATUS_ACTIVE || op->status == OPERATOR_STATUS_FULL)
     {
@@ -235,12 +234,12 @@ void *operator_thread(void *arg)
         /* clean shutdown */
         operator_shutdown(op);
     }
-    
+
     EML_INFO(LOG_TAG, "[op %d] thread exiting", op->id);
     return NULL;
 }
 
-void operator_shutdown(operator_t *op)
+void operator_shutdown(operator_t* op)
 {
     if(op == NULL)
     {
@@ -270,7 +269,7 @@ void operator_shutdown(operator_t *op)
         socket_shutdown_and_close(op->timer_fd);
         op->timer_fd = -1;
     }
-    
+
     /* Clean the clients and their parser handles. */
     for(size_t i = 0; i < WORKER_MAX_CLIENTS; i++)
     {
@@ -288,16 +287,16 @@ void operator_shutdown(operator_t *op)
     EML_INFO(LOG_TAG, "[op %d] shutdown complete", op->id);
 }
 
-/****************************************************************************
+/*****************************************************************************************************************************************
  * PRIVATE FUNCTION DEFINITIONS
- ****************************************************************************
+ *****************************************************************************************************************************************
  */
 
-static int _operator_handle_wakeup_event(int fd, fd_ctx_t *ctx)
+static int _operator_handle_wakeup_event(int fd, fd_ctx_t* ctx)
 {
     /* The wakeup event is triggered by the listener
     and it is time to store a new client */
-    operator_t *op = (operator_t *)ctx->owner;
+    operator_t* op = (operator_t*)ctx->owner;
 
     /* Drain wakeup fd */
     socket_drain(fd);
@@ -311,10 +310,9 @@ static int _operator_handle_wakeup_event(int fd, fd_ctx_t *ctx)
             EML_ERROR(LOG_TAG, "[op %d] wakeup: operator not active", op->id);
             return STATUS_FAILURE;
         }
-        
+
 #ifdef DEBUG
-        EML_DBG(LOG_TAG, "[op %d] wakeup, adding new client on fd %d",
-                op->id, client_fd);
+        EML_DBG(LOG_TAG, "[op %d] wakeup, adding new client on fd %d", op->id, client_fd);
 #endif /* DEBUG */
         if(_operator_add_client(op, client_fd) != STATUS_SUCCESS)
         {
@@ -326,7 +324,7 @@ static int _operator_handle_wakeup_event(int fd, fd_ctx_t *ctx)
     return STATUS_SUCCESS;
 }
 
-static int _operator_handle_client_event(int fd, fd_ctx_t *ctx)
+static int _operator_handle_client_event(int fd, fd_ctx_t* ctx)
 {
     if(!ctx || !ctx->owner)
     {
@@ -334,22 +332,21 @@ static int _operator_handle_client_event(int fd, fd_ctx_t *ctx)
         return STATUS_FAILURE;
     }
 
-    operator_t *op = (operator_t *)ctx->owner;
+    operator_t* op = (operator_t*)ctx->owner;
 
     /* Calculate client slot from context pointer */
     /* ctx is a member of client_t, so we can retrieve the container
     by jumping straight to the client_t structure */
-    client_t *cli = (client_t *)((char *)ctx - offsetof(client_t, ctx));
+    client_t* cli = (client_t*)((char*)ctx - offsetof(client_t, ctx));
 
     /* Sanity check */
-    if (cli->ctx.fd != fd)
+    if(cli->ctx.fd != fd)
     {
-        EML_ERROR(LOG_TAG, "[op %d] client event: fd mismatch (ctx=%d, event=%d)",
-                  op->id, cli->ctx.fd, fd);
+        EML_ERROR(LOG_TAG, "[op %d] client event: fd mismatch (ctx=%d, event=%d)", op->id, cli->ctx.fd, fd);
         return STATUS_FAILURE;
     }
-    
-    if (!cli->is_busy)
+
+    if(!cli->is_busy)
     {
         EML_ERROR(LOG_TAG, "[op %d] client event: slot not busy for fd %d", op->id, fd);
         return STATUS_FAILURE;
@@ -363,9 +360,9 @@ static int _operator_handle_client_event(int fd, fd_ctx_t *ctx)
     return STATUS_SUCCESS;
 }
 
-static int _operator_handle_timer_event(int fd, fd_ctx_t *ctx)
+static int _operator_handle_timer_event(int fd, fd_ctx_t* ctx)
 {
-    operator_t *op = (operator_t *)ctx->owner;
+    operator_t* op = (operator_t*)ctx->owner;
 
     if(socket_drain(fd) == -1)
     {
@@ -378,7 +375,7 @@ static int _operator_handle_timer_event(int fd, fd_ctx_t *ctx)
     return STATUS_SUCCESS;
 }
 
-static client_t* _get_available_client_slot(operator_t *op)
+static client_t* _get_available_client_slot(operator_t* op)
 {
     for(uint8_t i = 0; i < WORKER_MAX_CLIENTS; ++i)
     {
@@ -391,14 +388,13 @@ static client_t* _get_available_client_slot(operator_t *op)
     return NULL; /* invalid */
 }
 
-static int _operator_add_client(operator_t *op, int client_fd)
+static int _operator_add_client(operator_t* op, int client_fd)
 {
     /* Get empty client slot */
-    client_t *free_slot = _get_available_client_slot(op);
+    client_t* free_slot = _get_available_client_slot(op);
     if(!free_slot)
     {
-        EML_ERROR(LOG_TAG, "[op %d] no free client slot found for fd %d",
-                    op->id, client_fd);
+        EML_ERROR(LOG_TAG, "[op %d] no free client slot found for fd %d", op->id, client_fd);
         _operator_status_update(op);
         return STATUS_FAILURE;
     }
@@ -406,17 +402,16 @@ static int _operator_add_client(operator_t *op, int client_fd)
     /* Set client's socket settings */
     if(socket_client_init(&client_fd) != STATUS_SUCCESS)
     {
-        EML_PERR(LOG_TAG, "[op %d] socket_client_init failed for fd %d",
-                 op->id, client_fd);
+        EML_PERR(LOG_TAG, "[op %d] socket_client_init failed for fd %d", op->id, client_fd);
         return STATUS_FAILURE;
     }
 
     /* populate fd context */
-    fd_ctx_t *ctx = &free_slot->ctx;
+    fd_ctx_t* ctx          = &free_slot->ctx;
     /* Set client fd */
-    free_slot->ctx.fd = client_fd;
+    free_slot->ctx.fd      = client_fd;
     /* Set owner to this operator */
-    free_slot->ctx.owner = op;
+    free_slot->ctx.owner   = op;
     /* Set client's handler */
     free_slot->ctx.handler = _operator_handle_client_event;
 
@@ -431,22 +426,21 @@ static int _operator_add_client(operator_t *op, int client_fd)
     /* populate client's slot */
     memset(free_slot->buf, 0, sizeof(free_slot->buf));
     memset(&free_slot->http_request, 0, sizeof(free_slot->http_request));
-    free_slot->buf_idx = 0u;
+    free_slot->buf_idx           = 0u;
     free_slot->connection_policy = 0u;
     /* Set client's last activity to now */
-    free_slot->last_activity = (uint64_t)time_helper_get_now();
+    free_slot->last_activity     = (uint64_t)time_helper_get_now();
     /* Set client's request count */
-    free_slot->request_count = 0u;
+    free_slot->request_count     = 0u;
     /* Mark client's slot as busy */
-    free_slot->is_busy = (uint8_t)1U;
+    free_slot->is_busy           = (uint8_t)1U;
 
     /* Increase this operator's active client count by 1 */
     atomic_fetch_add_explicit(&op->active_clients, 1U, memory_order_relaxed);
 
 #ifdef DEBUG
     unsigned active_clients = atomic_load_explicit(&op->active_clients, memory_order_relaxed);
-    EML_DBG(LOG_TAG, "[op %u] added client fd %d (active=%u)",
-            op->id, client_fd, active_clients);
+    EML_DBG(LOG_TAG, "[op %u] added client fd %d (active=%u)", op->id, client_fd, active_clients);
 #endif /* DEBUG */
 
     /* Update operator's state */
@@ -455,19 +449,19 @@ static int _operator_add_client(operator_t *op, int client_fd)
     return STATUS_SUCCESS;
 }
 
-static int _operator_remove_client_by_idx(operator_t *op, unsigned int idx)
+static int _operator_remove_client_by_idx(operator_t* op, unsigned int idx)
 {
     /* Delete client from reactor with retries */
     int retries = 0;
     while(reactor_del(&op->reactor, op->clients[idx].ctx.fd) != STATUS_SUCCESS)
     {
-        EML_PERR(LOG_TAG, "[op %d] reactor_del failed fd %d (attempt %d/%d)", 
-                 op->id, op->clients[idx].ctx.fd, retries + 1, REACTOR_DEL_MAX_RETRIES);
-        
+        EML_PERR(LOG_TAG, "[op %d] reactor_del failed fd %d (attempt %d/%d)", op->id, op->clients[idx].ctx.fd, retries + 1,
+                 REACTOR_DEL_MAX_RETRIES);
+
         if(++retries >= REACTOR_DEL_MAX_RETRIES)
         {
-            EML_ERROR(LOG_TAG, "[op %d] reactor_del failed permanently for fd %d, proceeding with shutdown", 
-                      op->id, op->clients[idx].ctx.fd);
+            EML_ERROR(LOG_TAG, "[op %d] reactor_del failed permanently for fd %d, proceeding with shutdown", op->id,
+                      op->clients[idx].ctx.fd);
             break;
         }
     }
@@ -481,7 +475,7 @@ static int _operator_remove_client_by_idx(operator_t *op, unsigned int idx)
     return STATUS_SUCCESS;
 }
 
-static int _operator_remove_client_by_fd(operator_t *op, int client_fd)
+static int _operator_remove_client_by_fd(operator_t* op, int client_fd)
 {
     /* find client by fd */
     unsigned int idx;
@@ -495,8 +489,7 @@ static int _operator_remove_client_by_fd(operator_t *op, int client_fd)
 
     if(idx >= WORKER_MAX_CLIENTS)
     {
-        EML_ERROR(LOG_TAG, "[op %d] _remove_client_by_fd: no client slot found for fd %d",
-                  op->id, client_fd);
+        EML_ERROR(LOG_TAG, "[op %d] _remove_client_by_fd: no client slot found for fd %d", op->id, client_fd);
         return STATUS_FAILURE;
     }
 
@@ -504,23 +497,22 @@ static int _operator_remove_client_by_fd(operator_t *op, int client_fd)
     int retries = 0;
     while(reactor_del(&op->reactor, op->clients[idx].ctx.fd) != STATUS_SUCCESS)
     {
-        EML_PERR(LOG_TAG, "[op %d] _remove_client_by_fd: reactor_del failed fd %d (attempt %d/%d)", 
-                 op->id, op->clients[idx].ctx.fd, retries + 1, REACTOR_DEL_MAX_RETRIES);
-        
+        EML_PERR(LOG_TAG, "[op %d] _remove_client_by_fd: reactor_del failed fd %d (attempt %d/%d)", op->id, op->clients[idx].ctx.fd,
+                 retries + 1, REACTOR_DEL_MAX_RETRIES);
+
         if(++retries >= REACTOR_DEL_MAX_RETRIES)
         {
-            EML_ERROR(LOG_TAG, "[op %d] _remove_client_by_fd: reactor_del failed permanently for fd %d, proceeding with shutdown", 
-                      op->id, op->clients[idx].ctx.fd);
+            EML_ERROR(LOG_TAG, "[op %d] _remove_client_by_fd: reactor_del failed permanently for fd %d, proceeding with shutdown", op->id,
+                      op->clients[idx].ctx.fd);
             break;
         }
     }
 
     /* Shutdown client */
     client_shutdown(&op->clients[idx]);
-    
+
     /* Decrease this operator's active client count by 1 */
     atomic_fetch_sub_explicit(&op->active_clients, 1U, memory_order_relaxed);
-
 
 #ifdef DEBUG
     unsigned active_clients = atomic_load_explicit(&op->active_clients, memory_order_relaxed);
@@ -532,14 +524,14 @@ static int _operator_remove_client_by_fd(operator_t *op, int client_fd)
     return STATUS_SUCCESS;
 }
 
-static void _operator_state_update(operator_t *op)
+static void _operator_state_update(operator_t* op)
 {
     _operator_timer_update(op);
 
-    _operator_status_update(op);   
+    _operator_status_update(op);
 }
 
-static int _operator_timer_init(operator_t *op)
+static int _operator_timer_init(operator_t* op)
 {
     /* Create timer file descriptor */
     op->timer_fd = time_helper_init();
@@ -550,7 +542,7 @@ static int _operator_timer_init(operator_t *op)
     }
 
     /* Create timer context */
-    fd_ctx_t *timer_ctx = calloc(1, sizeof(*timer_ctx));
+    fd_ctx_t* timer_ctx = calloc(1, sizeof(*timer_ctx));
     if(!timer_ctx)
     {
         EML_PERR(LOG_TAG, "[op %d] calloc timer_ctx failed", op->id);
@@ -558,13 +550,13 @@ static int _operator_timer_init(operator_t *op)
     }
 
     /* Setup context */
-    timer_ctx->fd = op->timer_fd;
-    timer_ctx->owner = op;
+    timer_ctx->fd      = op->timer_fd;
+    timer_ctx->owner   = op;
     timer_ctx->handler = _operator_handle_timer_event;
-    op->timer_period = OPERATOR_TIMER_PERIOD_LONG;
+    op->timer_period   = OPERATOR_TIMER_PERIOD_LONG;
 
     /* Start timer with idle frequency */
-    if(time_helper_set(op->timer_fd, op->timer_period/* [s] */, 0/* [ns] */) == -1)
+    if(time_helper_set(op->timer_fd, op->timer_period /* [s] */, 0 /* [ns] */) == -1)
     {
         EML_PERR(LOG_TAG, "[op %d] time_helper_set failed", op->id);
         goto fail_timer;
@@ -586,11 +578,11 @@ fail_timer:
     return STATUS_FAILURE;
 }
 
-static int _operator_wakeup_init(operator_t *op)
+static int _operator_wakeup_init(operator_t* op)
 {
-    fd_ctx_t *wkp_ctx = &op->wakeup_ctx;
+    fd_ctx_t* wkp_ctx = &op->wakeup_ctx;
     /* Create wakeup eventfd */
-    wkp_ctx->fd = eventfd(0, EFD_SEMAPHORE | EFD_NONBLOCK);
+    wkp_ctx->fd       = eventfd(0, EFD_SEMAPHORE | EFD_NONBLOCK);
     if(wkp_ctx->fd == -1)
     {
         EML_PERR(LOG_TAG, "[op %d] init: eventfd creation failed", op->id);
@@ -598,7 +590,7 @@ static int _operator_wakeup_init(operator_t *op)
     }
 
     /* Set owner */
-    wkp_ctx->owner = op;
+    wkp_ctx->owner   = op;
     /* Set handler*/
     wkp_ctx->handler = _operator_handle_wakeup_event;
     /* Add context to reactor */
@@ -613,11 +605,11 @@ fail:
     return STATUS_FAILURE;
 }
 
-static void _operator_status_update(operator_t *op)
+static void _operator_status_update(operator_t* op)
 {
     /* Get active clients no */
     unsigned int active_clients = atomic_load_explicit(&op->active_clients, memory_order_relaxed);
-    
+
     /* Update operator status */
     if(active_clients >= WORKER_MAX_CLIENTS && op->status != OPERATOR_STATUS_FULL)
     {
@@ -636,7 +628,7 @@ static void _operator_status_update(operator_t *op)
     }
 }
 
-static void _operator_timer_update(operator_t *op)
+static void _operator_timer_update(operator_t* op)
 {
     /* Get active clients no */
     unsigned int active_clients = atomic_load_explicit(&op->active_clients, memory_order_relaxed);
@@ -662,20 +654,19 @@ static void _operator_timer_update(operator_t *op)
     }
 }
 
-static void _clean_clients(operator_t *op)
+static void _clean_clients(operator_t* op)
 {
     uint64_t now = (uint64_t)time_helper_get_now();
     for(unsigned int cli_idx = 0; cli_idx < op->active_clients; cli_idx++)
     {
-        if (!op->clients[cli_idx].is_busy) continue;
-        
-        uint64_t timeout = (op->clients[cli_idx].request_count == 0) ? WORKER_CLIENT_TIMEOUT_SHORT
-                                                   : WORKER_CLIENT_TIMEOUT_LONG;
+        if(!op->clients[cli_idx].is_busy) continue;
+
+        uint64_t timeout = (op->clients[cli_idx].request_count == 0) ? WORKER_CLIENT_TIMEOUT_SHORT : WORKER_CLIENT_TIMEOUT_LONG;
         if((now - op->clients[cli_idx].last_activity) > timeout)
         {
 #ifdef DEBUG
-            EML_DBG(LOG_TAG, "[op %d] timeout closing idle fd %d (last=%lu, now=%lu, to=%lu)",
-                    op->id, op->clients[cli_idx].ctx.fd, op->clients[cli_idx].last_activity, now, timeout);
+            EML_DBG(LOG_TAG, "[op %d] timeout closing idle fd %d (last=%lu, now=%lu, to=%lu)", op->id, op->clients[cli_idx].ctx.fd,
+                    op->clients[cli_idx].last_activity, now, timeout);
 #endif
             _operator_remove_client_by_idx(op, cli_idx);
             continue;
@@ -683,7 +674,7 @@ static void _clean_clients(operator_t *op)
     }
 }
 
-static void _operator_set_timer(operator_t *op, uint32_t period)
+static void _operator_set_timer(operator_t* op, uint32_t period)
 {
     /* check always timer socket */
     if(op->timer_fd < 0)

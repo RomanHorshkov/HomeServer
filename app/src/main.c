@@ -2,8 +2,7 @@
  * @file main.c
  * @brief The containerized micro-HTTP server entry point.
  *
- * This function initializes the server and processes incoming requests
- * until shutdown.
+ * This function initializes the server and processes incoming requests until shutdown.
  *
  * Usage:
  *   ./server <port>
@@ -21,19 +20,19 @@
 #    include <stdio.h> /* printf / fprintf / perror */
 #endif                 /* DEBUG */
 
-#include "core.h" /* server_init / run / shutdown */
+#include "core.h"      /* server_init / run / shutdown */
 
-/****************************************************************************
+/*****************************************************************************************************************************************
  * PRIVATE DEFINES
- ****************************************************************************
+ *****************************************************************************************************************************************
  */
 
-/****************************************************************************
+/*****************************************************************************************************************************************
  * PUBLIC FUNCTIONS DEFINITIONS
- ****************************************************************************
+ *****************************************************************************************************************************************
  */
 
-int main(int argc, char *argv[])
+int main(int argc, char* argv[])
 {
     /* Check input */
     if(argc != 2)

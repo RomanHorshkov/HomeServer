@@ -2,13 +2,12 @@
  * @file client.c
  * @brief Per-connection I/O and HTTP parsing loop executed inside an operator.
  *
- * Each client owns one cumulative receive buffer and one DB_http parser handle.
- * DB_http stores zero-copy string views into the cumulative buffer, so this
- * layer appends new bytes, feeds only the new byte count, and keeps the buffer
- * stable while the parsed request snapshot is inspected by higher layers.
+ * Each client owns one cumulative receive buffer and one DB_http parser handle. DB_http stores zero-copy string views into the cumulative
+ * buffer, so this layer appends new bytes, feeds only the new byte count, and keeps the buffer stable while the parsed request snapshot is
+ * inspected by higher layers.
  */
 #ifndef _GNU_SOURCE
-#define _GNU_SOURCE
+#    define _GNU_SOURCE
 #endif /* _GNU_SOURCE */
 
 #include "client.h"
@@ -25,27 +24,27 @@
 #include "socket_helper.h"
 #include "time_helper.h"
 
-/****************************************************************************
+/*****************************************************************************************************************************************
  * PRIVATE DEFINES
- ****************************************************************************
+ *****************************************************************************************************************************************
  */
 
 #define LOG_TAG "srv_client"
 
-/****************************************************************************
+/*****************************************************************************************************************************************
  * PRIVATE FUNCTION DECLARATIONS
- ****************************************************************************
+ *****************************************************************************************************************************************
  */
 
-static void _client_reset_message(client_t *cli, int clear_stored_request);
-static int  _client_store_request(client_t *cli, const DB_http_request_t *req, uint8_t thread_id);
+static void _client_reset_message(client_t* cli, int clear_stored_request);
+static int  _client_store_request(client_t* cli, const DB_http_request_t* req, uint8_t thread_id);
 
-/****************************************************************************
+/*****************************************************************************************************************************************
  * PUBLIC FUNCTIONS DEFINITIONS
- ****************************************************************************
+ *****************************************************************************************************************************************
  */
 
-int client_handle(client_t *cli, uint8_t thread_id)
+int client_handle(client_t* cli, uint8_t thread_id)
 {
     if(!cli || !cli->http_parser || cli->ctx.fd < 0)
     {
@@ -61,20 +60,19 @@ int client_handle(client_t *cli, uint8_t thread_id)
             goto fail;
         }
 
-        const size_t writable = DB_HTTP_MAX_BUFFER_LEN_B - cli->buf_idx;
-        ssize_t read_bytes = read(cli->ctx.fd, cli->buf + cli->buf_idx, writable);
+        const size_t writable   = DB_HTTP_MAX_BUFFER_LEN_B - cli->buf_idx;
+        ssize_t      read_bytes = read(cli->ctx.fd, cli->buf + cli->buf_idx, writable);
 
         if(read_bytes > 0)
         {
-            DB_http_request_t *parsed_req = NULL;
-            const size_t new_bytes = (size_t)read_bytes;
+            DB_http_request_t* parsed_req = NULL;
+            const size_t       new_bytes  = (size_t)read_bytes;
 
-            cli->last_activity = (uint64_t)time_helper_get_now();
-            cli->buf_idx += new_bytes;
+            cli->last_activity  = (uint64_t)time_helper_get_now();
+            cli->buf_idx       += new_bytes;
 
 #ifdef DEBUG
-            EML_DBG(LOG_TAG, "fd %d received %zu bytes, buffered=%zu",
-                      cli->ctx.fd, new_bytes, cli->buf_idx);
+            EML_DBG(LOG_TAG, "fd %d received %zu bytes, buffered=%zu", cli->ctx.fd, new_bytes, cli->buf_idx);
 #endif
 
             DB_http_status_t parse_status = db_http_parser_exec(cli->http_parser, cli->buf, new_bytes, &parsed_req);
@@ -101,14 +99,10 @@ int client_handle(client_t *cli, uint8_t thread_id)
                 }
 
 #ifdef DEBUG
-                EML_DBG(LOG_TAG, "fd %d parsed request: method=%u path=%.*s headers=%u body=%zu policy=%u",
-                          cli->ctx.fd,
-                          (unsigned)cli->http_request.method,
-                          (int)cli->http_request.path.n,
-                          cli->http_request.path.p ? cli->http_request.path.p : "",
-                          (unsigned)cli->http_request.header_count,
-                          cli->http_request.body.n,
-                          (unsigned)cli->http_request.connection_policy);
+                EML_DBG(LOG_TAG, "fd %d parsed request: method=%u path=%.*s headers=%u body=%zu policy=%u", cli->ctx.fd,
+                        (unsigned)cli->http_request.method, (int)cli->http_request.path.n,
+                        cli->http_request.path.p ? cli->http_request.path.p : "", (unsigned)cli->http_request.header_count,
+                        cli->http_request.body.n, (unsigned)cli->http_request.connection_policy);
 #endif
 
                 /* §9.2 sequence: dispatch runs db_app_run() while the request
@@ -161,7 +155,7 @@ fail:
     return STATUS_FAILURE;
 }
 
-void client_shutdown(client_t *cli)
+void client_shutdown(client_t* cli)
 {
     if(!cli)
     {
@@ -174,23 +168,23 @@ void client_shutdown(client_t *cli)
         _client_reset_message(cli, 1);
 
         socket_shutdown_and_close(cli->ctx.fd);
-        cli->ctx.fd = -1;
-        cli->ctx.owner = NULL;
+        cli->ctx.fd      = -1;
+        cli->ctx.owner   = NULL;
         cli->ctx.handler = NULL;
 
-        cli->is_busy = 0u;
+        cli->is_busy           = 0u;
         cli->connection_policy = 0u;
-        cli->last_activity = 0u;
-        cli->request_count = 0u;
+        cli->last_activity     = 0u;
+        cli->request_count     = 0u;
     }
 }
 
-/****************************************************************************
+/*****************************************************************************************************************************************
  * PRIVATE FUNCTIONS DEFINITIONS
- ****************************************************************************
+ *****************************************************************************************************************************************
  */
 
-static int _client_store_request(client_t *cli, const DB_http_request_t *req, uint8_t thread_id)
+static int _client_store_request(client_t* cli, const DB_http_request_t* req, uint8_t thread_id)
 {
     if(!cli || !req || !req->message_complete)
     {
@@ -198,12 +192,12 @@ static int _client_store_request(client_t *cli, const DB_http_request_t *req, ui
         return STATUS_FAILURE;
     }
 
-    cli->http_request = *req;
+    cli->http_request           = *req;
     cli->http_request.thread_id = thread_id;
     cli->http_request.timestamp = cli->last_activity;
 
     /* TODO: populate peer address metadata when accept()/getpeername() state is wired into client_t. */
-    cli->http_request.remote_ip_be = 0u;
+    cli->http_request.remote_ip_be   = 0u;
     cli->http_request.remote_port_be = 0u;
 
     cli->connection_policy = cli->http_request.connection_policy;
@@ -212,7 +206,7 @@ static int _client_store_request(client_t *cli, const DB_http_request_t *req, ui
     return STATUS_SUCCESS;
 }
 
-static void _client_reset_message(client_t *cli, int clear_stored_request)
+static void _client_reset_message(client_t* cli, int clear_stored_request)
 {
     if(!cli)
     {

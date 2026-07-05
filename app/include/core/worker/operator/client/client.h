@@ -15,33 +15,33 @@
  */
 typedef struct
 {
-    uint8_t         is_busy;                        /**< slot in use */
-    uint8_t         connection_policy;              /**< connection policy (keep alive / close) */
-    uint64_t        last_activity;                  /**< coarse ms timestamp of last I/O */
-    size_t          request_count;                  /**< number of HTTP requests handled */
+    uint8_t  is_busy;                       /**< slot in use */
+    uint8_t  connection_policy;             /**< connection policy (keep alive / close) */
+    uint64_t last_activity;                 /**< coarse ms timestamp of last I/O */
+    size_t   request_count;                 /**< number of HTTP requests handled */
 
-    fd_ctx_t        ctx;                            /**< per‑fd reactor context */
-    char            buf[DB_HTTP_MAX_BUFFER_LEN_B];  /**< buffer for socket reads */
-    size_t          buf_idx;                        /**< cumulative bytes stored for current HTTP message */
+    fd_ctx_t ctx;                           /**< per‑fd reactor context */
+    char     buf[DB_HTTP_MAX_BUFFER_LEN_B]; /**< buffer for socket reads */
+    size_t   buf_idx;                       /**< cumulative bytes stored for current HTTP message */
 
-    DB_http_request_t http_request;                 /**< last parser DTO snapshot; views point into buf */
-    DB_http_parser_t *http_parser;                  /**< per-connection HTTP parser state */
+    DB_http_request_t http_request;         /**< last parser DTO snapshot; views point into buf */
+    DB_http_parser_t* http_parser;          /**< per-connection HTTP parser state */
 } client_t;
 
 /**
  * @brief Drain readable socket, advance HTTP parser, and decide lifecycle.
- * 
+ *
  * @param cli Client containing parser state and buffers.
  * @param thread_id ID of the thread handling the client.
  *
  * @return STATUS_SUCCESS to keep connection; STATUS_FAILURE to drop it.
  */
-int client_handle(client_t *cli, uint8_t thread_id);
+int client_handle(client_t* cli, uint8_t thread_id);
 
 /**
  * @brief Shutdown and cleanup client connection.
  * @return STATUS_SUCCESS on success, STATUS_FAILURE on error.
  */
-void client_shutdown(client_t *cli);
+void client_shutdown(client_t* cli);
 
 #endif /* SERVER_WORKER_CLIENT_H */

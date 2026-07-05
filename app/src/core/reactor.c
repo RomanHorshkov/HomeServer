@@ -3,9 +3,8 @@
  * @brief Manages file descriptor events using epoll, dispatches callbacks, and supports
  * context-aware I/O event handling.
  *
- * This module abstracts epoll-based I/O multiplexing into a lightweight event reactor pattern.
- * It allows registering, modifying, and removing file descriptors, each with an associated
- * callback and opaque context. Upon readiness, the reactor dispatches the events to
+ * This module abstracts epoll-based I/O multiplexing into a lightweight event reactor pattern. It allows registering, modifying, and
+ * removing file descriptors, each with an associated callback and opaque context. Upon readiness, the reactor dispatches the events to
  * corresponding callbacks.
  *
  * Designed to be used as the event-processing core of a worker thread.
@@ -35,43 +34,42 @@
 #include <unistd.h>
 
 #include "config_core.h" /* MAX_FAN_OUT_SOCKETS */
-#include "epoller.h"
 #include "emlog.h"
+#include "epoller.h"
 
 #define LOG_TAG "srv_reactor"
 
-/****************************************************************************
+/*****************************************************************************************************************************************
  * PRIVATE STRUCTURED VARIABLES
- ****************************************************************************
+ *****************************************************************************************************************************************
  */
 /* None */
 
-/****************************************************************************
+/*****************************************************************************************************************************************
  * PRIVATE ENUMERATED VARIABLES
- ****************************************************************************
+ *****************************************************************************************************************************************
  */
 /* None */
 
-/****************************************************************************
+/*****************************************************************************************************************************************
  * PRIVATE VARIABLES DEFINITIONS
- ****************************************************************************
+ *****************************************************************************************************************************************
  */
 /* None */
 
-/****************************************************************************
+/*****************************************************************************************************************************************
  * PRIVATE FUNCTIONS PROTOTYPES
- ****************************************************************************
+ *****************************************************************************************************************************************
  */
 
-static int _manage_fd(const reactor_t *reactor_ptr, const int watch_fd, const int operation,
-                             const uint32_t events, fd_ctx_t *ctx);
+static int _manage_fd(const reactor_t* reactor_ptr, const int watch_fd, const int operation, const uint32_t events, fd_ctx_t* ctx);
 
-/****************************************************************************
+/*****************************************************************************************************************************************
  * PUBLIC FUNCTIONS DEFINITIONS
- ****************************************************************************
+ *****************************************************************************************************************************************
  */
 
-int reactor_init(reactor_t *reactor_ptr)
+int reactor_init(reactor_t* reactor_ptr)
 {
     /* Result variable */
     int res = STATUS_FAILURE;
@@ -112,19 +110,18 @@ fail:
     return res;
 }
 
-int reactor_add_in(const reactor_t *reactor_ptr, const int fd, fd_ctx_t *ctx)
+int reactor_add_in(const reactor_t* reactor_ptr, const int fd, fd_ctx_t* ctx)
 {
-
     if(!reactor_ptr || fd < 0 || !ctx)
     {
         EML_ERROR(LOG_TAG, "_add_in: invalid input");
         return STATUS_FAILURE;
     }
-    
+
     return _manage_fd(reactor_ptr, fd, EPOLL_CTL_ADD, EPOLLIN, ctx);
 }
 
-int reactor_add_in_client(const reactor_t *reactor_ptr, int fd, fd_ctx_t *ctx)
+int reactor_add_in_client(const reactor_t* reactor_ptr, int fd, fd_ctx_t* ctx)
 {
     /* Result variable */
     int res = STATUS_FAILURE;
@@ -135,10 +132,9 @@ int reactor_add_in_client(const reactor_t *reactor_ptr, int fd, fd_ctx_t *ctx)
         return STATUS_FAILURE;
     }
 
-    res = _manage_fd(reactor_ptr, fd, EPOLL_CTL_ADD,
-                    EPOLLIN | EPOLLRDHUP | EPOLLHUP | EPOLLERR, ctx);
-    
-    if (res != STATUS_SUCCESS)
+    res = _manage_fd(reactor_ptr, fd, EPOLL_CTL_ADD, EPOLLIN | EPOLLRDHUP | EPOLLHUP | EPOLLERR, ctx);
+
+    if(res != STATUS_SUCCESS)
     {
         EML_PERR(LOG_TAG, "_add_in_client: _manage_fd failed");
     }
@@ -146,7 +142,7 @@ int reactor_add_in_client(const reactor_t *reactor_ptr, int fd, fd_ctx_t *ctx)
     return res;
 }
 
-int reactor_add_out(const reactor_t *reactor_ptr, int fd, fd_ctx_t *ctx)
+int reactor_add_out(const reactor_t* reactor_ptr, int fd, fd_ctx_t* ctx)
 {
     /* Result variable */
     int res = STATUS_FAILURE;
@@ -164,7 +160,7 @@ int reactor_add_out(const reactor_t *reactor_ptr, int fd, fd_ctx_t *ctx)
     return res;
 }
 
-int reactor_mod(const reactor_t *reactor_ptr, int fd, uint32_t events, fd_ctx_t *ctx)
+int reactor_mod(const reactor_t* reactor_ptr, int fd, uint32_t events, fd_ctx_t* ctx)
 {
     if(!reactor_ptr || fd < 0 || !ctx)
     {
@@ -174,7 +170,7 @@ int reactor_mod(const reactor_t *reactor_ptr, int fd, uint32_t events, fd_ctx_t 
     return _manage_fd(reactor_ptr, fd, EPOLL_CTL_MOD, events, ctx);
 }
 
-int reactor_del(const reactor_t *reactor_ptr, int fd)
+int reactor_del(const reactor_t* reactor_ptr, int fd)
 {
     if(!reactor_ptr || fd < 0)
     {
@@ -184,7 +180,7 @@ int reactor_del(const reactor_t *reactor_ptr, int fd)
     return _manage_fd(reactor_ptr, fd, EPOLL_CTL_DEL, 0, NULL);
 }
 
-int reactor_run(reactor_t *reactor_ptr, int *out_fd)
+int reactor_run(reactor_t* reactor_ptr, int* out_fd)
 {
     /* Result variable */
     int res = STATUS_FAILURE;
@@ -203,12 +199,12 @@ int reactor_run(reactor_t *reactor_ptr, int *out_fd)
         EML_ERROR(LOG_TAG, "epoller_wait error");
         goto fail;
     }
-    
+
     /* Dispatch each ready event */
     for(int i = 0; i < n; i++)
     {
         /* Get the kernel-returned ptr saved at epoll ADD instance */
-        fd_ctx_t *ctx = (fd_ctx_t *)reactor_ptr->events[i].data.ptr;
+        fd_ctx_t* ctx = (fd_ctx_t*)reactor_ptr->events[i].data.ptr;
 
         /* Handle error/hangup/peer close events */
         if(epoller_check_if_to_close(reactor_ptr->events[i].events))
@@ -231,7 +227,7 @@ fail:
     return STATUS_FAILURE;
 }
 
-int reactor_shutdown(reactor_t *reactor_ptr)
+int reactor_shutdown(reactor_t* reactor_ptr)
 {
     if(!reactor_ptr)
     {
@@ -254,13 +250,12 @@ int reactor_shutdown(reactor_t *reactor_ptr)
     return STATUS_SUCCESS;
 }
 
-/****************************************************************************
+/*****************************************************************************************************************************************
  * PRIVATE FUNCTIONS DEFINITIONS
- ****************************************************************************
+ *****************************************************************************************************************************************
  */
 
-static int _manage_fd(const reactor_t *reactor_ptr, const int watch_fd, const int operation,
-                             uint32_t events, fd_ctx_t *ctx)
+static int _manage_fd(const reactor_t* reactor_ptr, const int watch_fd, const int operation, uint32_t events, fd_ctx_t* ctx)
 {
     if(operation == 0)
     {
@@ -269,12 +264,11 @@ static int _manage_fd(const reactor_t *reactor_ptr, const int watch_fd, const in
     }
 
     /* Let the kernel work first – if this fails don’t mutate state. */
-    if(epoller_manage_fd(reactor_ptr->epoll_fd, watch_fd, operation, events, (void *)ctx) < 0)
+    if(epoller_manage_fd(reactor_ptr->epoll_fd, watch_fd, operation, events, (void*)ctx) < 0)
     {
         EML_PERR(LOG_TAG, "_manage_fd: epoller failed");
         return STATUS_FAILURE;
     }
-
 
     return STATUS_SUCCESS;
 }

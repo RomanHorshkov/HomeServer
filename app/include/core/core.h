@@ -1,13 +1,10 @@
-
 /**
  * @file core.h
  * @brief Core server management: initialization, run loop, shutdown.
  *
- * This header defines the main server struct and the core API for
- * initializing, running, and shutting down the micro-HTTP server.
+ * This header defines the main server struct and the core API for initializing, running, and shutting down the micro-HTTP server.
  *
- * The core manages the listener, worker, and control threads, as well as
- * the pipe used for inter-thread communication.
+ * The core manages the listener, worker, and control threads, as well as the pipe used for inter-thread communication.
  *
  * @author  Roman Horshkov <roman.horshkov@gmail.com>
  * @date    2025-05-11
@@ -16,25 +13,23 @@
 #ifndef SERVER_CORE_H
 #define SERVER_CORE_H
 
-/****************************************************************************
+/*****************************************************************************************************************************************
  * PUBLIC DEFINES
- ****************************************************************************
+ *****************************************************************************************************************************************
  */
 /* None */
 
-/****************************************************************************
+/*****************************************************************************************************************************************
  * PUBLIC FUNCTIONS DECLARATIONS
- ****************************************************************************
+ *****************************************************************************************************************************************
  */
 
 /**
  * @brief Initialise all core server subsystems and prepare for client connections.
  *
- * This function is the **mandatory first step** in starting the micro-HTTP server.
- * It performs a comprehensive, multi-stage initialization of all critical subsystems
- * required for the server to operate. The function is designed to be robust and
- * fail-safe: if any step fails, it logs the error, aborts further initialization,
- * and leaves the process in a safe state for immediate termination.
+ * This function is the **mandatory first step** in starting the micro-HTTP server. It performs a comprehensive, multi-stage initialization
+ * of all critical subsystems required for the server to operate. The function is designed to be robust and fail-safe: if any step fails, it
+ * logs the error, aborts further initialization, and leaves the process in a safe state for immediate termination.
  *
  * **Initialization steps performed:**
  *
@@ -73,13 +68,12 @@
  *        No resources are leaked, and it is safe for the caller to terminate.
  *
  * **Thread Safety:**
- * This function is not thread-safe and must be called exactly once, before any
- * other server API. It must not be called concurrently with @ref server_run().
+ * This function is not thread-safe and must be called exactly once, before any other server API. It must not be called concurrently with
+ * @ref server_run().
  *
  * **Error Handling:**
- * On failure, the function logs a detailed error message for each failed
- * subsystem. The global `errno` is left untouched; consult the log file for
- * diagnostics.
+ * On failure, the function logs a detailed error message for each failed subsystem. The global `errno` is left untouched; consult the log
+ * file for diagnostics.
  *
  * @param port  NUL-terminated string specifying the TCP service or port number
  *              (e.g., "80", "3490", etc.) on which the server should listen.
@@ -92,13 +86,13 @@
  *       server operation.
  *
  */
-int server_init(const char *port);
+int server_init(const char* port);
 
 /**
  * @brief Main server event loop: launches all core threads and blocks until shutdown.
  *
- * This function is the central orchestrator of the server’s runtime. It is responsible for
- * launching and coordinating all major subsystems as independent threads:
+ * This function is the central orchestrator of the server’s runtime. It is responsible for launching and coordinating all major subsystems
+ * as independent threads:
  *
  *   - **Listener Thread:** Accepts new incoming TCP connections on all configured sockets,
  *     and forwards accepted client file descriptors to the worker via a non-blocking pipe.
@@ -111,9 +105,8 @@ int server_init(const char *port);
  *     the operator to inspect server state (listeners, clients, etc.) and to initiate a
  *     graceful shutdown by typing `'q'` + ENTER.
  *
- * The function blocks until a shutdown is requested via the control thread (or until a
- * fatal error causes a thread to exit). Upon shutdown, all threads are joined to ensure
- * a clean and orderly termination of all subsystems.
+ * The function blocks until a shutdown is requested via the control thread (or until a fatal error causes a thread to exit). Upon shutdown,
+ * all threads are joined to ensure a clean and orderly termination of all subsystems.
  *
  * **Threading Model:**
  * - Each subsystem runs in its own POSIX thread.

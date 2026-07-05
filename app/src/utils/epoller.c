@@ -1,3 +1,7 @@
+/**
+ * @file epoller.c
+ * @brief Linux epoll wrapper implementation for server event loops.
+ */
 
 #include "epoller.h"
 
@@ -14,29 +18,19 @@
 #define LOG_TAG "srv_epoller"
 
 /** epoll event
- * The event argument describes the object linked to the file descriptor fd.  The struct
- * epoll_event is described in epoll_event(3type). The data member of the epoll_event
- * structure specifies data that the kernel should save and then return (via
- * epoll_wait(2)) when this file descriptor becomes ready. The events member of the
- * epoll_event structure is a bit mask composed by ORing together zero or more event
- * types, returned by epoll_wait(2), and input flags, which affect its behaviour, but
- * aren't returned.
+ * The event argument describes the object linked to the file descriptor fd.  The struct epoll_event is described in epoll_event(3type). The
+ * data member of the epoll_event structure specifies data that the kernel should save and then return (via epoll_wait(2)) when this file
+ * descriptor becomes ready. The events member of the epoll_event structure is a bit mask composed by ORing together zero or more event
+ * types, returned by epoll_wait(2), and input flags, which affect its behaviour, but aren't returned.
  */
 
 /** epoll event uint32_t
- * EPOLLIN: The associated file is available for read(2) operations
- * EPOLLOUT: The associated file is available for write(2) operations
- * EPOLLRDHUP: (since Linux 2.6.17) Stream  socket  peer  closed  connection, or shut
- * down writing half of connection.
- * EPOLLERR: Error condition happened on the associated
- * file descriptor.  This event is also reported for the write end of a pipe when the
- * read end has been closed.
- * EPOLLONESHOT: (since Linux 2.6.2) Requests one-shot
- * notification for the associated file descriptor.  This means that after an event
- * notified for the file descriptor by epoll_wait(2), the file descriptor is disabled in
- * the interest list and no other events will be reported by the epoll interface.  The
- * user must call epoll_ctl() with EPOLL_CTL_MOD to rearm the file descriptor with a new
- * event mask.
+ * EPOLLIN: The associated file is available for read(2) operations EPOLLOUT: The associated file is available for write(2) operations
+ * EPOLLRDHUP: (since Linux 2.6.17) Stream  socket  peer  closed  connection, or shut down writing half of connection. EPOLLERR: Error
+ * condition happened on the associated file descriptor.  This event is also reported for the write end of a pipe when the read end has been
+ * closed. EPOLLONESHOT: (since Linux 2.6.2) Requests one-shot notification for the associated file descriptor.  This means that after an
+ * event notified for the file descriptor by epoll_wait(2), the file descriptor is disabled in the interest list and no other events will be
+ * reported by the epoll interface.  The user must call epoll_ctl() with EPOLL_CTL_MOD to rearm the file descriptor with a new event mask.
  */
 
 int epoller_new(void)
@@ -51,7 +45,7 @@ int epoller_new(void)
     return res;
 }
 
-int epoller_wait(int epoll_fd, struct epoll_event *out_events)
+int epoller_wait(int epoll_fd, struct epoll_event* out_events)
 {
     int n = epoll_wait(epoll_fd, out_events, MAX_FAN_OUT_SOCKETS, -1);
     if(n < 0)
@@ -63,7 +57,7 @@ int epoller_wait(int epoll_fd, struct epoll_event *out_events)
     return n;
 }
 
-int epoller_manage_fd(const int epoll_fd, const int target_fd, const int operation, const uint32_t event, void *data)
+int epoller_manage_fd(const int epoll_fd, const int target_fd, const int operation, const uint32_t event, void* data)
 {
     if(epoll_fd < 0 || target_fd < 0) return -EINVAL;
 
@@ -76,16 +70,18 @@ int epoller_manage_fd(const int epoll_fd, const int target_fd, const int operati
             /* Do not add with null data, can just delete */
             if(data == NULL)
             {
-                EML_ERROR(LOG_TAG, "_manage_fd with NULL data, epoll_fd %d, "
-                    "target_fd %d, op %d",
-                    epoll_fd, target_fd, operation);
+                EML_ERROR(LOG_TAG,
+                          "_manage_fd with NULL data, epoll_fd %d, "
+                          "target_fd %d, op %d",
+                          epoll_fd, target_fd, operation);
             }
             else
             {
-                EML_DBG(LOG_TAG, "_manage_fd with data, epoll_fd %d, target_fd "
-                    "%d, epoll_ctl_operation %d",
-                    epoll_fd, target_fd, operation);
-                ev.events = event;
+                EML_DBG(LOG_TAG,
+                        "_manage_fd with data, epoll_fd %d, target_fd "
+                        "%d, epoll_ctl_operation %d",
+                        epoll_fd, target_fd, operation);
+                ev.events   = event;
                 ev.data.ptr = data;
             }
 
@@ -95,9 +91,10 @@ int epoller_manage_fd(const int epoll_fd, const int target_fd, const int operati
         default:
 #ifdef DEBUG
             /* Explicit the DEL operation */
-            EML_DBG(LOG_TAG, "_manage_fd Deleting, epoll_fd %d, target_fd %d, op "
-                "%d",
-                epoll_fd, target_fd, operation);
+            EML_DBG(LOG_TAG,
+                    "_manage_fd Deleting, epoll_fd %d, target_fd %d, op "
+                    "%d",
+                    epoll_fd, target_fd, operation);
 #endif
             return epoll_ctl(epoll_fd, EPOLL_CTL_DEL, target_fd, NULL) ? -errno : 0;
     }

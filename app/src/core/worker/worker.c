@@ -1,20 +1,16 @@
 /**
  * @file worker.c
- * 
+ *
  * @brief Core worker logic and operator pool management.
- * The worker module manages a pool of operator threads, each responsible
- * for handling client connections. It provides functions to initialize
- * the worker pool, dispatch client connections to operators, and manage
- * operator lifecycles.
- * 
+ * The worker module manages a pool of operator threads, each responsible for handling client connections. It provides functions to
+ * initialize the worker pool, dispatch client connections to operators, and manage operator lifecycles.
+ *
  * @note This module contains global state for the worker instance, because
- * it will be used, by design, by just a single thread per time, server core
- * process for initialization and listener thread at runtime.
+ * it will be used, by design, by just a single thread per time, server core process for initialization and listener thread at runtime.
  */
 
-
 #ifndef _GNU_SOURCE
-#define _GNU_SOURCE
+#    define _GNU_SOURCE
 #endif /* _GNU_SOURCE */
 
 #include "worker.h"
@@ -26,24 +22,24 @@
 #include "emlog.h"
 #include "operator.h"
 
-/****************************************************************************
+/*****************************************************************************************************************************************
  * PRIVATE DEFINES
- ****************************************************************************
+ *****************************************************************************************************************************************
  */
 
-#define LOG_TAG "srv_worker"
+#define LOG_TAG                           "srv_worker"
 
-#define BLIND_ASSIGNMENT_LIMIT_PERCENTAGE (WORKER_MAX_CLIENTS)/(10U) /* 10% load */
+#define BLIND_ASSIGNMENT_LIMIT_PERCENTAGE (WORKER_MAX_CLIENTS) / (10U) /* 10% load */
 
-/****************************************************************************
+/*****************************************************************************************************************************************
  * PRIVATE ENUMERATED VARIABLES
- ****************************************************************************
+ *****************************************************************************************************************************************
  */
 /* None */
 
-/****************************************************************************
+/*****************************************************************************************************************************************
  * PRIVATE STRUCTURED TYPES
- ****************************************************************************
+ *****************************************************************************************************************************************
  */
 
 typedef struct
@@ -56,7 +52,7 @@ typedef struct
     /**
      * @brief Array of operators managed by this worker
      */
-    operator_t *operators;
+    operator_t* operators;
 
     /**
      * @brief Threads for each operator
@@ -69,27 +65,24 @@ typedef struct
     uint8_t operators_count;
 } worker_t;
 
-/****************************************************************************
+/*****************************************************************************************************************************************
  * PRIVATE VARIABLES DEFINITIONS
- ****************************************************************************
+ *****************************************************************************************************************************************
  */
 
 worker_t _worker = {0};
 
-
-/****************************************************************************
+/*****************************************************************************************************************************************
  * PRIVATE FUNCTION DECLARATIONS
- ****************************************************************************
+ *****************************************************************************************************************************************
  */
 
 /**
  * @section balancer Lock-free operator selection strategy
  *
- * The dispatcher keeps a @c operator_t array. Each operator exposes
- * an @c atomic_uint @c active_count that is updated by the operator thread
- * whenever clients are added/removed. The dispatcher thread chooses the
- * "least loaded" operator by scanning the array and reading these counters
- * with @c memory_order_relaxed.
+ * The dispatcher keeps a @c operator_t array. Each operator exposes an @c atomic_uint @c active_count that is updated by the operator
+ * thread whenever clients are added/removed. The dispatcher thread chooses the "least loaded" operator by scanning the array and reading
+ * these counters with @c memory_order_relaxed.
  *
  * Rationale and properties:
  * - No locks: selection uses only atomic loads, avoiding mutex contention
@@ -129,9 +122,9 @@ static uint8_t _compute_operator_count(uint8_t cpu_count);
  */
 static operator_t* _least_loaded_operator(void);
 
-/****************************************************************************
+/*****************************************************************************************************************************************
  * PUBLIC FUNCTIONS DEFINITIONS
- ****************************************************************************
+ *****************************************************************************************************************************************
  */
 uint8_t worker_get_operators_count(void)
 {
@@ -168,7 +161,7 @@ int worker_init(uint8_t cpu_count)
     {
         if(operator_init(&_worker.operators[op_idx], op_idx) != STATUS_SUCCESS)
         {
-        EML_ERROR(LOG_TAG, "init: operator %u init failed", (unsigned)op_idx);
+            EML_ERROR(LOG_TAG, "init: operator %u init failed", (unsigned)op_idx);
             goto fail;
         }
 
@@ -178,17 +171,12 @@ int worker_init(uint8_t cpu_count)
             EML_ERROR(LOG_TAG, "init: operator %u not active, status %d", (unsigned)op_idx, _worker.operators[op_idx].status);
             goto fail;
         }
-        
     }
 
     /* Set worker status to active */
     _worker.status = WORKER_STATUS_ACTIVE;
 
-
-
-    EML_INFO(LOG_TAG, "Worker ready with %u operator%s (cpus=%u)",
-             _worker.operators_count,
-             (_worker.operators_count == 1) ? "" : "s",
+    EML_INFO(LOG_TAG, "Worker ready with %u operator%s (cpus=%u)", _worker.operators_count, (_worker.operators_count == 1) ? "" : "s",
              (unsigned)cpu_count);
 
     return STATUS_SUCCESS;
@@ -213,7 +201,7 @@ int worker_dispatch_to_operator(int client_fd)
     }
 
     /* Get least loaded operator */
-    operator_t *op = _least_loaded_operator();
+    operator_t* op = _least_loaded_operator();
     if(!op)
     {
         EML_ERROR(LOG_TAG, "_to_operator: failed to get least loaded operator");
@@ -221,7 +209,7 @@ int worker_dispatch_to_operator(int client_fd)
     }
 
     /* Check operator's health */
-    if (!op->ring || op->wakeup_ctx.fd == -1)
+    if(!op->ring || op->wakeup_ctx.fd == -1)
     {
         EML_ERROR(LOG_TAG, "_to_operator: least loaded operator not healthy");
         return STATUS_FAILURE;
@@ -234,7 +222,7 @@ int worker_dispatch_to_operator(int client_fd)
         return STATUS_FAILURE;
     }
 
-    /* Signal to operator a new client's fd presence on the ring */    
+    /* Signal to operator a new client's fd presence on the ring */
     uint64_t wakeup_var = 1U;
     if(write(op->wakeup_ctx.fd, &wakeup_var, sizeof wakeup_var) != sizeof wakeup_var)
     {
@@ -243,11 +231,9 @@ int worker_dispatch_to_operator(int client_fd)
     }
 
 #ifdef DEBUG
-    EML_DBG(LOG_TAG, "_to_operator: assigned client fd %d to operator %d",
-             client_fd, op->id);
+    EML_DBG(LOG_TAG, "_to_operator: assigned client fd %d to operator %d", client_fd, op->id);
 #endif
     return STATUS_SUCCESS;
-
 }
 
 int worker_run(void)
@@ -255,11 +241,9 @@ int worker_run(void)
     /* run operators threads */
     for(uint8_t op_idx = 0; op_idx < _worker.operators_count; op_idx++)
     {
-        if(pthread_create(&_worker.operators_threads[op_idx], NULL,
-                          operator_thread, &_worker.operators[op_idx]) != 0)
+        if(pthread_create(&_worker.operators_threads[op_idx], NULL, operator_thread, &_worker.operators[op_idx]) != 0)
         {
-            EML_PERR(LOG_TAG, "operator %u thread creation failed",
-                     (unsigned)op_idx);
+            EML_PERR(LOG_TAG, "operator %u thread creation failed", (unsigned)op_idx);
             return STATUS_FAILURE;
         }
     }
@@ -280,7 +264,6 @@ int worker_run(void)
 
 void worker_destroy(void)
 {
-
     for(size_t i = 0; i < _worker.operators_count; ++i)
     {
         operator_shutdown(&_worker.operators[i]);
@@ -295,33 +278,30 @@ void worker_destroy(void)
     }
 
     _worker.operators_threads = NULL;
-    _worker.operators_count = 0;
+    _worker.operators_count   = 0;
 }
 
-
-/****************************************************************************
+/*****************************************************************************************************************************************
  * * PRIVATE FUNCTION DEFINITIONS
- ****************************************************************************
+ *****************************************************************************************************************************************
  */
 
 static operator_t* _least_loaded_operator(void)
 {
-    uint8_t best_idx = 0;
+    uint8_t      best_idx  = 0;
     unsigned int best_load = WORKER_MAX_CLIENTS; /* start with max possible load */
     for(uint8_t i = 0; i < _worker.operators_count; ++i)
     {
         /* Skip full operators */
         if(_worker.operators[i].status == OPERATOR_STATUS_FULL) continue;
 
-        unsigned int load = atomic_load_explicit(&_worker.operators[i].active_clients,
-                                                    memory_order_relaxed);
+        unsigned int load = atomic_load_explicit(&_worker.operators[i].active_clients, memory_order_relaxed);
 
         /* when load is below the blind assignment limit just give it to the operator */
         if(load < BLIND_ASSIGNMENT_LIMIT_PERCENTAGE)
         {
 #ifdef DEBUG
-            EML_DBG(LOG_TAG, "selecting operator %u with load=%u (blind)",
-                     (unsigned)i, load);
+            EML_DBG(LOG_TAG, "selecting operator %u with load=%u (blind)", (unsigned)i, load);
 #endif
             return &_worker.operators[i];
         }
@@ -330,32 +310,29 @@ static operator_t* _least_loaded_operator(void)
         if(load < best_load)
         {
 #ifdef DEBUG
-            EML_DBG(LOG_TAG, "operator %u has new best load=%u",
-                     (unsigned)i, load);
+            EML_DBG(LOG_TAG, "operator %u has new best load=%u", (unsigned)i, load);
 #endif
             best_load = load;
-            best_idx = i;
+            best_idx  = i;
         }
         /* skip overloaded operators, there are better around */
 
         /* Here can see if all the operators are FULL */
-        if (i == _worker.operators_count - 1 && best_load == WORKER_MAX_CLIENTS)
+        if(i == _worker.operators_count - 1 && best_load == WORKER_MAX_CLIENTS)
         {
             /* All operators are full, set worker status to full! */
             _worker.status = WORKER_STATUS_FULL;
         }
-        
     }
 
-    if (best_load == WORKER_MAX_CLIENTS)
+    if(best_load == WORKER_MAX_CLIENTS)
     {
         EML_ERROR(LOG_TAG, "all operators are at full capacity");
         return NULL;
     }
 
 #ifdef DEBUG
-    EML_DBG(LOG_TAG, "[dispatch] selecting operator %u with load=%u",
-                (unsigned)best_idx, best_load);
+    EML_DBG(LOG_TAG, "[dispatch] selecting operator %u with load=%u", (unsigned)best_idx, best_load);
 #endif
 
     return &_worker.operators[best_idx];
@@ -376,7 +353,6 @@ static uint8_t _compute_operator_count(uint8_t cpu_count)
         available_cpus = cpu_count - 1;
     }
 
-    EML_INFO(LOG_TAG, "Dispatcher sizing: cpu_count=%u, operators=%u",
-             (unsigned)cpu_count, (unsigned)available_cpus);
+    EML_INFO(LOG_TAG, "Dispatcher sizing: cpu_count=%u, operators=%u", (unsigned)cpu_count, (unsigned)available_cpus);
     return available_cpus;
 }

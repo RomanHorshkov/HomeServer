@@ -1,25 +1,8 @@
 /**
- * @file timer.h
- * @brief Thin wrapper around Linux **timerfd** providing an epoll‑friendly,
- *        millisecond‑granularity timer object.
+ * @file time_helper.h
+ * @brief Linux timerfd helper declarations for server timers.
  *
- * The API intentionally hides the underlying file descriptor so that callers
- * cannot misuse it (e.g. by closing it twice).  All functions are
- * signal‑safe and allocate no additional heap memory after @ref time_helper_init().
- *
- * Typical usage pattern:
- * @code
- * timer_t *t = time_helper_init(500);           // 500 ms periodic
- * epoll_ctl(epfd, EPOLL_CTL_ADD, timer_fd(t), &(struct epoll_event){ .events = EPOLLIN });
- *
- * ... in the event loop ...
- * if (ev.data.fd == timer_fd(t)) {
- *     while (timer_drain(t) > 0)           // drain every expiration
- *         do_something();
- * }
- *
- * timer_destroy(t);
- * @endcode
+ * This header exposes timerfd creation, timer arming, and current-time helpers used by worker/operator event loops.
  *
  * @author  Roman Horshkov <roman.horshkov@gmail.com>
  * @date    2025-05-11
@@ -28,20 +11,20 @@
 #ifndef SERVER_TIMER_H
 #define SERVER_TIMER_H
 
-/****************************************************************************
+/*****************************************************************************************************************************************
  * PUBLIC INCLUDES
- ****************************************************************************
+ *****************************************************************************************************************************************
  */
 #include <stdint.h>
 
-/****************************************************************************
+/*****************************************************************************************************************************************
  * PUBLIC STRUCTURED VARIABLES
- ****************************************************************************
+ *****************************************************************************************************************************************
  */
 
-/****************************************************************************
+/*****************************************************************************************************************************************
  * PUBLIC FUNCTIONS DECLARATIONS
- ****************************************************************************
+ *****************************************************************************************************************************************
  */
 
 /**

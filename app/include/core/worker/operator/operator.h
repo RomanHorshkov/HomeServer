@@ -5,34 +5,31 @@
 #ifndef SERVER_WORKER_OPERATOR_H
 #define SERVER_WORKER_OPERATOR_H
 
+#include <stdatomic.h>
 #include <stddef.h>
 #include <stdint.h>
-#include <stdatomic.h>
 
-#include "config_core.h"
-#include "reactor.h"
 #include <spscring.h>
 #include "client.h"
+#include "config_core.h"
+#include "reactor.h"
 
-
-/****************************************************************************
+/*****************************************************************************************************************************************
  * PUBLIC DEFINES
- ****************************************************************************
+ *****************************************************************************************************************************************
  */
 /* None */
 
-
-/****************************************************************************
+/*****************************************************************************************************************************************
  * PUBLIC STRUCTURED VARIABLES DEFINITIONS
- ****************************************************************************
+ *****************************************************************************************************************************************
  */
 
 /**
  * @brief Operator status.
  * Used to track the lifecycle state of an operator thread.
- * 
- * good: ACTIVE, FULL, min 1 bit set in the low bits (0x0F)
- * bad: SHUTDOWN, INVALID, min 1 bit set in the high bits (0xF0)
+ *
+ * good: ACTIVE, FULL, min 1 bit set in the low bits (0x0F) bad: SHUTDOWN, INVALID, min 1 bit set in the high bits (0xF0)
  */
 typedef enum
 {
@@ -81,8 +78,8 @@ typedef struct
     /**
      * @brief SPSC ring used to receive new clients fds.
      */
-    spsc_ring_t *ring;
-    
+    spsc_ring_t* ring;
+
     /**
      * @brief Wakeup reactor context.
      * Used by dispatcher to wake the operator thread.
@@ -111,40 +108,37 @@ typedef struct
 
     /**
      * @brief Active clients count.
-     * This is the number of clients currently being handled by this operator.
-     * atomic because visible to worker for load balancing.
+     * This is the number of clients currently being handled by this operator. atomic because visible to worker for load balancing.
      */
     atomic_uint active_clients;
-    
+
 } operator_t;
 
-/****************************************************************************
+/*****************************************************************************************************************************************
  * PUBLIC FUNCTION DECLARATIONS
- ****************************************************************************
+ *****************************************************************************************************************************************
  */
 
 /**
  * @brief Initialize an operator instance.
- * 
- * This function initializes the operator instance, setting up the necessary
- * resources such as the reactor, mailbox, and client slots.
+ *
+ * This function initializes the operator instance, setting up the necessary resources such as the reactor, mailbox, and client slots.
  *
  * @param op Pointer to operator_t structure to initialize.
  * @param id Stable operator identifier.
  * @return STATUS_SUCCESS on success, STATUS_FAILURE on error.
  */
-int operator_init(operator_t *op, uint8_t id);
+int operator_init(operator_t* op, uint8_t id);
 
 /**
  * @brief Shutdown and cleanup operator state.
  * @param op Operator object to shutdown.
  */
-void operator_shutdown(operator_t *op);
+void operator_shutdown(operator_t* op);
 
 /**
  * @brief Operator thread entry point; expects a operator_t * as arg.
  */
-void *operator_thread(void *arg);
-
+void* operator_thread(void* arg);
 
 #endif /* SERVER_WORKER_OPERATOR_H */
