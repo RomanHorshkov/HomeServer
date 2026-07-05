@@ -184,7 +184,24 @@ static int _init_listening_sockets(const char* port)
         return STATUS_FAILURE;
     }
 
-    if(getaddrinfo(NULL, port, &hints, &ai) != 0)
+    /* Security default: bind LOOPBACK ONLY. In production nginx faces the
+     * network and proxies to us on 127.0.0.1 (SECURITY.md §1 — the C backend
+     * is never directly exposed). DB_SERVER_BIND overrides the host for
+     * deliberate direct access (e.g. "0.0.0.0" for a LAN dev trial without
+     * nginx); doing so is an explicit, logged choice, never the default. */
+    const char* bind_host = getenv("DB_SERVER_BIND");
+    if(!bind_host || bind_host[0] == '\0')
+    {
+        bind_host = "127.0.0.1";
+    }
+    if(strcmp(bind_host, "127.0.0.1") != 0 && strcmp(bind_host, "::1") != 0 && strcmp(bind_host, "localhost") != 0)
+    {
+        EML_WARN(LOG_TAG, "listener: binding NON-LOOPBACK host '%s' — the backend is directly network-exposed (nginx should front it)",
+                 bind_host);
+    }
+    EML_INFO(LOG_TAG, "listener: binding %s:%s", bind_host, port);
+
+    if(getaddrinfo(bind_host, port, &hints, &ai) != 0)
     {
         EML_PERR(LOG_TAG, "listener: getaddrinfo failed");
         return STATUS_FAILURE;
