@@ -6,7 +6,7 @@
 #ifndef SERVER_CONFIG_CORE_H
 #define SERVER_CONFIG_CORE_H
 
-#include "config.h"
+#include <db_server/core/config.h>
 
 /*****************************************************************************************************************************************
  * PUBLIC ENUMERATED DECLARATIONS

@@ -20,7 +20,7 @@
 
 #define _GNU_SOURCE
 
-#include "core.h"
+#include <db_server/core/core.h>
 
 #ifndef _GNU_SOURCE
 #    define _GNU_SOURCE
@@ -38,13 +38,13 @@
 #include <sys/types.h>
 #include <unistd.h>     /* fork(), close(), pipe(), read(), write(), getlogin(), getcwd(), system() etc. */
 
-#include "emlog.h"
-#include "listener.h"
-#include "worker.h"
+#include <emlog.h>
+#include <db_server/core/listener/listener.h>
+#include <db_server/core/worker/worker.h>
 
 #include <db_app.h>
-#include "config_core.h"
-#include "socket_helper.h"
+#include <db_server/core/config_core.h>
+#include <db_server/utils/socket_helper.h>
 
 /*****************************************************************************************************************************************
  * PRIVATE DEFINES

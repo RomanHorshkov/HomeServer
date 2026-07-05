@@ -11,7 +11,7 @@
 
 #define _GNU_SOURCE
 
-#include "listener/listener.h"
+#include <db_server/core/listener/listener.h>
 
 #include <arpa/inet.h>
 #include <errno.h>
@@ -22,11 +22,11 @@
 #include <string.h>
 #include <unistd.h>
 
-#include "config_core.h"
-#include "emlog.h"
-#include "reactor.h"
-#include "socket_helper.h"
-#include "worker.h"
+#include <db_server/core/config_core.h>
+#include <emlog.h>
+#include <db_server/core/reactor.h>
+#include <db_server/utils/socket_helper.h>
+#include <db_server/core/worker/worker.h>
 
 /*****************************************************************************************************************************************
  * PRIVATE DEFINES

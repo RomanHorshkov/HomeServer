@@ -10,7 +10,7 @@
 #    define _GNU_SOURCE
 #endif /* _GNU_SOURCE */
 
-#include "client.h"
+#include <db_server/core/worker/operator/client/client.h>
 
 #include <errno.h>
 #include <string.h>
@@ -19,10 +19,10 @@
 #include <DB_http/DB_http.h>
 #include <emlog.h>
 
-#include "response_writer.h"
-#include "router/router.h"
-#include "socket_helper.h"
-#include "time_helper.h"
+#include <db_server/core/worker/operator/client/response_writer.h>
+#include <db_server/core/worker/operator/client/router/router.h>
+#include <db_server/utils/socket_helper.h>
+#include <db_server/utils/time_helper.h>
 
 /*****************************************************************************************************************************************
  * PRIVATE DEFINES
@@ -141,7 +141,7 @@ int client_handle(client_t* cli, uint8_t thread_id)
             continue;
         }
 
-        if(errno == EAGAIN || errno == EWOULDBLOCK)
+        if(errno == EAGAIN) /* == EWOULDBLOCK on Linux */
         {
             return STATUS_SUCCESS;
         }

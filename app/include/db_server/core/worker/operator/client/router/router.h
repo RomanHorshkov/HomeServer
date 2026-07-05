@@ -20,7 +20,7 @@
 #include <stddef.h>
 #include <stdint.h>
 
-#include "../client.h"
+#include <db_server/core/worker/operator/client/client.h>
 
 /*****************************************************************************************************************************************
  * DEFINES

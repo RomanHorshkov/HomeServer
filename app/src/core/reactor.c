@@ -25,7 +25,7 @@
 
 #define _GNU_SOURCE
 
-#include "reactor.h"
+#include <db_server/core/reactor.h>
 
 #include <errno.h>
 #include <stdlib.h>
@@ -33,9 +33,9 @@
 #include <sys/epoll.h>
 #include <unistd.h>
 
-#include "config_core.h" /* MAX_FAN_OUT_SOCKETS */
-#include "emlog.h"
-#include "epoller.h"
+#include <db_server/core/config_core.h> /* MAX_FAN_OUT_SOCKETS */
+#include <emlog.h>
+#include <db_server/utils/epoller.h>
 
 #define LOG_TAG "srv_reactor"
 

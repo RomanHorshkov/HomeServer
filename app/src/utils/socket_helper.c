@@ -14,7 +14,7 @@
 #endif
 #define _GNU_SOURCE /* for accept4 */
 
-#include "socket_helper.h"
+#include <db_server/utils/socket_helper.h>
 
 #include <arpa/inet.h>  /* inet_ntop(), struct sockaddr_in, struct sockaddr_in6 */
 #include <errno.h>
@@ -27,8 +27,8 @@
 #include <sys/types.h>
 #include <unistd.h>
 
-#include "config_core.h" /* STATUS_SUCCESS, STATUS_FAILURE */
-#include "emlog.h"
+#include <db_server/core/config_core.h> /* STATUS_SUCCESS, STATUS_FAILURE */
+#include <emlog.h>
 
 /*****************************************************************************************************************************************
  * PRIVATE DEFINES
@@ -208,7 +208,7 @@ retry:
     /* return failure if connection closed */
     if(red_bytes == 0) return STATUS_FAILURE;
 
-    if(errno == EAGAIN || errno == EWOULDBLOCK)
+    if(errno == EAGAIN) /* == EWOULDBLOCK on Linux */
     {
         /* No data available right now */
         EML_WARN(LOG_TAG, "_read_nonblocking: read with no data");

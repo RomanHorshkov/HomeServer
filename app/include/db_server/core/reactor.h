@@ -18,7 +18,7 @@
 #include <stddef.h>
 #include <stdint.h>
 
-#include "config_core.h"
+#include <db_server/core/config_core.h>
 
 /*****************************************************************************************************************************************
  * DEFINES

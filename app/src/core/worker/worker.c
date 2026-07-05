@@ -13,14 +13,14 @@
 #    define _GNU_SOURCE
 #endif /* _GNU_SOURCE */
 
-#include "worker.h"
+#include <db_server/core/worker/worker.h>
 
 #include <errno.h>
 #include <pthread.h>
 #include <stdlib.h>
 
-#include "emlog.h"
-#include "operator.h"
+#include <emlog.h>
+#include <db_server/core/worker/operator/operator.h>
 
 /*****************************************************************************************************************************************
  * PRIVATE DEFINES

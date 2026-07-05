@@ -15,7 +15,7 @@
 #include <stdint.h>  /* uint8_t, uint32_t */
 #include <unistd.h>  // ssize_t
 
-#include "emlog.h"   /* EML_ERROR, EML_PERR */
+#include <emlog.h>   /* EML_ERROR, EML_PERR */
 
 /*****************************************************************************************************************************************
  * PUBLIC ENUMERATED VARIABLES

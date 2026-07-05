@@ -24,7 +24,7 @@
 
 #include <emlog.h>
 
-#include "response_writer.h"
+#include <db_server/core/worker/operator/client/response_writer.h>
 
 /*****************************************************************************************************************************************
  * PRIVATE DEFINES

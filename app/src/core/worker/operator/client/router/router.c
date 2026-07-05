@@ -16,10 +16,10 @@
 
 #include <emlog.h>
 
-#include "handlers/handler_db_app.h"
-#include "router.h"
+#include <db_server/core/worker/operator/client/router/handlers/handler_db_app.h>
+#include <db_server/core/worker/operator/client/router/router.h>
 
-#include "../response_writer.h"
+#include <db_server/core/worker/operator/client/response_writer.h>
 
 /*****************************************************************************************************************************************
  * PRIVATE DEFINES

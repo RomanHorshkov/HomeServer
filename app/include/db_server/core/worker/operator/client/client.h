@@ -5,8 +5,8 @@
 #ifndef SERVER_WORKER_CLIENT_H
 #define SERVER_WORKER_CLIENT_H
 
-#include "config_core.h"
-#include "reactor.h" /* for fd_ctx_t */
+#include <db_server/core/config_core.h>
+#include <db_server/core/reactor.h> /* for fd_ctx_t */
 
 #include <DB_http/DB_http.h>
 

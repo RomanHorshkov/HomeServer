@@ -10,7 +10,7 @@
 
 #define _GNU_SOURCE
 
-#include "operator.h"
+#include <db_server/core/worker/operator/operator.h>
 
 #include <errno.h>
 #include <pthread.h>
@@ -20,16 +20,16 @@
 #include <sys/eventfd.h>
 #include <unistd.h>
 
-#include "emlog.h"
+#include <emlog.h>
 
-#include "client.h"
-#include "reactor.h"
+#include <db_server/core/worker/operator/client/client.h>
+#include <db_server/core/reactor.h>
 
 #include <DB_http/DB_http.h>
 
-#include "socket_helper.h"
-#include "time_helper.h"
-#include "worker.h"
+#include <db_server/utils/socket_helper.h>
+#include <db_server/utils/time_helper.h>
+#include <db_server/core/worker/worker.h>
 
 /*****************************************************************************************************************************************
  * PRIVATE DEFINES
@@ -337,7 +337,7 @@ static int _operator_handle_client_event(int fd, fd_ctx_t* ctx)
     /* Calculate client slot from context pointer */
     /* ctx is a member of client_t, so we can retrieve the container
     by jumping straight to the client_t structure */
-    client_t* cli = (client_t*)((char*)ctx - offsetof(client_t, ctx));
+    client_t* cli = (client_t*)(void*)((char*)ctx - offsetof(client_t, ctx));
 
     /* Sanity check */
     if(cli->ctx.fd != fd)

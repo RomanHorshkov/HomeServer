@@ -10,9 +10,9 @@
 #include <stdint.h>
 
 #include <spscring.h>
-#include "client.h"
-#include "config_core.h"
-#include "reactor.h"
+#include <db_server/core/worker/operator/client/client.h>
+#include <db_server/core/config_core.h>
+#include <db_server/core/reactor.h>
 
 /*****************************************************************************************************************************************
  * PUBLIC DEFINES

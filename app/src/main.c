@@ -20,7 +20,7 @@
 #    include <stdio.h> /* printf / fprintf / perror */
 #endif                 /* DEBUG */
 
-#include "core.h"      /* server_init / run / shutdown */
+#include <db_server/core/core.h>      /* server_init / run / shutdown */
 
 /*****************************************************************************************************************************************
  * PRIVATE DEFINES

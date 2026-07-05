@@ -3,7 +3,7 @@
  * @brief Linux epoll wrapper implementation for server event loops.
  */
 
-#include "epoller.h"
+#include <db_server/utils/epoller.h>
 
 #include <errno.h>
 #include <limits.h>
@@ -12,8 +12,8 @@
 #include <sys/epoll.h> /* epoll_create1(), epoll_ctl(), epoll_wait(), struct epoll_event */
 #include <unistd.h>
 
-#include "config_core.h"
-#include "emlog.h"
+#include <db_server/core/config_core.h>
+#include <emlog.h>
 
 #define LOG_TAG "srv_epoller"
 
