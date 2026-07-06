@@ -74,7 +74,6 @@
   - **Why:** Ensures the server restarts on failure and manages multiple instances.
 - [ ] **Reverse Proxy**: Deploy behind Nginx or Apache for SSL termination, load balancing, and static file serving.
   - **Why:** Improves performance and security.
-- [ ] **Containerization**: Use Docker for consistent environments.
   - **Why:** Simplifies deployment and scaling.
 - [ ] **Database Migrations**: Automate schema migrations (e.g., Flyway).
   - **Why:** Keeps database schema in sync with code.

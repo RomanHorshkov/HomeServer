@@ -23,6 +23,7 @@
 #include <emlog.h>
 
 #include <db_server/core/worker/operator/client/client.h>
+#include <db_server/utils/affinity.h>
 #include <db_server/core/reactor.h>
 
 #include <DB_http/DB_http.h>
@@ -200,6 +201,10 @@ void* operator_thread(void* arg)
         EML_ERROR(LOG_TAG, "thread: invalid operator");
         return NULL;
     }
+
+    /* Pin this operator to its own core (slot id+1; the listener owns slot 0)
+     * so it stays cache-hot and never migrates under load. Non-fatal. */
+    srv_affinity_pin_self("operator", (int)op->id + 1);
 
     EML_INFO(LOG_TAG, "[op %d] thread starting", op->id);
 

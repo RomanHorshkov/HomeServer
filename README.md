@@ -15,7 +15,6 @@ It now serves **dynamic JSON APIs**, **rich client‑side pages**, a **build-not
 | **Structured logging** | Single‑writer, line‑buffered `var/www/server.log`; ready for `tail -f` or ELK shipping. |
 | **Robust request sanitation** | Path traversal defence, header/value length limits, body RAM‑cap, optional chroot/uid‑drop. |
 | **One‑shot GNU Make** | `make debug` / `make release` → static binary in `build/bin/server` (`-Wall -Wextra -Werror -pedantic`). |
-| **Docker‑ready** | Minimal scratch‑based image + optional nginx front for HTTPS termination. |
 
 [llhttp]: https://github.com/nodejs/llhttp  
 [cJSON]:  https://github.com/DaveGamble/cJSON

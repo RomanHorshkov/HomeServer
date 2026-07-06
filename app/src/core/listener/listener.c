@@ -25,6 +25,7 @@
 #include <db_server/core/config_core.h>
 #include <emlog.h>
 #include <db_server/core/reactor.h>
+#include <db_server/utils/affinity.h>
 #include <db_server/utils/socket_helper.h>
 #include <db_server/core/worker/worker.h>
 
@@ -154,6 +155,9 @@ int listener_init(const char* port /*, void *pipeline_ptr*/)
 void* listener_run(void* arg)
 {
     (void)arg;
+
+    /* The listener/dispatcher owns core 0 (slot 0); operators own 1.. . */
+    srv_affinity_pin_self("listener", 0);
 
     while(_listener.status == LISTENER_STATUS_ACTIVE)
     {

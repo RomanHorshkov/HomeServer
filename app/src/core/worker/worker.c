@@ -18,6 +18,7 @@
 #include <errno.h>
 #include <pthread.h>
 #include <stdlib.h>
+#include <string.h>
 
 #include <emlog.h>
 #include <db_server/core/worker/operator/operator.h>
@@ -353,6 +354,43 @@ static uint8_t _compute_operator_count(uint8_t cpu_count)
         available_cpus = cpu_count - 1;
     }
 
-    EML_INFO(LOG_TAG, "Dispatcher sizing: cpu_count=%u, operators=%u", (unsigned)cpu_count, (unsigned)available_cpus);
+    /* Default (auto) is one operator per core minus the listener's core, so a
+     * dedicated box already uses every CPU (listener on CPU0, operators on
+     * 1..N-1). DB_SERVER_WORKERS overrides (trusted input — env set by the
+     * unit/operator):
+     *   all   one operator per core INCLUDING CPU0 — the last operator's pin
+     *         wraps onto the listener's core. The listener is epoll-idle
+     *         between accepts, so donating its core buys one more full worker.
+     *   1-255 exact count: cap (reserve cores for OS/nginx) or oversubscribe
+     *         (pins wrap; warned). */
+    const char* env = getenv("DB_SERVER_WORKERS");
+    if(env && env[0] != '\0')
+    {
+        if(strcmp(env, "all") == 0 || strcmp(env, "ALL") == 0)
+        {
+            EML_INFO(LOG_TAG, "DB_SERVER_WORKERS=all: %u operator(s), one per core — the last shares CPU0 with the listener",
+                     (unsigned)cpu_count);
+            return cpu_count;
+        }
+        char* end = NULL;
+        long  req = strtol(env, &end, 10);
+        if(end && *end == '\0' && req >= 1 && req <= 255)
+        {
+            if(req > (long)available_cpus)
+            {
+                EML_WARN(LOG_TAG,
+                         "DB_SERVER_WORKERS=%ld exceeds cores-for-operators=%u — operators will "
+                         "share cores (oversubscribed; pinning wraps)",
+                         req, (unsigned)available_cpus);
+            }
+            EML_INFO(LOG_TAG, "DB_SERVER_WORKERS override: %ld operator(s) (auto would be %u)", req, (unsigned)available_cpus);
+            return (uint8_t)req;
+        }
+        EML_WARN(LOG_TAG, "DB_SERVER_WORKERS='%s' invalid (want 'all' or integer 1..255) — using auto %u", env,
+                 (unsigned)available_cpus);
+    }
+
+    EML_INFO(LOG_TAG, "Dispatcher sizing: cpu_count=%u, operators=%u (+1 listener core = all %u cores in use)", (unsigned)cpu_count,
+             (unsigned)available_cpus, (unsigned)cpu_count);
     return available_cpus;
 }
