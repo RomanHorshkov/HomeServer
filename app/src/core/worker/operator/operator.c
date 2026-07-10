@@ -23,6 +23,7 @@
 #include <emlog.h>
 
 #include <db_server/core/worker/operator/client/client.h>
+#include <db_server/core/worker/operator/client/upload_pump.h>
 #include <db_server/utils/affinity.h>
 #include <db_server/core/reactor.h>
 
@@ -169,10 +170,11 @@ int operator_init(operator_t* op, uint8_t id)
         goto fail;
     }
 
-    /* init each client's http parser */
+    /* init each client's http parser; the stream gate (§9.4) lets POST /api/app/files bypass body buffering into the upload pump */
     for(size_t cli_idx = 0; cli_idx < WORKER_MAX_CLIENTS; cli_idx++)
     {
         if(db_http_parser_init(&op->clients[cli_idx].http_parser) != DB_http_status_OK) goto fail;
+        if(db_http_parser_set_stream_gate(op->clients[cli_idx].http_parser, upload_stream_gate, NULL) != DB_http_status_OK) goto fail;
     }
 
     /* Set operator status to ACTIVE */

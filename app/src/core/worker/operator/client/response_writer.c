@@ -141,6 +141,7 @@ int response_writer_error(client_t* cli, uint16_t status)
     static const char body_500[] = "{\"error\":\"server_error\"}";
     static const char body_404[] = "{\"error\":\"not_found\"}";
     static const char body_400[] = "{\"error\":\"bad_body\"}";
+    static const char body_413[] = "{\"error\":\"body_too_large\"}";
     const char*       body       = body_500;
     switch(status)
     {
@@ -149,6 +150,9 @@ int response_writer_error(client_t* cli, uint16_t status)
             break;
         case 400u:
             body = body_400;
+            break;
+        case 413u: /* an over-declared Content-Length the parser rejected before the body (§9.4 upload ceiling) */
+            body = body_413;
             break;
         default:
             status = 500u;

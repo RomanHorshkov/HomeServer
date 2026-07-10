@@ -21,6 +21,7 @@
 
 #include <db_server/core/worker/operator/client/response_writer.h>
 #include <db_server/core/worker/operator/client/router/router.h>
+#include <db_server/core/worker/operator/client/upload_pump.h>
 #include <db_server/utils/socket_helper.h>
 #include <db_server/utils/time_helper.h>
 
@@ -76,12 +77,21 @@ int client_handle(client_t* cli, uint8_t thread_id)
 #endif
 
             DB_http_status_t parse_status = db_http_parser_exec(cli->http_parser, cli->buf, new_bytes, &parsed_req);
+
+            /* §9.4: the stream gate claimed this request at headers-complete — the upload pump owns the body from here.
+             * Uploads are one-shot: a response has been sent on every pump path, and the connection closes either way. */
+            if(parse_status == DB_http_status_HeadersComplete_Stream)
+            {
+                (void)client_upload_pump(cli, thread_id, parsed_req);
+                goto fail; /* the fail label is also the clean-close path (see HTTP_CONNECTION_CLOSE below) */
+            }
+
             if(parse_status != DB_http_status_OK)
             {
                 EML_ERROR(LOG_TAG, "fd %d: HTTP parse failed with status %d", cli->ctx.fd, parse_status);
-                /* Terse 400 on the wire (includes rejected pipelining and
-                 * chunked bodies), loud detail above; connection closes. */
-                (void)response_writer_error(cli, 400u);
+                /* Terse answer on the wire (413 for an over-declared body, 400 for everything else — including rejected
+                 * pipelining and chunked bodies), loud detail above; connection closes. */
+                (void)response_writer_error(cli, parse_status == DB_http_status_ContentTooLarge ? 413u : 400u);
                 goto fail;
             }
 
