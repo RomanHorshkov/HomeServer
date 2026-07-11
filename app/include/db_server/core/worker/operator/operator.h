@@ -9,10 +9,10 @@
 #include <stddef.h>
 #include <stdint.h>
 
-#include <spscring.h>
-#include <db_server/core/worker/operator/client/client.h>
 #include <db_server/core/config_core.h>
 #include <db_server/core/reactor.h>
+#include <db_server/core/worker/operator/client/client.h>
+#include <spscring.h>
 
 /*****************************************************************************************************************************************
  * PUBLIC DEFINES
@@ -66,8 +66,13 @@ typedef struct
 {
     /**
      * @brief Lifecycle status of this operator.
+     *
+     * _Atomic: written by the worker/dispatch thread (ACTIVE/FULL) and by the
+     * shutdown path (SHUTDOWN), and read in the operator thread's run loop — so
+     * every access must be atomic (C11 makes plain load/store on an _Atomic
+     * object atomic).
      */
-    operator_status_t status;
+    _Atomic operator_status_t status;
 
     /**
      * @brief Stable operator identifier.
@@ -131,7 +136,19 @@ typedef struct
 int operator_init(operator_t* op, uint8_t id);
 
 /**
- * @brief Shutdown and cleanup operator state.
+ * @brief Ask a RUNNING operator thread to stop: set SHUTDOWN atomically and wake
+ *        it out of epoll. Does NOT free anything — the caller must pthread_join
+ *        the thread and only then call operator_shutdown(). Safe to call from
+ *        another thread.
+ * @param op Operator object to signal.
+ */
+void operator_request_shutdown(operator_t* op);
+
+/**
+ * @brief Destroy an operator's resources (ring, fds, clients, reactor). Must be
+ *        called ONLY when no operator thread is running on @p op — after a
+ *        pthread_join following operator_request_shutdown(), or on an operator
+ *        whose thread never started.
  * @param op Operator object to shutdown.
  */
 void operator_shutdown(operator_t* op);

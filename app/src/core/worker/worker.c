@@ -20,8 +20,8 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include <emlog.h>
 #include <db_server/core/worker/operator/operator.h>
+#include <emlog.h>
 
 /*****************************************************************************************************************************************
  * PRIVATE DEFINES
@@ -64,6 +64,13 @@ typedef struct
      * @brief Number of operators in the pool
      */
     uint8_t operators_count;
+
+    /**
+     * @brief True once worker_run() has created the operator threads — tells
+     *        worker_destroy() whether there is anything to signal + join before
+     *        it destroys operators (the worker_init fail path has none).
+     */
+    bool threads_started;
 } worker_t;
 
 /*****************************************************************************************************************************************
@@ -245,39 +252,58 @@ int worker_run(void)
         if(pthread_create(&_worker.operators_threads[op_idx], NULL, operator_thread, &_worker.operators[op_idx]) != 0)
         {
             EML_PERR(LOG_TAG, "operator %u thread creation failed", (unsigned)op_idx);
+            /* Some threads may already be running: tear them down cleanly rather
+             * than leaking or freeing from under them. worker_destroy() joins the
+             * ones that started (threads_started stays false, so it won't try to
+             * join the pthread_t slots we never created). */
+            _worker.threads_started = (op_idx > 0);
+            for(uint8_t j = 0; j < op_idx; j++)
+            {
+                operator_request_shutdown(&_worker.operators[j]);
+                pthread_join(_worker.operators_threads[j], NULL);
+            }
+            _worker.threads_started = false;
             return STATUS_FAILURE;
         }
     }
 
-    // /* join operator threads */
-    // for(uint8_t op_idx = 0; op_idx < _worker.operators_count; op_idx++)
-    // {
-    //     if(pthread_join(_worker.operators_threads[op_idx], NULL) != 0)
-    //     {
-    //         EML_PERR(LOG_TAG, "operator %u thread join failed",
-    //                  (unsigned)op_idx);
-    //         return STATUS_FAILURE;
-    //     }
-    // }
-
+    _worker.threads_started = true;
     return STATUS_SUCCESS;
 }
 
 void worker_destroy(void)
 {
-    for(size_t i = 0; i < _worker.operators_count; ++i)
+    /* Ordered teardown: stop dispatch, ask each operator thread to stop
+     * (atomic SHUTDOWN + wakeup), JOIN every thread so none can still touch its
+     * ring/reactor/state, and only THEN destroy resources and free memory.
+     * Freeing before the join is a use-after-free. */
+    _worker.status = WORKER_STATUS_INACTIVE;
+
+    if(_worker.threads_started)
     {
-        operator_shutdown(&_worker.operators[i]);
+        for(size_t i = 0; i < _worker.operators_count; ++i)
+        {
+            operator_request_shutdown(&_worker.operators[i]);
+        }
+        for(size_t i = 0; i < _worker.operators_count; ++i)
+        {
+            pthread_join(_worker.operators_threads[i], NULL);
+        }
+        _worker.threads_started = false;
+    }
+
+    /* No operator thread is alive now — safe to destroy each operator. */
+    if(_worker.operators)
+    {
+        for(size_t i = 0; i < _worker.operators_count; ++i)
+        {
+            operator_shutdown(&_worker.operators[i]);
+        }
     }
 
     free(_worker.operators);
     _worker.operators = NULL;
-    if(_worker.operators_threads)
-    {
-        free(_worker.operators_threads);
-        _worker.operators_threads = NULL;
-    }
-
+    free(_worker.operators_threads);
     _worker.operators_threads = NULL;
     _worker.operators_count   = 0;
 }
@@ -386,8 +412,7 @@ static uint8_t _compute_operator_count(uint8_t cpu_count)
             EML_INFO(LOG_TAG, "DB_SERVER_WORKERS override: %ld operator(s) (auto would be %u)", req, (unsigned)available_cpus);
             return (uint8_t)req;
         }
-        EML_WARN(LOG_TAG, "DB_SERVER_WORKERS='%s' invalid (want 'all' or integer 1..255) — using auto %u", env,
-                 (unsigned)available_cpus);
+        EML_WARN(LOG_TAG, "DB_SERVER_WORKERS='%s' invalid (want 'all' or integer 1..255) — using auto %u", env, (unsigned)available_cpus);
     }
 
     EML_INFO(LOG_TAG, "Dispatcher sizing: cpu_count=%u, operators=%u (+1 listener core = all %u cores in use)", (unsigned)cpu_count,

@@ -22,16 +22,16 @@
 
 #include <emlog.h>
 
+#include <db_server/core/reactor.h>
 #include <db_server/core/worker/operator/client/client.h>
 #include <db_server/core/worker/operator/client/upload_pump.h>
 #include <db_server/utils/affinity.h>
-#include <db_server/core/reactor.h>
 
 #include <DB_http/DB_http.h>
 
+#include <db_server/core/worker/worker.h>
 #include <db_server/utils/socket_helper.h>
 #include <db_server/utils/time_helper.h>
-#include <db_server/core/worker/worker.h>
 
 /*****************************************************************************************************************************************
  * PRIVATE DEFINES
@@ -235,15 +235,33 @@ void* operator_thread(void* arg)
         }
     }
 
-    /* At this point the operator status has changed, if to shutdown, clean shutdown */
-    if(op->status == OPERATOR_STATUS_SHUTDOWN)
-    {
-        /* clean shutdown */
-        operator_shutdown(op);
-    }
-
+    /* The loop exited because SHUTDOWN was requested. Do NOT free resources
+     * here: worker_destroy() joins this thread first and then calls
+     * operator_shutdown(). Destroying ring/reactor/fds from under a thread that
+     * a moment ago was using them (or that another thread is about to free) is a
+     * use-after-free. The thread's only job now is to return. */
     EML_INFO(LOG_TAG, "[op %d] thread exiting", op->id);
     return NULL;
+}
+
+void operator_request_shutdown(operator_t* op)
+{
+    if(op == NULL)
+    {
+        return;
+    }
+
+    /* Publish SHUTDOWN first (atomic) so the woken thread observes it... */
+    atomic_store(&op->status, OPERATOR_STATUS_SHUTDOWN);
+
+    /* ...then kick the thread out of epoll_wait so the run loop re-checks the
+     * status and returns. Best-effort: the loop condition also polls status. */
+    if(op->wakeup_ctx.fd != -1)
+    {
+        uint64_t one = 1U;
+        ssize_t  w   = write(op->wakeup_ctx.fd, &one, sizeof one);
+        (void)w;
+    }
 }
 
 void operator_shutdown(operator_t* op)
@@ -254,8 +272,10 @@ void operator_shutdown(operator_t* op)
         return;
     }
 
+    int shutdown_id = op->id; /* keep for the log line below (id is zeroed next) */
+
     /* Set status to SHUTDOWN */
-    op->status = OPERATOR_STATUS_SHUTDOWN;
+    atomic_store(&op->status, OPERATOR_STATUS_SHUTDOWN);
 
     /* Set id to 0 */
     op->id = 0;
@@ -291,7 +311,7 @@ void operator_shutdown(operator_t* op)
     /* Reset active clients count */
     atomic_store(&op->active_clients, 0);
 
-    EML_INFO(LOG_TAG, "[op %d] shutdown complete", op->id);
+    EML_INFO(LOG_TAG, "[op %d] shutdown complete", shutdown_id);
 }
 
 /*****************************************************************************************************************************************
