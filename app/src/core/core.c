@@ -119,14 +119,14 @@ int server_init(const char* port)
     /* Initialize the listener */
     if(listener_init(port /*, server.pipeline*/) != STATUS_SUCCESS)
     {
-        EML_PERR(LOG_TAG, "listener failed to init.");
+        EML_ERROR(LOG_TAG, "listener failed to init.");
         goto fail;
     }
 
     /* Initialize the worker */
     if(worker_init(server.cpu_count) != 0)
     {
-        EML_PERR(LOG_TAG, "worker failed to init.");
+        EML_ERROR(LOG_TAG, "worker failed to init.");
         goto fail;
     }
 
@@ -134,7 +134,7 @@ int server_init(const char* port)
      * (operator id == DB_app worker_no, §9.3). */
     if(db_app_init(worker_get_operators_count()) != 0)
     {
-        EML_PERR(LOG_TAG, "db_app failed to init.");
+        EML_ERROR(LOG_TAG, "db_app failed to init.");
         goto fail;
     }
 

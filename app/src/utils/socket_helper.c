@@ -70,7 +70,7 @@ int socket_set_non_blocking(const int* socket_fd)
 {
     if(socket_fd == NULL)
     {
-        EML_PERR(LOG_TAG, "_set_non_blocking: invalid input");
+        EML_ERROR(LOG_TAG, "_set_non_blocking: invalid input");
         goto fail;
     }
 
@@ -99,7 +99,7 @@ int socket_set_reusability(const int* socket_fd)
 {
     if(!socket_fd)
     {
-        EML_PERR(LOG_TAG, "_set_reusability: invalid input");
+        EML_ERROR(LOG_TAG, "_set_reusability: invalid input");
         return STATUS_FAILURE;
     }
 
@@ -122,7 +122,7 @@ int socket_set_restartability(const int* socket_fd)
 {
     if(!socket_fd)
     {
-        EML_PERR(LOG_TAG, "_set_restartability: invalid input");
+        EML_ERROR(LOG_TAG, "_set_restartability: invalid input");
         return STATUS_FAILURE;
     }
     /* Options for restart:

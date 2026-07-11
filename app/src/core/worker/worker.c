@@ -144,7 +144,7 @@ int worker_init(uint8_t cpu_count)
     _worker.operators_count = _compute_operator_count(cpu_count);
     if(_worker.operators_count == 0)
     {
-        EML_PERR(LOG_TAG, "init: compute_operator_count failed");
+        EML_ERROR(LOG_TAG, "init: compute_operator_count failed");
         return STATUS_FAILURE;
     }
 
@@ -152,7 +152,7 @@ int worker_init(uint8_t cpu_count)
     _worker.operators = calloc(_worker.operators_count, sizeof(operator_t));
     if(!_worker.operators)
     {
-        EML_PERR(LOG_TAG, "init: operators alloc failed");
+        EML_ERROR(LOG_TAG, "init: operators allocation failed");
         return STATUS_FAILURE;
     }
 
@@ -160,7 +160,7 @@ int worker_init(uint8_t cpu_count)
     _worker.operators_threads = calloc(_worker.operators_count, sizeof(pthread_t));
     if(!_worker.operators_threads)
     {
-        EML_PERR(LOG_TAG, "init: operators_threads alloc failed");
+        EML_ERROR(LOG_TAG, "init: operators_threads allocation failed");
         goto fail;
     }
 

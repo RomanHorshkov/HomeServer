@@ -86,7 +86,7 @@ int reactor_init(reactor_t* reactor_ptr)
 
     if(reactor_ptr->epoll_fd <= 0)
     {
-        EML_PERR(LOG_TAG, "_init: epoller_new() failed");
+        EML_ERROR(LOG_TAG, "_init: epoller_new() failed");
         goto fail;
     }
 
@@ -95,7 +95,7 @@ int reactor_init(reactor_t* reactor_ptr)
 
     if(!reactor_ptr->events)
     {
-        EML_PERR(LOG_TAG, "_init: reactor events malloc failed");
+        EML_ERROR(LOG_TAG, "_init: reactor events allocation failed");
         epoller_shutdown(reactor_ptr->epoll_fd);
         goto fail;
     }
@@ -136,7 +136,7 @@ int reactor_add_in_client(const reactor_t* reactor_ptr, int fd, fd_ctx_t* ctx)
 
     if(res != STATUS_SUCCESS)
     {
-        EML_PERR(LOG_TAG, "_add_in_client: _manage_fd failed");
+        EML_ERROR(LOG_TAG, "_add_in_client: _manage_fd failed");
     }
 
     return res;
@@ -266,7 +266,7 @@ static int _manage_fd(const reactor_t* reactor_ptr, const int watch_fd, const in
     /* Let the kernel work first – if this fails don’t mutate state. */
     if(epoller_manage_fd(reactor_ptr->epoll_fd, watch_fd, operation, events, (void*)ctx) < 0)
     {
-        EML_PERR(LOG_TAG, "_manage_fd: epoller failed");
+        EML_ERROR(LOG_TAG, "_manage_fd: epoller failed");
         return STATUS_FAILURE;
     }
 

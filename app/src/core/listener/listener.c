@@ -127,14 +127,14 @@ int listener_init(const char* port /*, void *pipeline_ptr*/)
     /* Init listener's reactor */
     if(reactor_init(&_listener.reactor) != STATUS_SUCCESS)
     {
-        EML_PERR(LOG_TAG, "listener_init: reactor_init failed");
+        EML_ERROR(LOG_TAG, "listener_init: reactor_init failed");
         return STATUS_FAILURE;
     }
 
     /* Initialize listener's listening sockets */
     if(_init_listening_sockets(_listener.port) != STATUS_SUCCESS)
     {
-        EML_PERR(LOG_TAG, "listener_init: socket init failed");
+        EML_ERROR(LOG_TAG, "listener_init: socket init failed");
         reactor_shutdown(&_listener.reactor);
         return STATUS_FAILURE;
     }
@@ -142,7 +142,7 @@ int listener_init(const char* port /*, void *pipeline_ptr*/)
     /* register listening sockets to reactor */
     if(_register_listening_sockets() != STATUS_SUCCESS)
     {
-        EML_PERR(LOG_TAG, "listener_init: register sockets failed");
+        EML_ERROR(LOG_TAG, "listener_init: register sockets failed");
         _stop_listener(&_listener);
         reactor_shutdown(&_listener.reactor);
         return STATUS_FAILURE;
@@ -184,7 +184,7 @@ static int _init_listening_sockets(const char* port)
 
     if(socket_listener_set_hints(&hints) != STATUS_SUCCESS)
     {
-        EML_PERR(LOG_TAG, "listener: hints failed");
+        EML_ERROR(LOG_TAG, "listener: hints setup failed");
         return STATUS_FAILURE;
     }
 
@@ -205,9 +205,10 @@ static int _init_listening_sockets(const char* port)
     }
     EML_INFO(LOG_TAG, "listener: binding %s:%s", bind_host, port);
 
-    if(getaddrinfo(bind_host, port, &hints, &ai) != 0)
+    const int gai_rc = getaddrinfo(bind_host, port, &hints, &ai);
+    if(gai_rc != 0)
     {
-        EML_PERR(LOG_TAG, "listener: getaddrinfo failed");
+        EML_ERROR(LOG_TAG, "listener: getaddrinfo(%s:%s) failed: %s", bind_host, port, gai_strerror(gai_rc));
         return STATUS_FAILURE;
     }
 
@@ -228,7 +229,7 @@ static int _init_listening_sockets(const char* port)
 
         if(socket_listener_init(&fd, &cur->ai_family) != STATUS_SUCCESS)
         {
-            EML_PERR(LOG_TAG, "listener: socket_listener_init failed");
+            EML_ERROR(LOG_TAG, "listener: socket_listener_init failed");
             close(fd);
             continue;
         }
@@ -289,7 +290,7 @@ static int _register_listening_sockets(void)
         fd_ctx_t* ctx = calloc(1, sizeof(*ctx));
         if(!ctx)
         {
-            EML_PERR(LOG_TAG, "listener: calloc ctx failed");
+            EML_ERROR(LOG_TAG, "listener: context allocation failed");
             return STATUS_FAILURE;
         }
         ctx->fd      = fd;
@@ -323,7 +324,7 @@ static int _handle_listen_event(int fd, fd_ctx_t* ctx)
 
     if(worker_dispatch_to_operator(client_fd) != STATUS_SUCCESS)
     {
-        EML_PERR(LOG_TAG, "worker_dispatch_to_operator failed");
+        EML_ERROR(LOG_TAG, "worker_dispatch_to_operator failed");
         goto fail;
     }
 
