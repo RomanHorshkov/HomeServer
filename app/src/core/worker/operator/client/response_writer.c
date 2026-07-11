@@ -241,6 +241,8 @@ static const char* _reason_phrase(uint16_t status)
             return "Content Too Large";
         case 500u:
             return "Internal Server Error";
+        case 507u: /* upload over the physical disk headroom (DB_app insufficient_storage) */
+            return "Insufficient Storage";
         default:
             return "Status";
     }
