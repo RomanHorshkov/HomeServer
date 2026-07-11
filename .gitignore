@@ -5,9 +5,8 @@
 .vscode/
 # Ignore for now utilities directory
 #/utils
-#Ignore build files
-build*
-!utils/build_standalone.sh
+#Ignore build output directories (NOT utils/build_*.sh scripts)
+build/
 # Ignore log files
 server.log
 # Ignore whole private directory

@@ -26,6 +26,7 @@ command -v dpkg-deb >/dev/null 2>&1 || { printf 'dpkg-deb not found in PATH\n' >
 
 PKG_NAME="db-server"
 VER="$(tr -d '[:space:]' < "${ROOT_DIR}/VERSION")"
+[[ "${VER}" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { printf 'VERSION is not MAJOR.MINOR.PATCH: "%s" (from %s)\n' "${VER}" "${ROOT_DIR}/VERSION" >&2; exit 1; }
 ARCH="$(dpkg --print-architecture)"
 STRIP="${STRIP:-strip}"
 
@@ -57,12 +58,23 @@ Description: DB platform network daemon (db_server) under /usr/local/bin
  which are provided by their own packages installed alongside this one.
 EOF
 
+# The staged binary is what ships — gate it, not just the build tree.
+printf '[deb] hardening check on staged artifacts\n'
+"${ROOT_DIR}/utils/check_hardening.sh" "${STAGE}/usr/local/bin/db_server"
+
 DEB="${PKG_NAME}_${VER}_${ARCH}.deb"
 fakeroot dpkg-deb --build "${STAGE}" "${DEB}"
 
 OUT_DIR="${OUT_DIR:-${ROOT_DIR}/build/debs}"
 mkdir -p -- "${OUT_DIR}"
 mv -f "${DEB}" "${OUT_DIR}/"
+
+# Refresh checksums for every deb sitting next to this one.
+(
+    cd -- "${OUT_DIR}"
+    sha256sum -- *.deb > SHA256SUMS
+)
+printf '[deb] checksums: %s/SHA256SUMS\n' "${OUT_DIR}"
 
 printf '\nBuilt %s\n' "${OUT_DIR}/${DEB}"
 printf 'inspect:  dpkg-deb -I %s   /   dpkg-deb -c %s\n' "${OUT_DIR}/${DEB}" "${OUT_DIR}/${DEB}"
