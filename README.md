@@ -42,8 +42,23 @@ It now serves **dynamic JSON APIs**, **rich client‑side pages**, a **build-not
 
 ```bash
 make all            # or `make debug` / `make release`
-make run            # runs on :3490
+make run            # dev: ./server 3490  (a TCP port or a unix path)
 ```
+
+### Transport (production vs. dev)
+
+In production the backend has **no TCP port**. systemd **socket activation**
+(`api.socket` / `upload.socket`) creates the AF_UNIX listeners
+`/run/home_server/{api,upload}.sock` and hands the already-listening fds to the
+process via `LISTEN_FDS` / `LISTEN_FDNAMES`; the backend adopts them (see
+`core/listener/sd_activation.c`) and never binds, chmods, or unlinks a socket —
+systemd owns their lifecycle. nginx is the only thing that connects.
+
+For **local development** the process still binds its own listeners when there
+is no activation environment: `./server <api_spec> [upload_spec]`, where a spec
+is a TCP port (`3490`) or a unix path. `upload_spec` also comes from
+`DB_SERVER_UPLOAD`; when absent, uploads run on the operator path.
+See `docs/socket_rearchitecturing.md` (superproject) for the full design.
 
 ---
 

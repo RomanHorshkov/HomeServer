@@ -40,6 +40,7 @@
 
 #include <emlog.h>
 #include <db_server/core/listener/listener.h>
+#include <db_server/core/listener/sd_activation.h>
 #include <db_server/core/worker/worker.h>
 #include <db_server/core/worker/upload_worker.h>
 
@@ -117,14 +118,43 @@ int server_init(const char* api_spec, const char* upload_spec)
     /* Detect available CPUs and keep the value for thread sizing */
     server.cpu_count = _core_detect_cpu_count();
 
-    const int upload_enabled = (upload_spec && upload_spec[0] != '\0');
-
-    /* Initialize the listener — API socket always, upload socket only when a spec was given. */
-    if(listener_init(api_spec, upload_enabled ? upload_spec : NULL) != STATUS_SUCCESS)
+    /* Transport selection (socket_rearchitecturing.md, Stage 2):
+     *   - PRODUCTION: systemd socket activation. systemd created /run/home_server/{api,upload}.sock and
+     *     handed us the listening fds; we adopt them (no bind/chmod/unlink in the backend).
+     *   - DEV / direct run: no activation env → bind the specs passed on argv (a TCP port or unix path).
+     * upload_enabled is then read back from the listener, so slot sizing is identical either way. */
+    sd_listen_set_t sd;
+    const int       activated = sd_take_listen_fds(&sd);
+    if(activated < 0)
     {
-        EML_ERROR(LOG_TAG, "listener failed to init.");
+        EML_ERROR(LOG_TAG, "socket activation environment is malformed.");
         goto fail;
     }
+
+    if(activated)
+    {
+        if(listener_init_activated(&sd) != STATUS_SUCCESS)
+        {
+            EML_ERROR(LOG_TAG, "listener failed to init from activation fds.");
+            goto fail;
+        }
+    }
+    else
+    {
+        if(!api_spec || api_spec[0] == '\0')
+        {
+            EML_ERROR(LOG_TAG, "no socket activation and no listen spec given (usage: server <api_spec> [upload_spec]).");
+            goto fail;
+        }
+        const int want_upload = (upload_spec && upload_spec[0] != '\0');
+        if(listener_init(api_spec, want_upload ? upload_spec : NULL) != STATUS_SUCCESS)
+        {
+            EML_ERROR(LOG_TAG, "listener failed to init.");
+            goto fail;
+        }
+    }
+
+    const int upload_enabled = (int)listener_upload_active();
 
     /* Initialize the worker (operators) */
     if(worker_init(server.cpu_count) != 0)
@@ -161,8 +191,7 @@ int server_init(const char* api_spec, const char* upload_spec)
             EML_ERROR(LOG_TAG, "upload worker pool failed to init.");
             goto fail;
         }
-        EML_INFO(LOG_TAG, "upload isolation ON: %u workers on '%s' (db slots %u..%u)", upload_workers, upload_spec, operators,
-                 total_slots - 1u);
+        EML_INFO(LOG_TAG, "upload isolation ON: %u workers (db slots %u..%u)", upload_workers, operators, total_slots - 1u);
     }
     else
     {
@@ -170,7 +199,7 @@ int server_init(const char* api_spec, const char* upload_spec)
     }
 
     /* Successful initialization */
-    EML_INFO(LOG_TAG, "🚀 C Server initialized (api='%s')", api_spec);
+    EML_INFO(LOG_TAG, "🚀 C Server initialized (%s)", activated ? "socket-activated" : (api_spec ? api_spec : "?"));
     return STATUS_SUCCESS;
 
 fail:

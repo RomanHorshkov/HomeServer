@@ -190,6 +190,53 @@ int listener_init(const char* api_spec, const char* upload_spec)
     return STATUS_SUCCESS;
 }
 
+int listener_init_activated(const sd_listen_set_t* fds)
+{
+    if(!fds || fds->api_fd < 0)
+    {
+        EML_ERROR(LOG_TAG, "listener_init_activated: no API socket");
+        return STATUS_FAILURE;
+    }
+
+    if(reactor_init(&_listener.reactor) != STATUS_SUCCESS)
+    {
+        EML_ERROR(LOG_TAG, "listener_init_activated: reactor_init failed");
+        return STATUS_FAILURE;
+    }
+
+    /* Adopt the systemd-provided fds directly. They are already listening, non-blocking, and CLOEXEC
+     * (sd_take_listen_fds validated them). We record NO unix_paths[] entry: systemd created the socket
+     * files and owns their removal (RemoveOnStop=yes) — the backend must never unlink them. */
+    _listener.socket_is_upload[_listener.active_sockets_no] = 0u;
+    _listener.sockets_fds[_listener.active_sockets_no++]    = fds->api_fd;
+    if(fds->upload_fd >= 0)
+    {
+        _listener.socket_is_upload[_listener.active_sockets_no] = 1u;
+        _listener.sockets_fds[_listener.active_sockets_no++]    = fds->upload_fd;
+    }
+
+    if(_register_listening_sockets() != STATUS_SUCCESS)
+    {
+        EML_ERROR(LOG_TAG, "listener_init_activated: register sockets failed");
+        _stop_listener(&_listener);
+        reactor_shutdown(&_listener.reactor);
+        return STATUS_FAILURE;
+    }
+
+    EML_INFO(LOG_TAG, "listener: socket-activated (api fd=%d, upload fd=%d) — no bind/chmod/unlink", fds->api_fd, fds->upload_fd);
+    _listener.status = LISTENER_STATUS_ACTIVE;
+    return STATUS_SUCCESS;
+}
+
+uint8_t listener_upload_active(void)
+{
+    for(uint32_t i = 0; i < _listener.active_sockets_no; ++i)
+    {
+        if(_listener.socket_is_upload[i]) return 1u;
+    }
+    return 0u;
+}
+
 void* listener_run(void* arg)
 {
     (void)arg;
@@ -472,7 +519,8 @@ static int _handle_upload_listen_event(int fd, fd_ctx_t* ctx)
     int client_fd = accept4(fd, NULL, NULL, SOCK_NONBLOCK | SOCK_CLOEXEC);
     if(client_fd < 0)
     {
-        if(errno == EAGAIN || errno == EWOULDBLOCK)
+        /* EWOULDBLOCK == EAGAIN on Linux (testing both trips -Wlogical-op). */
+        if(errno == EAGAIN)
         {
             return STATUS_SUCCESS; /* spurious wakeup / already drained */
         }

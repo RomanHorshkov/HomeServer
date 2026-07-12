@@ -46,12 +46,48 @@
  *  that the per-read idle timeout alone would let dribble forever. */
 #define UPLOAD_MAX_WALL_S      WORKER_UPLOAD_MAX_WALL_S
 
+/** How long / how much to drain an unread body after an early reject, so nginx can relay our real
+ *  status instead of a broken-pipe 503. nginx stops sending the moment it reads our final response,
+ *  so these are just safety ceilings — the drain normally ends at EOF within a couple of reads. */
+#define UPLOAD_REJECT_DRAIN_MS    2000
+#define UPLOAD_REJECT_DRAIN_BYTES (4u * 1024u * 1024u)
+
 /** @brief Milliseconds on CLOCK_MONOTONIC (immune to wall-clock steps). */
 static uint64_t _pump_mono_ms(void)
 {
     struct timespec ts;
     clock_gettime(CLOCK_MONOTONIC, &ts);
     return (uint64_t)ts.tv_sec * 1000u + (uint64_t)ts.tv_nsec / 1000000u;
+}
+
+/**
+ * @brief Absorb the in-flight request body after an early reject, so the peer relays our response.
+ *
+ * The response is already written; we just read + discard whatever nginx is still streaming (with
+ * proxy_request_buffering off it cannot stop until it has read our reply). Bounded by both a short
+ * deadline and a byte ceiling — nginx stops sending as soon as it reads the final response, so this
+ * returns at EOF almost immediately; the bounds only cap a misbehaving/huge peer.
+ */
+static void _drain_rejected_body(client_t* cli)
+{
+    const uint64_t deadline = _pump_mono_ms() + (uint64_t)UPLOAD_REJECT_DRAIN_MS;
+    uint64_t       drained  = 0u;
+    while(drained < (uint64_t)UPLOAD_REJECT_DRAIN_BYTES)
+    {
+        const uint64_t now = _pump_mono_ms();
+        if(now >= deadline) break;
+        struct pollfd pfd = {.fd = cli->ctx.fd, .events = POLLIN};
+        int           prc = poll(&pfd, 1, (int)(deadline - now));
+        if(prc <= 0) break; /* timeout, or poll error → stop (peer is done or gone) */
+        ssize_t got = read(cli->ctx.fd, cli->buf, sizeof(cli->buf));
+        if(got > 0)
+        {
+            drained += (uint64_t)got;
+            continue;
+        }
+        if(got < 0 && (errno == EINTR || errno == EAGAIN)) continue;
+        break; /* EOF (nginx finished) or a real error */
+    }
 }
 
 /** The exact public path the gate claims (query text never appears — nginx proxies the location match verbatim).
@@ -112,6 +148,13 @@ int client_upload_pump(client_t* cli, uint8_t thread_id, const DB_http_request_t
         EML_WARN(LOG_TAG, "fd %d: upload rejected at begin (status %u)", cli->ctx.fd, res.status);
         int rc = response_writer_send(cli, &res);
         db_app_response_clear(&res);
+        /* The body was NEVER read. With nginx proxy_request_buffering off it is still
+         * streaming the request body at us; if we close now it hits EPIPE mid-send and
+         * returns its OWN 503 instead of relaying our real status (e.g. 413 quota_exceeded).
+         * Briefly drain the in-flight body so nginx can finish, read our response, and relay
+         * it — then close. Bounded: nginx stops sending the instant it reads our final
+         * response, so EOF arrives fast; the cap just guards a pathological peer. */
+        _drain_rejected_body(cli);
         return rc;
     }
     db_app_response_clear(&res);

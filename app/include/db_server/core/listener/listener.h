@@ -15,6 +15,10 @@
 #ifndef SERVER_LISTENER_H
 #define SERVER_LISTENER_H
 
+#include <stdint.h>
+
+#include <db_server/core/listener/sd_activation.h>
+
 /*****************************************************************************************************************************************
  * PUBLIC STRUCTURED VARIABLES DECLARATIONS
  *****************************************************************************************************************************************
@@ -41,6 +45,28 @@
  * @retval STATUS_SUCCESS on success; STATUS_FAILURE on failure.
  */
 int listener_init(const char* api_spec, const char* upload_spec);
+
+/**
+ * @brief Initialise the listener from systemd socket-activation fds (production transport).
+ *
+ * Adopts the already-listening AF_UNIX sockets systemd handed over (api mandatory, upload optional),
+ * sets up the reactor, and registers them — the backend never binds, chmods, or unlinks a runtime
+ * socket. systemd owns their creation, permissions, and cleanup (RemoveOnStop=yes).
+ *
+ * @param fds  The validated named fds from @ref sd_take_listen_fds (api_fd MUST be valid).
+ * @retval STATUS_SUCCESS on success; STATUS_FAILURE on failure.
+ */
+int listener_init_activated(const sd_listen_set_t* fds);
+
+/**
+ * @brief Whether a dedicated upload listener is active (bound or adopted).
+ *
+ * The core uses this to size DB txn slots + the upload worker pool regardless of HOW the listener got
+ * its sockets (bound spec vs. socket activation).
+ *
+ * @retval 1 an upload listener exists; 0 otherwise.
+ */
+uint8_t listener_upload_active(void);
 
 /**
  * @brief Main listener thread function: accepts new connections and forwards them.

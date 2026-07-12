@@ -242,9 +242,19 @@ int64_t socket_drain(const int fd)
 
 void socket_shutdown_and_close(int fd)
 {
-    /* send FIN – graceful half-close */
-    /* No more receptions or transmissions.*/
-    shutdown(fd, SHUT_RDWR);
+    /* shutdown(SHUT_RDWR) is a TCP notion (force the FIN/RST, wake a blocked
+     * peer). On an AF_UNIX socket it buys nothing over close(), and because the
+     * production sockets are pathname unix sockets passed by systemd, AppArmor
+     * mediates the shutdown as a FILE op needing a 'd' permission on the socket
+     * path (unavailable as a file-rule mode → an audit denial every close). So
+     * shutdown ONLY IP sockets (the dev/direct-run fallback); unix just closes. */
+    int       domain = 0;
+    socklen_t dlen   = sizeof(domain);
+    if(getsockopt(fd, SOL_SOCKET, SO_DOMAIN, &domain, &dlen) == 0 && (domain == AF_INET || domain == AF_INET6))
+    {
+        /* send FIN – graceful half-close; no more receptions or transmissions */
+        shutdown(fd, SHUT_RDWR);
+    }
 
     /* Close the socket */
     close(fd);
@@ -315,21 +325,36 @@ int socket_client_init(const int* client_fd)
         return STATUS_FAILURE;
     }
 
-    /* Disable Nagle's algorithm */
-    if(socket_disable_nagle(client_fd) != STATUS_SUCCESS)
+    /* TCP_NODELAY and the TCP-RST SO_LINGER dance are TCP-only. In production the
+     * peer is nginx over an AF_UNIX socket (no Nagle, no RST semantics), where
+     * setsockopt(IPPROTO_TCP, …) fails EOPNOTSUPP. Apply those options ONLY to
+     * IP sockets (the dev/direct-run fallback); skip them for AF_UNIX. */
+    int       domain = 0;
+    socklen_t dlen   = sizeof(domain);
+    if(getsockopt(*client_fd, SOL_SOCKET, SO_DOMAIN, &domain, &dlen) == -1)
     {
-        EML_ERROR(LOG_TAG, "_client_init: failed to disable Nagle");
+        EML_PERR(LOG_TAG, "_client_init: failed to read SO_DOMAIN");
         return STATUS_FAILURE;
     }
 
-    /* Accepted sockets INHERIT SO_LINGER from the listener on Linux; the
-     * listener uses {on, 0} (RST on close) for fast restarts. A client socket must close gracefully or the response written just before
-     * close() is discarded with the RST — reset to the default. */
-    struct linger sl = {.l_onoff = 0, .l_linger = 0};
-    if(setsockopt(*client_fd, SOL_SOCKET, SO_LINGER, &sl, sizeof(sl)) == -1)
+    if(domain == AF_INET || domain == AF_INET6)
     {
-        EML_PERR(LOG_TAG, "_client_init: failed to reset SO_LINGER");
-        return STATUS_FAILURE;
+        /* Disable Nagle's algorithm */
+        if(socket_disable_nagle(client_fd) != STATUS_SUCCESS)
+        {
+            EML_ERROR(LOG_TAG, "_client_init: failed to disable Nagle");
+            return STATUS_FAILURE;
+        }
+
+        /* Accepted sockets INHERIT SO_LINGER from the listener on Linux; the
+         * listener uses {on, 0} (RST on close) for fast restarts. A client socket must close gracefully or the response written just before
+         * close() is discarded with the RST — reset to the default. */
+        struct linger sl = {.l_onoff = 0, .l_linger = 0};
+        if(setsockopt(*client_fd, SOL_SOCKET, SO_LINGER, &sl, sizeof(sl)) == -1)
+        {
+            EML_PERR(LOG_TAG, "_client_init: failed to reset SO_LINGER");
+            return STATUS_FAILURE;
+        }
     }
 
     return STATUS_SUCCESS;
