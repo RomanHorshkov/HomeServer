@@ -17,6 +17,9 @@
 #include <errno.h>
 #include <netdb.h>
 #include <netinet/tcp.h>
+#include <sys/socket.h>
+#include <sys/stat.h>
+#include <sys/un.h>
 #include <stdatomic.h>
 #include <stdlib.h>
 #include <string.h>
@@ -50,7 +53,8 @@ typedef struct
 {
     listener_status_t status;                                         /**< Current listener status */
     reactor_t         reactor;                                        /**< Reactor for monitoring accept events */
-    char              port[6];                                        /**< Port number as string */
+    char              spec[108];                                      /**< Listen spec: a TCP port ("3490") OR a unix path ("/run/…") */
+    char              unix_path[108];                                 /**< The bound AF_UNIX path (to unlink on stop), "" if TCP */
     int               sockets_fds[SERVER_CORE_MAX_LISTENING_SOCKETS]; /**< Array of listening socket FDs */
     uint32_t          active_sockets_no;                              /**< Number of active listening sockets */
     // pipeline_t *pipeline;                                        /**< Pointer to worker pipeline */
@@ -122,7 +126,7 @@ int listener_init(const char* port /*, void *pipeline_ptr*/)
     }
 
     // _listener.pipeline = (pipeline_t*)pipeline_ptr;
-    strncpy(_listener.port, port, sizeof(_listener.port) - 1);
+    strncpy(_listener.spec, port, sizeof(_listener.spec) - 1);
 
     /* Init listener's reactor */
     if(reactor_init(&_listener.reactor) != STATUS_SUCCESS)
@@ -132,7 +136,7 @@ int listener_init(const char* port /*, void *pipeline_ptr*/)
     }
 
     /* Initialize listener's listening sockets */
-    if(_init_listening_sockets(_listener.port) != STATUS_SUCCESS)
+    if(_init_listening_sockets(_listener.spec) != STATUS_SUCCESS)
     {
         EML_ERROR(LOG_TAG, "listener_init: socket init failed");
         reactor_shutdown(&_listener.reactor);
@@ -177,10 +181,80 @@ void* listener_run(void* arg)
  *****************************************************************************************************************************************
  */
 
+/**
+ * @brief Bind an AF_UNIX stream listener at @p path — the production nginx↔backend transport.
+ *
+ * A unix socket removes the loopback TCP port entirely (no backend port to bind, expose, or scan). The socket is created 0660 so nginx
+ * (www-data, a member of the home_server group) can connect, while nothing off-box ever can. A stale socket from a previous run is
+ * unlinked first. The accepted fds flow through the exact same byte pipeline as TCP — accept() never reads the peer address.
+ */
+static int _init_unix_socket(const char* path)
+{
+    int fd = socket(AF_UNIX, SOCK_STREAM, 0);
+    if(fd == -1)
+    {
+        EML_PERR(LOG_TAG, "listener: AF_UNIX socket() failed");
+        return STATUS_FAILURE;
+    }
+
+    struct sockaddr_un addr;
+    memset(&addr, 0, sizeof addr);
+    addr.sun_family = AF_UNIX;
+    if(strlen(path) >= sizeof addr.sun_path)
+    {
+        EML_ERROR(LOG_TAG, "listener: unix socket path too long (%s)", path);
+        close(fd);
+        return STATUS_FAILURE;
+    }
+    strncpy(addr.sun_path, path, sizeof addr.sun_path - 1);
+
+    (void)unlink(path); /* a stale socket from a prior run is not an error */
+
+    if(bind(fd, (const struct sockaddr*)&addr, (socklen_t)sizeof addr) == -1)
+    {
+        EML_PERR(LOG_TAG, "listener: bind(%s) failed", path);
+        close(fd);
+        return STATUS_FAILURE;
+    }
+    /* 0660: owner (home_server) + group (home_server, which nginx's www-data joins) — never world. */
+    if(chmod(path, 0660) == -1)
+    {
+        EML_PERR(LOG_TAG, "listener: chmod(%s, 0660) failed", path);
+        close(fd);
+        (void)unlink(path);
+        return STATUS_FAILURE;
+    }
+    if(listen(fd, SERVER_CORE_MAX_PENDING_SOCKETS_PER_LISTENER) == -1)
+    {
+        EML_PERR(LOG_TAG, "listener: listen(%s) failed", path);
+        close(fd);
+        (void)unlink(path);
+        return STATUS_FAILURE;
+    }
+    if(socket_set_non_blocking(&fd) != STATUS_SUCCESS)
+    {
+        close(fd);
+        (void)unlink(path);
+        return STATUS_FAILURE;
+    }
+
+    _listener.sockets_fds[_listener.active_sockets_no++] = fd;
+    strncpy(_listener.unix_path, path, sizeof(_listener.unix_path) - 1);
+    EML_INFO(LOG_TAG, "listener: bound AF_UNIX %s (0660, no TCP port)", path);
+    return STATUS_SUCCESS;
+}
+
 static int _init_listening_sockets(const char* port)
 {
     struct addrinfo  hints;
     struct addrinfo* ai = NULL;
+
+    /* A spec that begins with '/' is a unix socket PATH (the production transport);
+     * anything else is a TCP port (dev, tests, direct-LAN trials). */
+    if(port[0] == '/')
+    {
+        return _init_unix_socket(port);
+    }
 
     if(socket_listener_set_hints(&hints) != STATUS_SUCCESS)
     {
@@ -355,4 +429,12 @@ static void _stop_listener(listener_t* l)
         }
     }
     l->active_sockets_no = 0;
+
+    /* Remove the AF_UNIX socket file so a restart binds cleanly (bind also
+     * unlinks a stale one, but leaving it around is untidy). */
+    if(l->unix_path[0] != '\0')
+    {
+        (void)unlink(l->unix_path);
+        l->unix_path[0] = '\0';
+    }
 }
