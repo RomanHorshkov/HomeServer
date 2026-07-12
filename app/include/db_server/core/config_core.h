@@ -57,16 +57,13 @@ typedef enum
 /* Max listening sockets: API (ipv4 + ipv6) + the dedicated upload listener (ipv4 + ipv6) */
 #define SERVER_CORE_MAX_LISTENING_SOCKETS            4U
 
-/* Kernel accept-queue depth (listen backlog) per listener socket.
- *
- * Sized ABOVE the upload pool's capacity (WORKER_UPLOAD_COUNT + WORKER_UPLOAD_QUEUE_DEPTH = 36) on purpose:
- * the upload path is keepalive-less (nginx opens a fresh connection per upload), so a burst of uploads is a
- * burst of new connects. The listener is LEVEL-triggered (EPOLLIN) and drains the backlog across epoll
- * cycles, but the burst must first FIT in the kernel queue — otherwise connections are refused at accept()
- * time and nginx returns `503 backend_unavailable` instead of the pool's graceful `503 upload_busy`. A depth
- * of 128 lets a full-pool-plus burst queue and be shed at the application layer (DB_server/README.md).
- * Trusted transport (only nginx over loopback/unix connects), so there is no SYN-flood concern to keep it small. */
-#define SERVER_CORE_MAX_PENDING_SOCKETS_PER_LISTENER 128U
+/* Kernel accept-queue depth (listen backlog) for listeners THIS process binds itself — i.e. the dev/direct
+ * run (`./server <port|path>`). In PRODUCTION the sockets are systemd socket-activated: systemd calls
+ * listen() before passing the fd, so THIS value never applies — the real backlog is `Backlog=` on
+ * install/systemd/{api,upload}.socket (set to 1024, well above the upload pool). Kept generous here too so a
+ * keepalive-less upload burst queues instead of being refused (→ nginx `503 backend_unavailable` instead of
+ * the pool's graceful `upload_busy`). Trusted transport (only nginx connects), so no SYN-flood concern. */
+#define SERVER_CORE_MAX_PENDING_SOCKETS_PER_LISTENER 1024U
 
 /*****************************************************************************************************************************************
  * WORKER PROPERTIES
