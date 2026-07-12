@@ -118,7 +118,7 @@ int server_init(const char* api_spec, const char* upload_spec)
     /* Detect available CPUs and keep the value for thread sizing */
     server.cpu_count = _core_detect_cpu_count();
 
-    /* Transport selection (socket_rearchitecturing.md, Stage 2):
+    /* Transport selection (DB_server/README.md):
      *   - PRODUCTION: systemd socket activation. systemd created /run/home_server/{api,upload}.sock and
      *     handed us the listening fds; we adopt them (no bind/chmod/unlink in the backend).
      *   - DEV / direct run: no activation env → bind the specs passed on argv (a TCP port or unix path).
@@ -217,7 +217,7 @@ void server_run(void)
     /* wait listener thread (it stops accepting new API + upload connections first) */
     pthread_join(server.listener_thread, NULL);
 
-    /* Shutdown order (socket_rearchitecturing.md §7): stop the upload pool BEFORE tearing down operators and DB_app.
+    /* Shutdown order (DB_server/README.md): stop the upload pool BEFORE tearing down operators and DB_app.
      * upload_workers_shutdown() drains the queue, shuts active upload sockets (waking each worker's poll so its live
      * ticket aborts and rolls back), and JOINS the workers — so no upload commit can touch a torn LMDB env. Then the
      * operators, then DB_app/LMDB last. Safe/no-op when the pool was never started. */

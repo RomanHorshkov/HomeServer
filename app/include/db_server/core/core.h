@@ -79,7 +79,7 @@
  *                     ("/run/home_server/api.sock"). API traffic is served by the operators.
  * @param upload_spec  NUL-terminated upload listen spec (a TCP port such as "3492" or a unix path), or NULL/""
  *                     to keep uploads on the operator path (no dedicated upload pool). Uploads accepted here run
- *                     on the isolated upload worker pool — see socket_rearchitecturing.md.
+ *                     on the isolated upload worker pool — see DB_server/README.md.
  *
  * @retval  0   Success. All subsystems initialized and ready.
  * @retval -1   One or more subsystems failed to initialize. No resources are

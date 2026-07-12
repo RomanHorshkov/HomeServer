@@ -36,7 +36,7 @@
 
 int main(int argc, char* argv[])
 {
-    /* Two ways to get listening sockets (socket_rearchitecturing.md, Stage 2):
+    /* Two ways to get listening sockets (DB_server/README.md):
      *
      *   PRODUCTION — systemd socket activation. The service is started by api.socket/upload.socket, which
      *   pass the listening fds via LISTEN_FDS. NO argv is needed (and none is given); server_init detects

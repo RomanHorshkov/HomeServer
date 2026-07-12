@@ -91,7 +91,7 @@ static void _drain_rejected_body(client_t* cli)
 }
 
 /** The exact public path the gate claims (query text never appears — nginx proxies the location match verbatim).
- *  Distinct one-shot upload endpoint (socket_rearchitecturing.md §1): the list is GET /api/app/files, the streaming
+ *  Distinct one-shot upload endpoint (DB_server/README.md): the list is GET /api/app/files, the streaming
  *  upload is POST /api/app/uploads — so nginx routes the upload to its own upstream by URI, method-independently. */
 #define UPLOAD_PATH          "/api/app/uploads"
 

@@ -12,7 +12,7 @@
  *
  * The pump code is reused verbatim (client_handle → client_upload_pump); it
  * simply runs on an upload worker instead of an operator. See
- * docs/socket_rearchitecturing.md.
+ * DB_server/README.md.
  *
  * @author  Roman Horshkov <github.com/RomanHorshkov>
  * @date    jul 2026

@@ -58,7 +58,44 @@ For **local development** the process still binds its own listeners when there
 is no activation environment: `./server <api_spec> [upload_spec]`, where a spec
 is a TCP port (`3490`) or a unix path. `upload_spec` also comes from
 `DB_SERVER_UPLOAD`; when absent, uploads run on the operator path.
-See `docs/socket_rearchitecturing.md` (superproject) for the full design.
+
+### Upload isolation (why there are two listeners)
+
+`fleet test` proved an **availability** bug: with `proxy_request_buffering off`
+(needed so the backend can authorize an upload on its headers, before the body),
+a steadily-trickling upload used to hold the API operator's `poll()` for the
+whole transfer and head-of-line-block every other request on it — `/ping`, `/me`,
+listings. The fix isolates uploads onto their own path:
+
+- **Two listeners, two upstreams.** `GET /api/app/files` (list) → API operators
+  (`api.sock`). `POST /api/app/uploads` (streaming upload) → the **upload worker
+  pool** (`upload.sock`). Routing is on the URI, method-independent; uploads never
+  enter an API operator's epoll, so a slow upload cannot stall API traffic.
+- **One-shot upload connections.** The upload endpoint responds on every path and
+  closes — no keep-alive to reuse, so nginx gives the upload upstream no keepalive
+  pool. Each upload worker runs one upload to completion (authorize headers →
+  spool ticket → pump → hash → commit → `201` → close). Blocking an *upload
+  worker* is its job; API operators are separate threads.
+- **Bounded, graceful shedding.** The pool is a fixed thread count +
+  `UPLOAD_QUEUE_MAX` queue. Past that, the listener answers a prebuilt
+  `503 upload_busy` without ever blocking. The listen backlog
+  (`SERVER_CORE_MAX_PENDING_SOCKETS_PER_LISTENER`) is sized **above** the pool so
+  a burst queues in the kernel and is shed as `upload_busy`, not refused.
+- **DB slots.** Each upload worker owns a DB_app txn slot **above** the operators'
+  `[0, ops)` range; `total = operators + upload_workers`.
+- **Shutdown order** (critical — DB_app/LMDB must outlive every upload worker):
+  stop accepting → close the queue → `shutdown()` active upload sockets (each
+  live ticket aborts, unlinks its `.part`, rolls back) → join upload workers →
+  join API operators → close DB_app/LMDB → destroy queues/listeners. See
+  `core/core.c`'s `server_run`.
+
+**AF_UNIX guardrails** (each was a live-test failure — see the platform memory and
+the `install/` AppArmor profile): TCP-only socket options (`TCP_NODELAY`, the RST
+`SO_LINGER` reset, `shutdown(SHUT_RDWR)`) are family-gated to `AF_INET*`; a
+pathname unix socket passed by systemd is mediated by AppArmor as **file** access
+(needs `attach_disconnected` + `rw` on the socket paths); an early upload reject
+must **drain** the in-flight body so nginx relays the real status. This isolation
+work + the AF_UNIX transport were validated end-to-end by `fleet test` (PROOFS).
 
 ---
 

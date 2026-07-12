@@ -64,7 +64,7 @@ typedef enum
  * burst of new connects. The listener is LEVEL-triggered (EPOLLIN) and drains the backlog across epoll
  * cycles, but the burst must first FIT in the kernel queue — otherwise connections are refused at accept()
  * time and nginx returns `503 backend_unavailable` instead of the pool's graceful `503 upload_busy`. A depth
- * of 128 lets a full-pool-plus burst queue and be shed at the application layer (socket_rearchitecturing.md).
+ * of 128 lets a full-pool-plus burst queue and be shed at the application layer (DB_server/README.md).
  * Trusted transport (only nginx over loopback/unix connects), so there is no SYN-flood concern to keep it small. */
 #define SERVER_CORE_MAX_PENDING_SOCKETS_PER_LISTENER 128U
 
@@ -89,7 +89,7 @@ typedef enum
 #define OPERATOR_TIMER_PERIOD_LONG                   Minutes(5U)
 
 /*****************************************************************************************************************************************
- * UPLOAD WORKER POOL PROPERTIES  (socket_rearchitecturing.md — upload isolation)
+ * UPLOAD WORKER POOL PROPERTIES  (DB_server/README.md — upload isolation)
  *****************************************************************************************************************************************
  */
 
