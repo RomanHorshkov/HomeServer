@@ -54,8 +54,8 @@ typedef enum
  * LISTENER PROPERTIES
  *****************************************************************************************************************************************
  */
-/* Max listening sockets amount, 1 ipv4 + 1 ipv6 */
-#define SERVER_CORE_MAX_LISTENING_SOCKETS            2U
+/* Max listening sockets: API (ipv4 + ipv6) + the dedicated upload listener (ipv4 + ipv6) */
+#define SERVER_CORE_MAX_LISTENING_SOCKETS            4U
 
 /* Max pending connections on one listener socket */
 #define SERVER_CORE_MAX_PENDING_SOCKETS_PER_LISTENER 8U
@@ -79,5 +79,19 @@ typedef enum
 
 /* Operator timer tick when idle [s] */
 #define OPERATOR_TIMER_PERIOD_LONG                   Minutes(5U)
+
+/*****************************************************************************************************************************************
+ * UPLOAD WORKER POOL PROPERTIES  (socket_rearchitecturing.md — upload isolation)
+ *****************************************************************************************************************************************
+ */
+
+/* Upload worker threads. Uploads run on their OWN pool (never inside an API operator), so a slow upload can never
+ * head-of-line-block API traffic. Embedded style: a fixed, build-time count sized to the box. This is also the
+ * per-server upload concurrency: a (WORKER_UPLOAD_COUNT + WORKER_UPLOAD_QUEUE_DEPTH)-th concurrent upload gets 503.
+ * Each worker consumes one DB_app transaction slot ABOVE the operators' [0, ops) range. */
+#define WORKER_UPLOAD_COUNT                          4U
+
+/* Absolute wall-clock ceiling for one upload, CLOCK_MONOTONIC (defeats a forever-slow-but-never-idle client). */
+#define WORKER_UPLOAD_MAX_WALL_S                     7200U /* 2 h — a 4 GiB upload at ~600 KiB/s still fits */
 
 #endif /* SERVER_CONFIG_CORE_H */

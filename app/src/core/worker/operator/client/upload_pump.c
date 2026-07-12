@@ -19,6 +19,7 @@
 #include <errno.h>
 #include <poll.h>
 #include <string.h>
+#include <time.h>
 #include <unistd.h>
 
 #include <DB_http/DB_http.h>
@@ -41,8 +42,22 @@
 /** Per-read patience: nginx streams from its own buffer over loopback, so a silent 10 s means the transfer is dead. */
 #define UPLOAD_READ_TIMEOUT_MS 10000
 
-/** The exact public path the gate claims (query text never appears — nginx proxies the location match verbatim). */
-#define UPLOAD_PATH          "/api/app/files"
+/** Absolute ceiling for the whole body transfer (CLOCK_MONOTONIC) — defeats a never-idle-but-forever-slow client
+ *  that the per-read idle timeout alone would let dribble forever. */
+#define UPLOAD_MAX_WALL_S      WORKER_UPLOAD_MAX_WALL_S
+
+/** @brief Milliseconds on CLOCK_MONOTONIC (immune to wall-clock steps). */
+static uint64_t _pump_mono_ms(void)
+{
+    struct timespec ts;
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    return (uint64_t)ts.tv_sec * 1000u + (uint64_t)ts.tv_nsec / 1000000u;
+}
+
+/** The exact public path the gate claims (query text never appears — nginx proxies the location match verbatim).
+ *  Distinct one-shot upload endpoint (socket_rearchitecturing.md §1): the list is GET /api/app/files, the streaming
+ *  upload is POST /api/app/uploads — so nginx routes the upload to its own upstream by URI, method-independently. */
+#define UPLOAD_PATH          "/api/app/uploads"
 
 /*****************************************************************************************************************************************
  * PUBLIC FUNCTIONS DEFINITIONS
@@ -118,15 +133,28 @@ int client_upload_pump(client_t* cli, uint8_t thread_id, const DB_http_request_t
         return response_writer_error(cli, 400u);
     }
 
-    /* 4. Pump the remainder: poll → read → chunk, reusing the client buffer (its header views are consumed; begin copied its keeps). */
-    uint64_t remaining = total - (uint64_t)leftover_len;
+    /* 4. Pump the remainder: poll → read → chunk, reusing the client buffer (its header views are consumed; begin copied its keeps).
+     *    Two bounds apply: the per-read idle timeout (a dead transfer) AND an absolute monotonic deadline (a forever-slow one). */
+    const uint64_t deadline_ms = _pump_mono_ms() + (uint64_t)UPLOAD_MAX_WALL_S * 1000u;
+    uint64_t       remaining   = total - (uint64_t)leftover_len;
     while(remaining > 0u)
     {
+        const uint64_t now_ms = _pump_mono_ms();
+        if(now_ms >= deadline_ms)
+        {
+            EML_WARN(LOG_TAG, "fd %d: upload exceeded %us wall deadline with %llu bytes missing — aborting", cli->ctx.fd,
+                     UPLOAD_MAX_WALL_S, (unsigned long long)remaining);
+            db_app_upload_abort(ticket);
+            return response_writer_error(cli, 408u);
+        }
+        const uint64_t left_ms  = deadline_ms - now_ms;
+        const int      timeout  = left_ms < (uint64_t)UPLOAD_READ_TIMEOUT_MS ? (int)left_ms : UPLOAD_READ_TIMEOUT_MS;
+
         struct pollfd pfd = {.fd = cli->ctx.fd, .events = POLLIN};
-        int           prc = poll(&pfd, 1, UPLOAD_READ_TIMEOUT_MS);
+        int           prc = poll(&pfd, 1, timeout);
         if(prc == 0)
         {
-            EML_WARN(LOG_TAG, "fd %d: upload stalled %d ms with %llu bytes missing — aborting", cli->ctx.fd, UPLOAD_READ_TIMEOUT_MS,
+            EML_WARN(LOG_TAG, "fd %d: upload stalled %d ms with %llu bytes missing — aborting", cli->ctx.fd, timeout,
                      (unsigned long long)remaining);
             db_app_upload_abort(ticket);
             return response_writer_error(cli, 400u);

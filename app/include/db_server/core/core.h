@@ -75,8 +75,11 @@
  * On failure, the function logs a detailed error message for each failed subsystem. The global `errno` is left untouched; consult the log
  * file for diagnostics.
  *
- * @param port  NUL-terminated string specifying the TCP service or port number
- *              (e.g., "80", "3490", etc.) on which the server should listen.
+ * @param api_spec     NUL-terminated API listen spec: a TCP service/port ("80", "3490") or a unix path
+ *                     ("/run/home_server/api.sock"). API traffic is served by the operators.
+ * @param upload_spec  NUL-terminated upload listen spec (a TCP port such as "3492" or a unix path), or NULL/""
+ *                     to keep uploads on the operator path (no dedicated upload pool). Uploads accepted here run
+ *                     on the isolated upload worker pool — see socket_rearchitecturing.md.
  *
  * @retval  0   Success. All subsystems initialized and ready.
  * @retval -1   One or more subsystems failed to initialize. No resources are
@@ -86,7 +89,7 @@
  *       server operation.
  *
  */
-int server_init(const char* port);
+int server_init(const char* api_spec, const char* upload_spec);
 
 /**
  * @brief Main server event loop: launches all core threads and blocks until shutdown.

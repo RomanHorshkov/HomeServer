@@ -41,6 +41,7 @@
 #include <emlog.h>
 #include <db_server/core/listener/listener.h>
 #include <db_server/core/worker/worker.h>
+#include <db_server/core/worker/upload_worker.h>
 
 #include <db_app.h>
 #include <db_server/core/config_core.h>
@@ -105,7 +106,7 @@ static void _p_dbg_info_init(void);
  *****************************************************************************************************************************************
  */
 
-int server_init(const char* port)
+int server_init(const char* api_spec, const char* upload_spec)
 {
 #ifdef DEBUG
     _p_dbg_info_init();
@@ -116,30 +117,60 @@ int server_init(const char* port)
     /* Detect available CPUs and keep the value for thread sizing */
     server.cpu_count = _core_detect_cpu_count();
 
-    /* Initialize the listener */
-    if(listener_init(port /*, server.pipeline*/) != STATUS_SUCCESS)
+    const int upload_enabled = (upload_spec && upload_spec[0] != '\0');
+
+    /* Initialize the listener — API socket always, upload socket only when a spec was given. */
+    if(listener_init(api_spec, upload_enabled ? upload_spec : NULL) != STATUS_SUCCESS)
     {
         EML_ERROR(LOG_TAG, "listener failed to init.");
         goto fail;
     }
 
-    /* Initialize the worker */
+    /* Initialize the worker (operators) */
     if(worker_init(server.cpu_count) != 0)
     {
         EML_ERROR(LOG_TAG, "worker failed to init.");
         goto fail;
     }
 
-    /* Initialize DB_app with one transaction slot per operator thread
-     * (operator id == DB_app worker_no, §9.3). */
-    if(db_app_init(worker_get_operators_count()) != 0)
+    /* DB_app transaction slots: one per operator (operator id == worker_no, §9.3), PLUS one per upload worker.
+     * Upload workers use slots ABOVE the operators' [0, ops) range and must never overlap them. Range-check the
+     * SUM before narrowing to uint8_t (db_app_init's parameter type). */
+    const unsigned operators     = (unsigned)worker_get_operators_count();
+    const unsigned upload_workers = upload_enabled ? (unsigned)WORKER_UPLOAD_COUNT : 0u;
+    const unsigned total_slots    = operators + upload_workers;
+    if(operators == 0u || total_slots > 255u)
+    {
+        EML_ERROR(LOG_TAG, "invalid slot sizing: operators=%u + upload_workers=%u = %u (must be 1..255)", operators, upload_workers,
+                  total_slots);
+        goto fail;
+    }
+
+    if(db_app_init((uint8_t)total_slots) != 0)
     {
         EML_ERROR(LOG_TAG, "db_app failed to init.");
         goto fail;
     }
 
+    /* Start the upload worker pool AFTER db_app_init (its slots must already exist). Workers claim
+     * [operators, operators + upload_workers). */
+    if(upload_enabled)
+    {
+        if(upload_workers_init((uint8_t)upload_workers, (uint8_t)operators) != 0)
+        {
+            EML_ERROR(LOG_TAG, "upload worker pool failed to init.");
+            goto fail;
+        }
+        EML_INFO(LOG_TAG, "upload isolation ON: %u workers on '%s' (db slots %u..%u)", upload_workers, upload_spec, operators,
+                 total_slots - 1u);
+    }
+    else
+    {
+        EML_INFO(LOG_TAG, "upload isolation OFF: uploads run in operators (no upload spec configured)");
+    }
+
     /* Successful initialization */
-    EML_INFO(LOG_TAG, "🚀 C Server initialized on http://localhost:%s", port);
+    EML_INFO(LOG_TAG, "🚀 C Server initialized (api='%s')", api_spec);
     return STATUS_SUCCESS;
 
 fail:
@@ -154,9 +185,14 @@ void server_run(void)
     /* run operators threads */
     worker_run();
 
-    /* wait listener thread */
+    /* wait listener thread (it stops accepting new API + upload connections first) */
     pthread_join(server.listener_thread, NULL);
 
+    /* Shutdown order (socket_rearchitecturing.md §7): stop the upload pool BEFORE tearing down operators and DB_app.
+     * upload_workers_shutdown() drains the queue, shuts active upload sockets (waking each worker's poll so its live
+     * ticket aborts and rolls back), and JOINS the workers — so no upload commit can touch a torn LMDB env. Then the
+     * operators, then DB_app/LMDB last. Safe/no-op when the pool was never started. */
+    upload_workers_shutdown();
     worker_destroy();
     db_app_shutdown();
 }

@@ -31,6 +31,7 @@
 #include <db_server/utils/affinity.h>
 #include <db_server/utils/socket_helper.h>
 #include <db_server/core/worker/worker.h>
+#include <db_server/core/worker/upload_worker.h>
 
 /*****************************************************************************************************************************************
  * PRIVATE DEFINES
@@ -53,9 +54,12 @@ typedef struct
 {
     listener_status_t status;                                         /**< Current listener status */
     reactor_t         reactor;                                        /**< Reactor for monitoring accept events */
-    char              spec[108];                                      /**< Listen spec: a TCP port ("3490") OR a unix path ("/run/…") */
-    char              unix_path[108];                                 /**< The bound AF_UNIX path (to unlink on stop), "" if TCP */
+    char              spec[108];                                      /**< API listen spec: a TCP port ("3490") OR a unix path ("/run/…") */
+    char              upload_spec[108];                               /**< Upload listen spec (unix path); "" = uploads handled in operators */
+    char              unix_paths[2][108];                             /**< bound AF_UNIX paths, unlinked on stop() */
+    uint8_t           unix_paths_no;                                  /**< how many entries of unix_paths[] are live */
     int               sockets_fds[SERVER_CORE_MAX_LISTENING_SOCKETS]; /**< Array of listening socket FDs */
+    uint8_t           socket_is_upload[SERVER_CORE_MAX_LISTENING_SOCKETS]; /**< per-fd: 1 = upload listener → the pool; 0 = API → operators */
     uint32_t          active_sockets_no;                              /**< Number of active listening sockets */
     // pipeline_t *pipeline;                                        /**< Pointer to worker pipeline */
 } listener_t;
@@ -77,7 +81,7 @@ static listener_t _listener = {0};
  * @retval STATUS_SUCCESS At least one listening socket was successfully created.
  * @retval STATUS_FAILURE No listening sockets could be initialized.
  */
-static int _init_listening_sockets(const char* port);
+static int _init_listening_sockets(const char* port, uint8_t is_upload);
 
 /**
  * @brief Register all listening sockets with the reactor.
@@ -104,6 +108,19 @@ static int _register_listening_sockets(void);
 static int _handle_listen_event(int fd, fd_ctx_t* ctx);
 
 /**
+ * @brief Handle accept events on the UPLOAD listening socket.
+ *
+ * Accepts the connection and hands it to the dedicated upload worker pool. On pool saturation, answers a minimal
+ * 503 and closes — this is the per-server upload concurrency cap and can never starve the API operators.
+ *
+ * @param[in] fd  File descriptor of the upload listening socket.
+ * @param[in] ctx Context associated with the listening socket.
+ * @retval STATUS_SUCCESS Connection accepted and queued.
+ * @retval STATUS_FAILURE Failed to accept, or the pool rejected the connection.
+ */
+static int _handle_upload_listen_event(int fd, fd_ctx_t* ctx);
+
+/**
  * @brief Stop the listener and close all listening sockets.
  *
  * Closes all active listening socket file descriptors and resets the listener state.
@@ -117,16 +134,19 @@ static void _stop_listener(listener_t* l);
  *****************************************************************************************************************************************
  */
 
-int listener_init(const char* port /*, void *pipeline_ptr*/)
+int listener_init(const char* api_spec, const char* upload_spec)
 {
-    if(!port || port[0] == '\0' /*|| pipeline_ptr == NULL*/)
+    if(!api_spec || api_spec[0] == '\0')
     {
         EML_ERROR(LOG_TAG, "listener_init: invalid input");
         return STATUS_FAILURE;
     }
 
-    // _listener.pipeline = (pipeline_t*)pipeline_ptr;
-    strncpy(_listener.spec, port, sizeof(_listener.spec) - 1);
+    strncpy(_listener.spec, api_spec, sizeof(_listener.spec) - 1);
+    if(upload_spec && upload_spec[0] != '\0')
+    {
+        strncpy(_listener.upload_spec, upload_spec, sizeof(_listener.upload_spec) - 1);
+    }
 
     /* Init listener's reactor */
     if(reactor_init(&_listener.reactor) != STATUS_SUCCESS)
@@ -135,12 +155,26 @@ int listener_init(const char* port /*, void *pipeline_ptr*/)
         return STATUS_FAILURE;
     }
 
-    /* Initialize listener's listening sockets */
-    if(_init_listening_sockets(_listener.spec) != STATUS_SUCCESS)
+    /* Initialize the API listening socket(s) */
+    if(_init_listening_sockets(_listener.spec, 0u) != STATUS_SUCCESS)
     {
-        EML_ERROR(LOG_TAG, "listener_init: socket init failed");
+        EML_ERROR(LOG_TAG, "listener_init: API socket init failed");
         reactor_shutdown(&_listener.reactor);
         return STATUS_FAILURE;
+    }
+
+    /* Initialize the dedicated UPLOAD listening socket, if configured. Uploads
+     * accepted here go to the upload worker pool instead of the API operators,
+     * so a slow upload can never head-of-line-block API traffic. */
+    if(_listener.upload_spec[0] != '\0')
+    {
+        if(_init_listening_sockets(_listener.upload_spec, 1u) != STATUS_SUCCESS)
+        {
+            EML_ERROR(LOG_TAG, "listener_init: upload socket init failed");
+            _stop_listener(&_listener);
+            reactor_shutdown(&_listener.reactor);
+            return STATUS_FAILURE;
+        }
     }
 
     /* register listening sockets to reactor */
@@ -188,7 +222,7 @@ void* listener_run(void* arg)
  * (www-data, a member of the home_server group) can connect, while nothing off-box ever can. A stale socket from a previous run is
  * unlinked first. The accepted fds flow through the exact same byte pipeline as TCP — accept() never reads the peer address.
  */
-static int _init_unix_socket(const char* path)
+static int _init_unix_socket(const char* path, uint8_t is_upload)
 {
     int fd = socket(AF_UNIX, SOCK_STREAM, 0);
     if(fd == -1)
@@ -238,13 +272,18 @@ static int _init_unix_socket(const char* path)
         return STATUS_FAILURE;
     }
 
-    _listener.sockets_fds[_listener.active_sockets_no++] = fd;
-    strncpy(_listener.unix_path, path, sizeof(_listener.unix_path) - 1);
-    EML_INFO(LOG_TAG, "listener: bound AF_UNIX %s (0660, no TCP port)", path);
+    _listener.socket_is_upload[_listener.active_sockets_no] = is_upload;
+    _listener.sockets_fds[_listener.active_sockets_no++]    = fd;
+    if(_listener.unix_paths_no < (uint8_t)(sizeof(_listener.unix_paths) / sizeof(_listener.unix_paths[0])))
+    {
+        strncpy(_listener.unix_paths[_listener.unix_paths_no], path, sizeof(_listener.unix_paths[0]) - 1);
+        _listener.unix_paths_no++;
+    }
+    EML_INFO(LOG_TAG, "listener: bound AF_UNIX %s (0660, no TCP port) — %s", path, is_upload ? "UPLOAD pool" : "API operators");
     return STATUS_SUCCESS;
 }
 
-static int _init_listening_sockets(const char* port)
+static int _init_listening_sockets(const char* port, uint8_t is_upload)
 {
     struct addrinfo  hints;
     struct addrinfo* ai = NULL;
@@ -253,7 +292,7 @@ static int _init_listening_sockets(const char* port)
      * anything else is a TCP port (dev, tests, direct-LAN trials). */
     if(port[0] == '/')
     {
-        return _init_unix_socket(port);
+        return _init_unix_socket(port, is_upload);
     }
 
     if(socket_listener_set_hints(&hints) != STATUS_SUCCESS)
@@ -322,7 +361,8 @@ static int _init_listening_sockets(const char* port)
             continue;
         }
 
-        _listener.sockets_fds[_listener.active_sockets_no++] = fd;
+        _listener.socket_is_upload[_listener.active_sockets_no] = is_upload;
+        _listener.sockets_fds[_listener.active_sockets_no++]    = fd;
 
 #ifdef DEBUG
         char        ip_str[INET6_ADDRSTRLEN];
@@ -369,7 +409,7 @@ static int _register_listening_sockets(void)
         }
         ctx->fd      = fd;
         ctx->owner   = &_listener;
-        ctx->handler = _handle_listen_event;
+        ctx->handler = _listener.socket_is_upload[i] ? _handle_upload_listen_event : _handle_listen_event;
 
         if(reactor_add_in(&_listener.reactor, fd, ctx) != STATUS_SUCCESS)
         {
@@ -416,6 +456,41 @@ fail:
     return STATUS_FAILURE;
 }
 
+/* Prebuilt saturation response — sent in one non-blocking write so the listener never waits on a rejected peer. */
+static const char _UPLOAD_BUSY_503[] = "HTTP/1.1 503 Service Unavailable\r\n"
+                                       "Content-Type: application/json\r\n"
+                                       "Content-Length: 23\r\n"
+                                       "Retry-After: 10\r\n"
+                                       "Connection: close\r\n"
+                                       "\r\n"
+                                       "{\"error\":\"upload_busy\"}";
+
+static int _handle_upload_listen_event(int fd, fd_ctx_t* ctx)
+{
+    (void)ctx;
+
+    int client_fd = accept4(fd, NULL, NULL, SOCK_NONBLOCK | SOCK_CLOEXEC);
+    if(client_fd < 0)
+    {
+        if(errno == EAGAIN || errno == EWOULDBLOCK)
+        {
+            return STATUS_SUCCESS; /* spurious wakeup / already drained */
+        }
+        EML_PERR(LOG_TAG, "upload accept failed");
+        return STATUS_FAILURE;
+    }
+
+    if(upload_worker_dispatch(client_fd) == 0)
+    {
+        return STATUS_SUCCESS; /* queued; the pool owns the fd now */
+    }
+
+    /* Pool saturated: answer 503 without ever blocking the listener, then close. */
+    (void)send(client_fd, _UPLOAD_BUSY_503, sizeof _UPLOAD_BUSY_503 - 1u, MSG_NOSIGNAL | MSG_DONTWAIT);
+    socket_shutdown_and_close(client_fd);
+    return STATUS_SUCCESS;
+}
+
 static void _stop_listener(listener_t* l)
 {
     if(!l) return;
@@ -430,11 +505,15 @@ static void _stop_listener(listener_t* l)
     }
     l->active_sockets_no = 0;
 
-    /* Remove the AF_UNIX socket file so a restart binds cleanly (bind also
-     * unlinks a stale one, but leaving it around is untidy). */
-    if(l->unix_path[0] != '\0')
+    /* Remove any AF_UNIX socket files so a restart binds cleanly (bind also
+     * unlinks a stale one, but leaving them around is untidy). */
+    for(uint8_t i = 0; i < l->unix_paths_no; ++i)
     {
-        (void)unlink(l->unix_path);
-        l->unix_path[0] = '\0';
+        if(l->unix_paths[i][0] != '\0')
+        {
+            (void)unlink(l->unix_paths[i]);
+            l->unix_paths[i][0] = '\0';
+        }
     }
+    l->unix_paths_no = 0;
 }

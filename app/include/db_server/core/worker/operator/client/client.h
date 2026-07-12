@@ -44,4 +44,26 @@ int client_handle(client_t* cli, uint8_t thread_id);
  */
 void client_shutdown(client_t* cli);
 
+/**
+ * @brief Adopt an accepted fd onto @p cli for one connection (used by the upload worker pool).
+ *
+ * Centralises the fd/parser lifecycle in one place: clears the receive buffer, resets the request snapshot and the
+ * per-message counters, resets the (reused) parser, and takes ownership of @p fd. The caller must have set
+ * @c cli->http_parser to a live parser with its stream gate installed. After this returns the fd is @c cli->ctx.fd
+ * and @c cli->is_busy is 1; drive it with @ref client_handle() then release with @ref client_release_fd().
+ *
+ * @param[in,out] cli Client to adopt onto (must carry a live @c http_parser).
+ * @param[in]     fd  Accepted, non-blocking socket fd (ownership transfers to @p cli).
+ */
+void client_adopt_fd(client_t* cli, int fd);
+
+/**
+ * @brief Release the fd adopted by @ref client_adopt_fd(): shutdown+close it, clear the parser, drop busy state.
+ *
+ * Idempotent. Does NOT free @c cli->http_parser (the pool reuses it across connections); it only clears its state.
+ *
+ * @param[in,out] cli Client previously adopted onto.
+ */
+void client_release_fd(client_t* cli);
+
 #endif /* SERVER_WORKER_CLIENT_H */

@@ -165,6 +165,56 @@ fail:
     return STATUS_FAILURE;
 }
 
+void client_adopt_fd(client_t* cli, int fd)
+{
+    if(!cli)
+    {
+        return;
+    }
+
+    /* One place for all per-connection reset: buffer, request snapshot, counters, parser, fd ownership. */
+    _client_reset_message(cli, 1);
+    if(cli->http_parser)
+    {
+        db_http_parser_clear(cli->http_parser);
+    }
+
+    cli->buf_idx           = 0u;
+    cli->connection_policy = 0u;
+    cli->request_count     = 0u;
+    cli->is_busy           = 1u;
+    cli->ctx.fd            = fd;
+    cli->ctx.owner         = NULL;
+    cli->ctx.handler       = NULL;
+    cli->last_activity     = (uint64_t)time_helper_get_now();
+}
+
+void client_release_fd(client_t* cli)
+{
+    if(!cli)
+    {
+        return;
+    }
+
+    if(cli->ctx.fd >= 0)
+    {
+        socket_shutdown_and_close(cli->ctx.fd);
+    }
+    if(cli->http_parser)
+    {
+        db_http_parser_clear(cli->http_parser);
+    }
+    _client_reset_message(cli, 1);
+
+    cli->ctx.fd            = -1;
+    cli->ctx.owner         = NULL;
+    cli->ctx.handler       = NULL;
+    cli->is_busy           = 0u;
+    cli->connection_policy = 0u;
+    cli->last_activity     = 0u;
+    cli->request_count     = 0u;
+}
+
 void client_shutdown(client_t* cli)
 {
     if(!cli)

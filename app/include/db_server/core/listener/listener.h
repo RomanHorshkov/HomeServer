@@ -34,10 +34,13 @@
  * On success, the listener is ready to be run in its own thread via @ref listener_run(). On failure, all resources are cleaned up and it is
  * safe for the caller to terminate.
  *
- * @param port           Port number as a string (e.g. "8080").
+ * @param api_spec     API listen spec: a TCP port ("3490") OR a unix path ("/run/home_server/api.sock").
+ *                     Accepted connections go to the API operators.
+ * @param upload_spec  Upload listen spec (a unix path or a TCP port), or NULL/"" to keep uploads on the
+ *                     operator path (no dedicated upload socket). Accepted connections go to the upload pool.
  * @retval STATUS_SUCCESS on success; STATUS_FAILURE on failure.
  */
-int listener_init(const char* port /*, void *pipeline_ptr*/);
+int listener_init(const char* api_spec, const char* upload_spec);
 
 /**
  * @brief Main listener thread function: accepts new connections and forwards them.
