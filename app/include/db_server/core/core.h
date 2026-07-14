@@ -6,7 +6,7 @@
  *
  * The core manages the listener, worker, and control threads, as well as the pipe used for inter-thread communication.
  *
- * @author  Roman Horshkov <roman.horshkov@gmail.com>
+ * @author  Roman Horshkov <124358264+RomanHorshkov@users.noreply.github.com>
  * @date    2025-05-11
  */
 

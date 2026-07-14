@@ -5,7 +5,7 @@
  * This module manages the server's listening sockets across multiple address families (IPv4/IPv6). It uses a reactor pattern to monitor
  * accept events and forwards new client connections to the worker pipeline for processing.
  *
- * @author  Roman Horshkov <roman.horshkov@gmail.com>
+ * @author  Roman Horshkov <124358264+RomanHorshkov@users.noreply.github.com>
  * @date    2025
  */
 

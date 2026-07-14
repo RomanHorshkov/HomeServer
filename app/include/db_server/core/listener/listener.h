@@ -8,7 +8,7 @@
  *
  * The listener supports dual-stack IPv4/IPv6 operation, robust socket options, and clean shutdown via atomic status flags.
  *
- * @author  Roman Horshkov <roman.horshkov@gmail.com>
+ * @author  Roman Horshkov <124358264+RomanHorshkov@users.noreply.github.com>
  * @date    2025-05-11
  */
 

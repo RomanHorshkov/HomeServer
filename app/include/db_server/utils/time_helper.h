@@ -4,7 +4,7 @@
  *
  * This header exposes timerfd creation, timer arming, and current-time helpers used by worker/operator event loops.
  *
- * @author  Roman Horshkov <roman.horshkov@gmail.com>
+ * @author  Roman Horshkov <124358264+RomanHorshkov@users.noreply.github.com>
  * @date    2025-05-11
  */
 

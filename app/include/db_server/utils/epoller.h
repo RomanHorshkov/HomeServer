@@ -4,7 +4,7 @@
  *
  * This header exposes small wrappers around epoll_create1(), epoll_wait(), and epoll_ctl() with DB_server errno-style return handling.
  *
- * @author  Roman Horshkov <roman.horshkov@gmail.com>
+ * @author  Roman Horshkov <124358264+RomanHorshkov@users.noreply.github.com>
  * @date    2025-05-11
  */
 

@@ -13,7 +13,7 @@
  *   STATUS_SUCCESS  (0)
  *   STATUS_FAILURE  (1)
  *
- * @author  Roman Horshkov <roman.horshkov@gmail.com>
+ * @author  Roman Horshkov <124358264+RomanHorshkov@users.noreply.github.com>
  * @date    2025‑05‑11
  * (c) 2025
  */
