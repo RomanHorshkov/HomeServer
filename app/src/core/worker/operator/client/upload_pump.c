@@ -29,6 +29,7 @@
 #include <db_app/files/files.h>
 #include <db_app/platform/platform.h>
 
+#include <db_server/core/worker/operator/client/folder_zip_pump.h>
 #include <db_server/core/worker/operator/client/response_writer.h>
 #include <db_server/core/worker/operator/client/upload_pump.h>
 #include <db_server/utils/time_helper.h>
@@ -143,6 +144,13 @@ int upload_stream_gate(uint8_t method, sv_t path, uint64_t content_length, void*
     if(method == (uint8_t)HTTP_METHOD_PUT && _is_data_path(path))
     {
         return (content_length > 0u && content_length <= UPLOAD_DATA_CHUNK_MAX) ? 1 : 0;
+    }
+
+    /* Folder ZIP: GET /api/app/files/folders/zip/<token> (no body — the whole RESPONSE is streamed on the upload pool,
+     * so a minutes-long archive never blocks an API operator). Token-authorized inside the pump. */
+    if(method == (uint8_t)HTTP_METHOD_GET && folder_zip_is_zip_path(path))
+    {
+        return 1;
     }
 
     return 0;
@@ -314,6 +322,12 @@ int client_upload_pump(client_t* cli, uint8_t thread_id, const DB_http_request_t
     if(req.method == (uint8_t)HTTP_METHOD_PUT)
     {
         return _client_upload_data_pump(cli, &req);
+    }
+
+    /* Folder ZIP download is a GET (gated to …/files/folders/zip/<token>): stream the archive out. */
+    if(req.method == (uint8_t)HTTP_METHOD_GET && folder_zip_is_zip_path(req.path))
+    {
+        return client_folder_zip_pump(cli, &req);
     }
 
     /* 2. Authorize + open the spool ticket (full guard, replay spend, role, quota — DB_app decides everything). */
