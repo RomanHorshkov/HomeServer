@@ -17,6 +17,7 @@
  *****************************************************************************************************************************************
  */
 #include <errno.h>
+#include <poll.h>
 #include <pthread.h>
 #include <stdio.h>
 #include <string.h>
@@ -83,7 +84,8 @@ static void _le32(uint8_t* p, uint32_t v)
     p[3] = (uint8_t)((v >> 24) & 0xFFu);
 }
 
-/** @brief Write the whole buffer or fail. Returns 0 on success, -1 on a short/failed write (peer gone). */
+/** @brief Write the whole buffer or fail. The socket is non-blocking, so poll for writability on EAGAIN
+ *         (never busy-spin a core on a slow client). Returns 0 on success, -1 on a failed write / stall. */
 static int _write_all(int fd, const void* buf, size_t len)
 {
     const uint8_t* p    = buf;
@@ -96,8 +98,17 @@ static int _write_all(int fd, const void* buf, size_t len)
             sent += (size_t)n;
             continue;
         }
-        if(n < 0 && (errno == EINTR || errno == EAGAIN))
+        if(n < 0 && errno == EINTR)
         {
+            continue;
+        }
+        if(n < 0 && (errno == EAGAIN || errno == EWOULDBLOCK))
+        {
+            struct pollfd pfd = {.fd = fd, .events = POLLOUT};
+            if(poll(&pfd, 1, 30000) <= 0)
+            {
+                return -1; /* 30 s to drain, else the peer is gone/stuck */
+            }
             continue;
         }
         return -1;
