@@ -1,7 +1,6 @@
 # Concurrent TCP + HTTP/1.1 Server (C11 / POSIX, Multithreaded)
 
-A compact yet fully‑featured teaching project that demonstrates how to write a **modular, multithreaded TCP + HTTP/1.1 server** in pure C11/POSIX.
-It now serves **dynamic JSON APIs**, **rich client‑side pages**, a **build-notes viewer**, and a **directory‑driven file browser**, with:
+A compact yet fully‑featured teaching project that demonstrates how to write a **modular, multithreaded TCP + HTTP/1.1 server** in pure C11/POSIX. It now serves **dynamic JSON APIs**, **rich client‑side pages**, a **build-notes viewer**, and a **directory‑driven file browser**, with:
 
 | Capability | Implementation notes |
 |------------|----------------------|
@@ -16,7 +15,7 @@ It now serves **dynamic JSON APIs**, **rich client‑side pages**, a **build-not
 | **Robust request sanitation** | Path traversal defence, header/value length limits, body RAM‑cap, optional chroot/uid‑drop. |
 | **One‑shot GNU Make** | `make debug` / `make release` → static binary in `build/bin/server` (`-Wall -Wextra -Werror -pedantic`). |
 
-[llhttp]: https://github.com/nodejs/llhttp  
+[llhttp]: https://github.com/nodejs/llhttp
 [cJSON]:  https://github.com/DaveGamble/cJSON
 
 ---
@@ -47,55 +46,21 @@ make run            # dev: ./server 3490  (a TCP port or a unix path)
 
 ### Transport (production vs. dev)
 
-In production the backend has **no TCP port**. systemd **socket activation**
-(`api.socket` / `upload.socket`) creates the AF_UNIX listeners
-`/run/home_server/{api,upload}.sock` and hands the already-listening fds to the
-process via `LISTEN_FDS` / `LISTEN_FDNAMES`; the backend adopts them (see
-`core/listener/sd_activation.c`) and never binds, chmods, or unlinks a socket —
-systemd owns their lifecycle. nginx is the only thing that connects.
+In production the backend has **no TCP port**. systemd **socket activation** (`api.socket` / `upload.socket`) creates the AF_UNIX listeners `/run/home_server/{api,upload}.sock` and hands the already-listening fds to the process via `LISTEN_FDS` / `LISTEN_FDNAMES`; the backend adopts them (see `core/listener/sd_activation.c`) and never binds, chmods, or unlinks a socket — systemd owns their lifecycle. nginx is the only thing that connects.
 
-For **local development** the process still binds its own listeners when there
-is no activation environment: `./server <api_spec> [upload_spec]`, where a spec
-is a TCP port (`3490`) or a unix path. `upload_spec` also comes from
-`DB_SERVER_UPLOAD`; when absent, uploads run on the operator path.
+For **local development** the process still binds its own listeners when there is no activation environment: `./server <api_spec> [upload_spec]`, where a spec is a TCP port (`3490`) or a unix path. `upload_spec` also comes from `DB_SERVER_UPLOAD`; when absent, uploads run on the operator path.
 
 ### Upload isolation (why there are two listeners)
 
-`fleet test` proved an **availability** bug: with `proxy_request_buffering off`
-(needed so the backend can authorize an upload on its headers, before the body),
-a steadily-trickling upload used to hold the API operator's `poll()` for the
-whole transfer and head-of-line-block every other request on it — `/ping`, `/me`,
-listings. The fix isolates uploads onto their own path:
+`fleet test` proved an **availability** bug: with `proxy_request_buffering off` (needed so the backend can authorize an upload on its headers, before the body), a steadily-trickling upload used to hold the API operator's `poll()` for the whole transfer and head-of-line-block every other request on it — `/ping`, `/me`, listings. The fix isolates uploads onto their own path:
 
-- **Two listeners, two upstreams.** `GET /api/app/files` (list) → API operators
-  (`api.sock`). `POST /api/app/uploads` (streaming upload) → the **upload worker
-  pool** (`upload.sock`). Routing is on the URI, method-independent; uploads never
-  enter an API operator's epoll, so a slow upload cannot stall API traffic.
-- **One-shot upload connections.** The upload endpoint responds on every path and
-  closes — no keep-alive to reuse, so nginx gives the upload upstream no keepalive
-  pool. Each upload worker runs one upload to completion (authorize headers →
-  spool ticket → pump → hash → commit → `201` → close). Blocking an *upload
-  worker* is its job; API operators are separate threads.
-- **Bounded, graceful shedding.** The pool is a fixed thread count +
-  `UPLOAD_QUEUE_MAX` queue. Past that, the listener answers a prebuilt
-  `503 upload_busy` without ever blocking. The listen backlog
-  (`SERVER_CORE_MAX_PENDING_SOCKETS_PER_LISTENER`) is sized **above** the pool so
-  a burst queues in the kernel and is shed as `upload_busy`, not refused.
-- **DB slots.** Each upload worker owns a DB_app txn slot **above** the operators'
-  `[0, ops)` range; `total = operators + upload_workers`.
-- **Shutdown order** (critical — DB_app/LMDB must outlive every upload worker):
-  stop accepting → close the queue → `shutdown()` active upload sockets (each
-  live ticket aborts, unlinks its `.part`, rolls back) → join upload workers →
-  join API operators → close DB_app/LMDB → destroy queues/listeners. See
-  `core/core.c`'s `server_run`.
+- **Two listeners, two upstreams.** `GET /api/app/files` (list) → API operators (`api.sock`). `POST /api/app/uploads` (streaming upload) → the **upload worker pool** (`upload.sock`). Routing is on the URI, method-independent; uploads never enter an API operator's epoll, so a slow upload cannot stall API traffic.
+- **One-shot upload connections.** The upload endpoint responds on every path and closes — no keep-alive to reuse, so nginx gives the upload upstream no keepalive pool. Each upload worker runs one upload to completion (authorize headers → spool ticket → pump → hash → commit → `201` → close). Blocking an *upload worker* is its job; API operators are separate threads.
+- **Bounded, graceful shedding.** The pool is a fixed thread count + `UPLOAD_QUEUE_MAX` queue. Past that, the listener answers a prebuilt `503 upload_busy` without ever blocking. The listen backlog (`SERVER_CORE_MAX_PENDING_SOCKETS_PER_LISTENER`) is sized **above** the pool so a burst queues in the kernel and is shed as `upload_busy`, not refused.
+- **DB slots.** Each upload worker owns a DB_app txn slot **above** the operators' `[0, ops)` range; `total = operators + upload_workers`.
+- **Shutdown order** (critical — DB_app/LMDB must outlive every upload worker): stop accepting → close the queue → `shutdown()` active upload sockets (each live ticket aborts, unlinks its `.part`, rolls back) → join upload workers → join API operators → close DB_app/LMDB → destroy queues/listeners. See `core/core.c`'s `server_run`.
 
-**AF_UNIX guardrails** (each was a live-test failure — see the platform memory and
-the `install/` AppArmor profile): TCP-only socket options (`TCP_NODELAY`, the RST
-`SO_LINGER` reset, `shutdown(SHUT_RDWR)`) are family-gated to `AF_INET*`; a
-pathname unix socket passed by systemd is mediated by AppArmor as **file** access
-(needs `attach_disconnected` + `rw` on the socket paths); an early upload reject
-must **drain** the in-flight body so nginx relays the real status. This isolation
-work + the AF_UNIX transport were validated end-to-end by `fleet test` (PROOFS).
+**AF_UNIX guardrails** (each was a live-test failure — see the platform memory and the `install/` AppArmor profile): TCP-only socket options (`TCP_NODELAY`, the RST `SO_LINGER` reset, `shutdown(SHUT_RDWR)`) are family-gated to `AF_INET*`; a pathname unix socket passed by systemd is mediated by AppArmor as **file** access (needs `attach_disconnected` + `rw` on the socket paths); an early upload reject must **drain** the in-flight body so nginx relays the real status. This isolation work + the AF_UNIX transport were validated end-to-end by `fleet test` (PROOFS).
 
 ---
 
@@ -166,7 +131,7 @@ sequenceDiagram
    * Listener reads the pipe, sees the `FULL` flag, and **removes** all listen FDs from epoll (`pause_listening`).
    * As soon as the worker drops below the threshold, it writes `WORKER_STATUS_ACTIVE`, and the listener **re‑adds** the listen FDs (`resume_listening`).
 
-   This feedback loop prevents the accept queue from over‑filling and keeps latency stable under load.
+This feedback loop prevents the accept queue from over‑filling and keeps latency stable under load.
 
 3. **Keep‑alive / idle timeout**
 
@@ -213,11 +178,8 @@ This design enables a tiny, epoll-only micro‑HTTP server to comfortably scale 
 
 ## HTTP capabilities
 
-* **HTTP/1.1 parsing** via **llhttp** in `app/src/browser/http_manager.c`.
-  Callbacks (`on_url`, `on_method`, `on_header_field`, `on_header_value`) build an `Http_request_t` struct.
-  `determine_connection_policy()` honours `Connection: close`.
-* **Request orchestration** in `app/src/browser/browser.c` → `browser_manage_client_req()`.
-  Parses → routes → `send_response()` (headers + binary‑safe body).
+* **HTTP/1.1 parsing** via **llhttp** in `app/src/browser/http_manager.c`. Callbacks (`on_url`, `on_method`, `on_header_field`, `on_header_value`) build an `Http_request_t` struct. `determine_connection_policy()` honours `Connection: close`.
+* **Request orchestration** in `app/src/browser/browser.c` → `browser_manage_client_req()`. Parses → routes → `send_response()` (headers + binary‑safe body).
 * **Static file serving** in `app/src/browser/handlers/handler_static.c` – binary‑safe buffer returned to caller (**must free**).
 
 ---
@@ -283,7 +245,7 @@ Running `git commit` guarantees:
 
 ## Security Concerns
 
-Below is a deep‑dive catalogue of security issues identified in the current multithreaded, event-driven server implementation.  
+Below is a deep‑dive catalogue of security issues identified in the current multithreaded, event-driven server implementation.
 For each item you will find **the underlying cause**, **the practical impact/attack scenario**, and **actionable mitigations**.
 
 ---
@@ -644,7 +606,7 @@ sequenceDiagram
 
   alt Worker is ACTIVE
     Listener->> Listener: accept():client_fd
-    Listener->>Socket_helper: socket_client_init(client_fd) 
+    Listener->>Socket_helper: socket_client_init(client_fd)
 
     Listener->>Pipeline: pipeline_push(client_fd)
     Pipeline->>Pipeline: spsc_ring_push(client_fd)
@@ -728,11 +690,7 @@ stateDiagram-v2
 
 ## Build profiles & hardening
 
-Builds go through `utils/build_bin.sh [profile ...]` (this repo ships one
-executable, `db_server` — no libraries), driven by the shared catalog
-`utils/gcc_build_profiles.sh` (synced verbatim from `Utils/compilation/`, never
-edited locally). Artifacts land in `build/<profile>/`;
-`utils/check_hardening.sh` gates every release artifact.
+Builds go through `utils/build_bin.sh [profile ...]` (this repo ships one executable, `db_server` — no libraries), driven by the shared catalog `utils/gcc_build_profiles.sh` (synced verbatim from `Utils/compilation/`, never edited locally). Artifacts land in `build/<profile>/`; `utils/check_hardening.sh` gates every release artifact.
 
 | Profile  | Optimization             | Warnings                 | Instrumentation | Hardened                                | Use it for                  |
 |----------|--------------------------|--------------------------|-----------------|-----------------------------------------|-----------------------------|
@@ -743,8 +701,7 @@ edited locally). Artifacts land in `build/<profile>/`;
 | native   | `-O3 -flto -march=native`| strict                   | —               | yes                                     | benchmarks on the deploy box|
 | extreme  | `-O3 -flto -march=native`| core                     | —               | deliberately none                       | max-perf experiments only   |
 
-Release hardening by stage (executable only — the `.so`-specific rows do not
-apply here):
+Release hardening by stage (executable only — the `.so`-specific rows do not apply here):
 
 | Flag                       | Stage      | Purpose                                                       |
 |----------------------------|------------|---------------------------------------------------------------|

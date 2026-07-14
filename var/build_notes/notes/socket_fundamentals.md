@@ -43,8 +43,7 @@ The kernel owns sequence numbers, retransmissions, congestion control; you own w
 
 ### 3.1  Generic buckets
 
-`struct sockaddr` is the *common header* (2 bytes `sa_family`, 14 bytes data).  Too small for IPv6.
-`struct sockaddr_storage` is **big enough for any family** and properly aligned – always safe as a stack variable.
+`struct sockaddr` is the *common header* (2 bytes `sa_family`, 14 bytes data).  Too small for IPv6. `struct sockaddr_storage` is **big enough for any family** and properly aligned – always safe as a stack variable.
 
 ### 3.2  The cast rule
 

@@ -6,11 +6,7 @@
 
 ## 1  Why it exists
 
-`getaddrinfo()` unifies the old IPv4‑only `gethostbyname()` and
-`getservbyname()` into **one re‑entrant, protocol‑agnostic API**.
-It handles IPv4 *and* IPv6, honours `/etc/hosts`, the resolver, and
-`/etc/services`, and hides nasty alignment issues of raw `sockaddr`
-structures.
+`getaddrinfo()` unifies the old IPv4‑only `gethostbyname()` and `getservbyname()` into **one re‑entrant, protocol‑agnostic API**. It handles IPv4 *and* IPv6, honours `/etc/hosts`, the resolver, and `/etc/services`, and hides nasty alignment issues of raw `sockaddr` structures.
 
 ---
 
@@ -23,8 +19,7 @@ int getaddrinfo(const char          *node,      /* host or NULL      */
                 struct addrinfo     **res);     /* out: linked list  */
 ```
 
-`freeaddrinfo(res)` must be called when done.  On failure the routine
-returns a non‑zero **gai‑error code**; *never* use `errno`.
+`freeaddrinfo(res)` must be called when done.  On failure the routine returns a non‑zero **gai‑error code**; *never* use `errno`.
 
 ---
 
@@ -160,8 +155,6 @@ int rc = getaddrinfo("example.com", "https", &hints, &res);
 |    |                                  |                       | linked list. Caller must  |
 |    |                                  |                       | `freeaddrinfo()`.         |
 
-> ✔ **Entirely user‑space.**  No kernel interaction until you later call
-> `socket()`, `bind()`, or `connect()`.  The only possible I/O is DNS
-> traffic or a handful of tiny config‑file reads.
+> ✔ **Entirely user‑space.**  No kernel interaction until you later call `socket()`, `bind()`, or `connect()`.  The only possible I/O is DNS traffic or a handful of tiny config‑file reads.
 
 *Last update: 2025‑05‑10*
