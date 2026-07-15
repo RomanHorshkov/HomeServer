@@ -40,8 +40,6 @@
 
 #define LOG_TAG                 "srv_wrkr_operator"
 
-#define OPERATOR_RING_CAPACITY  8U
-
 #define REACTOR_DEL_MAX_RETRIES 3
 
 /*****************************************************************************************************************************************
@@ -122,7 +120,7 @@ static void _operator_set_timer(operator_t* op, uint32_t freq);
  *****************************************************************************************************************************************
  */
 
-int operator_init(operator_t* op, uint8_t id)
+int operator_init(operator_t* op, uint8_t id, uint32_t ring_capacity)
 {
     if(op == NULL)
     {
@@ -138,11 +136,12 @@ int operator_init(operator_t* op, uint8_t id)
     op->timer_fd      = -1;
     /* Initialize timer frequency */
     op->timer_period  = OPERATOR_TIMER_PERIOD_LONG;
-    /* Initialize active clients count */
+    /* Initialize active/queued clients counts */
     atomic_store(&op->active_clients, 0);
+    atomic_store(&op->queued_clients, 0);
 
     /* Initialize spsc ring */
-    op->ring = spsc_ring_init(OPERATOR_RING_CAPACITY);
+    op->ring = spsc_ring_init(ring_capacity);
     if(!op->ring)
     {
         EML_ERROR(LOG_TAG, "init: ring alloc failed");
@@ -308,8 +307,9 @@ void operator_shutdown(operator_t* op)
     /* Clean reactor */
     reactor_shutdown(&op->reactor);
 
-    /* Reset active clients count */
+    /* Reset active/queued clients counts */
     atomic_store(&op->active_clients, 0);
+    atomic_store(&op->queued_clients, 0);
 
     EML_INFO(LOG_TAG, "[op %d] shutdown complete", shutdown_id);
 }
@@ -332,6 +332,10 @@ static int _operator_handle_wakeup_event(int fd, fd_ctx_t* ctx)
     int client_fd = -1;
     while(spsc_ring_pop(op->ring, &client_fd) == 0)
     {
+        /* Dequeued: no longer "waiting in the ring" for dispatch-load purposes, regardless of
+         * whether _operator_add_client below succeeds — either way it's no longer queued. */
+        atomic_fetch_sub_explicit(&op->queued_clients, 1U, memory_order_relaxed);
+
         if(op->status != OPERATOR_STATUS_ACTIVE)
         {
             EML_ERROR(LOG_TAG, "[op %d] wakeup: operator not active", op->id);

@@ -101,6 +101,7 @@ LDLIBS=(
     -ldb_jose
     -lDB_http
     -lspscring
+    -lmpscring
     -lemlog
     -ldb_lmdb
     -luuid7

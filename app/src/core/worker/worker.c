@@ -16,6 +16,7 @@
 #include <db_server/core/worker/worker.h>
 
 #include <errno.h>
+#include <limits.h>
 #include <pthread.h>
 #include <stdlib.h>
 #include <string.h>
@@ -121,6 +122,14 @@ worker_t _worker = {0};
 static uint8_t _compute_operator_count(uint8_t cpu_count);
 
 /**
+ * @brief Resolve each operator's SPSC ring (mailbox) capacity, once, at worker init.
+ *
+ * @return A validated power-of-two capacity: DB_SERVER_RING_CAPACITY if set and valid
+ *         (power of two, 8..1024), otherwise a built-in default.
+ */
+static uint32_t _compute_ring_capacity(void);
+
+/**
  * @brief Select the least-loaded operator using relaxed atomics.
  *
  * Implements a fast path for lightly loaded operators below the blind assignment limit.
@@ -148,6 +157,9 @@ int worker_init(uint8_t cpu_count)
         return STATUS_FAILURE;
     }
 
+    /* Resolved once, here, and passed to every operator — not re-read per operator. */
+    const uint32_t ring_capacity = _compute_ring_capacity();
+
     /* Allocate an operator for each cpu available for operators */
     _worker.operators = calloc(_worker.operators_count, sizeof(operator_t));
     if(!_worker.operators)
@@ -167,7 +179,7 @@ int worker_init(uint8_t cpu_count)
     /* Initialize each operator */
     for(uint8_t op_idx = 0; op_idx < _worker.operators_count; ++op_idx)
     {
-        if(operator_init(&_worker.operators[op_idx], op_idx) != STATUS_SUCCESS)
+        if(operator_init(&_worker.operators[op_idx], op_idx, ring_capacity) != STATUS_SUCCESS)
         {
             EML_ERROR(LOG_TAG, "init: operator %u init failed", (unsigned)op_idx);
             goto fail;
@@ -229,6 +241,11 @@ int worker_dispatch_to_operator(int client_fd)
         EML_ERROR(LOG_TAG, "_to_operator: failed pushing to operator's ring");
         return STATUS_FAILURE;
     }
+
+    /* Queued for dispatch-load purposes until this operator's own thread dequeues it (see
+     * operator.c's wakeup handler) — this is the other half of effective_load in
+     * _least_loaded_operator, so a ring that's full is never invisible to the balancer. */
+    atomic_fetch_add_explicit(&op->queued_clients, 1U, memory_order_relaxed);
 
     /* Signal to operator a new client's fd presence on the ring */
     uint64_t wakeup_var = 1U;
@@ -316,19 +333,27 @@ void worker_destroy(void)
 static operator_t* _least_loaded_operator(void)
 {
     uint8_t      best_idx  = 0;
-    unsigned int best_load = WORKER_MAX_CLIENTS; /* start with max possible load */
+    unsigned int best_load = UINT_MAX; /* "no candidate yet" — effective_load can exceed WORKER_MAX_CLIENTS
+                                         * (active + queued), so WORKER_MAX_CLIENTS itself is no longer a
+                                         * valid "nothing found" sentinel; see the two comparisons below. */
     for(uint8_t i = 0; i < _worker.operators_count; ++i)
     {
         /* Skip full operators */
         if(_worker.operators[i].status == OPERATOR_STATUS_FULL) continue;
 
-        unsigned int load = atomic_load_explicit(&_worker.operators[i].active_clients, memory_order_relaxed);
+        /* effective_load = currently-handled + queued-but-not-yet-dequeued. active_clients
+         * alone can read 0 while this operator's ring is already full — invisible saturation
+         * that let the dispatcher keep routing new connections into an operator that was
+         * about to reject them (docs/DB_APP_MAINTENANCE.md's dispatch-accounting review). */
+        unsigned int active = atomic_load_explicit(&_worker.operators[i].active_clients, memory_order_relaxed);
+        unsigned int queued = atomic_load_explicit(&_worker.operators[i].queued_clients, memory_order_relaxed);
+        unsigned int load   = active + queued;
 
         /* when load is below the blind assignment limit just give it to the operator */
         if(load < BLIND_ASSIGNMENT_LIMIT_PERCENTAGE)
         {
 #ifdef DEBUG
-            EML_DBG(LOG_TAG, "selecting operator %u with load=%u (blind)", (unsigned)i, load);
+            EML_DBG(LOG_TAG, "selecting operator %u with load=%u (active=%u queued=%u, blind)", (unsigned)i, load, active, queued);
 #endif
             return &_worker.operators[i];
         }
@@ -337,7 +362,7 @@ static operator_t* _least_loaded_operator(void)
         if(load < best_load)
         {
 #ifdef DEBUG
-            EML_DBG(LOG_TAG, "operator %u has new best load=%u", (unsigned)i, load);
+            EML_DBG(LOG_TAG, "operator %u has new best load=%u (active=%u queued=%u)", (unsigned)i, load, active, queued);
 #endif
             best_load = load;
             best_idx  = i;
@@ -345,14 +370,14 @@ static operator_t* _least_loaded_operator(void)
         /* skip overloaded operators, there are better around */
 
         /* Here can see if all the operators are FULL */
-        if(i == _worker.operators_count - 1 && best_load == WORKER_MAX_CLIENTS)
+        if(i == _worker.operators_count - 1 && best_load == UINT_MAX)
         {
             /* All operators are full, set worker status to full! */
             _worker.status = WORKER_STATUS_FULL;
         }
     }
 
-    if(best_load == WORKER_MAX_CLIENTS)
+    if(best_load == UINT_MAX)
     {
         EML_ERROR(LOG_TAG, "all operators are at full capacity");
         return NULL;
@@ -418,4 +443,34 @@ static uint8_t _compute_operator_count(uint8_t cpu_count)
     EML_INFO(LOG_TAG, "Dispatcher sizing: cpu_count=%u, operators=%u (+1 listener core = all %u cores in use)", (unsigned)cpu_count,
              (unsigned)available_cpus, (unsigned)cpu_count);
     return available_cpus;
+}
+
+static uint32_t _compute_ring_capacity(void)
+{
+    const uint32_t default_capacity = 32U;
+
+    /* Each operator's SPSC ring is its connection mailbox — how many accepted-but-not-yet-
+     * dequeued clients it can hold before a dispatcher push is rejected outright (see
+     * worker_dispatch_to_operator). The prior hardcoded 8 was a teaching-project-era
+     * literal, never measured: tests/bench/ found it saturates fast under a burst of
+     * concurrent slow (argon2id) logins even with the effective_load fix above. 32 gives
+     * real headroom while staying a small, statically-sized, power-of-two allocation, per
+     * this project's established allocation style — resolved once here at boot, not
+     * re-read or resized per operator or at runtime. docs/DB_APP_MAINTENANCE.md's own
+     * caution was that a larger ring should follow correct load accounting, not substitute
+     * for it; this change ships both together, not the ring bump alone. */
+    const char* env = getenv("DB_SERVER_RING_CAPACITY");
+    if(env && env[0] != '\0')
+    {
+        char* end = NULL;
+        long  req = strtol(env, &end, 10);
+        if(end && *end == '\0' && req >= 8 && req <= 1024 && (req & (req - 1)) == 0)
+        {
+            EML_INFO(LOG_TAG, "DB_SERVER_RING_CAPACITY override: %ld", req);
+            return (uint32_t)req;
+        }
+        EML_WARN(LOG_TAG, "DB_SERVER_RING_CAPACITY='%s' invalid (want a power of two in 8..1024) — using default %u", env,
+                 (unsigned)default_capacity);
+    }
+    return default_capacity;
 }

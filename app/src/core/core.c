@@ -46,6 +46,7 @@
 
 #include <db_app.h>
 #include <db_server/core/config_core.h>
+#include <db_server/utils/affinity.h>
 #include <db_server/utils/socket_helper.h>
 
 /*****************************************************************************************************************************************
@@ -252,12 +253,19 @@ static void _core_logger_bootstrap(void)
 
 static uint8_t _core_detect_cpu_count(void)
 {
-    long cpus = sysconf(_SC_NPROCESSORS_ONLN);
+    /* srv_affinity_online_cpus() reads sched_getaffinity() (falling back to sysconf only if
+     * that fails) so this reflects what the process is actually ALLOWED to use — a cgroup,
+     * container, or systemd AllowedCPUs= restriction narrows this below the host's raw core
+     * count. Sizing the operator pool from raw sysconf() instead (the previous behavior)
+     * could spin up far more operators than legal CPUs, wrapping many threads onto the same
+     * real core (see docs/DB_APP_MAINTENANCE.md's CPU/NUMA review). Affinity pinning already
+     * used this effective set; sizing now agrees with it. */
+    long cpus = srv_affinity_online_cpus();
 
     EML_INFO(LOG_TAG, "Detected %ld CPU%s available", cpus, (cpus == 1) ? "" : "s");
     if(cpus < 1)
     {
-        EML_PERR(LOG_TAG, "sysconf(_SC_NPROCESSORS_ONLN) failed, defaulting to 1 CPU");
+        EML_PERR(LOG_TAG, "srv_affinity_online_cpus() failed, defaulting to 1 CPU");
         return 1;
     }
     if(cpus > 255)

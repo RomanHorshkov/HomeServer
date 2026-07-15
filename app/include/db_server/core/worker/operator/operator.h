@@ -117,6 +117,15 @@ typedef struct
      */
     atomic_uint active_clients;
 
+    /**
+     * @brief Queued-but-not-yet-dequeued clients count.
+     * Incremented by the dispatcher on a successful spsc_ring_push, decremented by this operator's
+     * own thread on spsc_ring_pop — combined with active_clients as the dispatcher's effective_load,
+     * so an operator whose ring is full is never mistaken for idle (active_clients alone doesn't see
+     * connections still sitting in the ring). atomic for the same load-balancing-visibility reason.
+     */
+    atomic_uint queued_clients;
+
 } operator_t;
 
 /*****************************************************************************************************************************************
@@ -129,11 +138,14 @@ typedef struct
  *
  * This function initializes the operator instance, setting up the necessary resources such as the reactor, mailbox, and client slots.
  *
- * @param op Pointer to operator_t structure to initialize.
- * @param id Stable operator identifier.
+ * @param op            Pointer to operator_t structure to initialize.
+ * @param id             Stable operator identifier.
+ * @param ring_capacity Mailbox (SPSC ring) capacity — resolved once at worker_init() time
+ *                       (see worker.c's DB_SERVER_RING_CAPACITY handling), not a per-operator
+ *                       choice; every operator gets the same value. Must be a power of two.
  * @return STATUS_SUCCESS on success, STATUS_FAILURE on error.
  */
-int operator_init(operator_t* op, uint8_t id);
+int operator_init(operator_t* op, uint8_t id, uint32_t ring_capacity);
 
 /**
  * @brief Ask a RUNNING operator thread to stop: set SHUTDOWN atomically and wake
