@@ -397,6 +397,17 @@ static int _operator_handle_timer_event(int fd, fd_ctx_t* ctx)
 
     if(socket_drain(fd) == -1)
     {
+        /* EAGAIN here is benign: the timerfd is level-triggered, so a read() can
+         * legitimately race an epoll_wait() readiness snapshot and find nothing left
+         * (e.g. another ready fd in the same batch was handled first and the interval
+         * hadn't re-armed yet). That is NOT an operator failure — treat it as "nothing
+         * to do this cycle" and keep going, instead of reporting reactor_run() failed
+         * and spamming the log once per timer period forever. A non-EAGAIN errno on a
+         * timerfd read (fd closed under us, bad fd, ...) is still a genuine error. */
+        if(errno == EAGAIN || errno == EWOULDBLOCK)
+        {
+            return STATUS_SUCCESS;
+        }
         EML_PERR(LOG_TAG, "[op %d] timer read failed", op->id);
         return STATUS_FAILURE;
     }
