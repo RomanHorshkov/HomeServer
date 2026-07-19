@@ -1,10 +1,16 @@
 {
+  "_SUPERSEDED": "OBSOLETE 2026-07-19 \u2014 this is a stale teaching-era API contract (note /api/whoami; the real path is /api/app/me). The AUTHORITATIVE contract is docs/API_CONTRACT.md at the repo root. Kept only for the legacy /build_notes page; do not treat as truth.",
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "id": "urn:roman:contract:manifest",
   "name": "HomeServer API Contract",
   "version": "2025-09-02.0",
   "endpoints": [
-    { "id": "whoami", "path": "/api/whoami", "method": "GET", "responseSchema": "schemas/whoami.response.json" },
+    {
+      "id": "whoami",
+      "path": "/api/whoami",
+      "method": "GET",
+      "responseSchema": "schemas/whoami.response.json"
+    },
     {
       "id": "database",
       "path": "/api/app/*",
