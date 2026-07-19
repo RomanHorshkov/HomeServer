@@ -106,6 +106,7 @@ LDLIBS=(
     -ldb_lmdb
     -luuid7
     -lsodium
+    -lz
     -lpthread
 )
 
