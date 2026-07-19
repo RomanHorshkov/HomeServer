@@ -40,10 +40,11 @@ typedef struct
  * O_NONBLOCK | FD_CLOEXEC, records it into @p out, and ALWAYS unsets the activation environment so no
  * child inherits it.
  *
- * @param[out] out  Filled with the adopted fds (fields default to -1). Untouched on the not-activated path.
+ * @param[out] out  REQUIRED (must be non-NULL). Filled with the adopted fds (fields default to -1);
+ *                  fields stay -1 on the not-activated path. A NULL @p out is a caller bug → -1.
  * @retval  1  Socket-activated: @p out->api_fd is a valid listening fd (upload_fd may be -1).
  * @retval  0  Not socket-activated (no/foreign LISTEN_FDS) — the caller should bind its own sockets.
- * @retval -1  Activated but malformed (missing "api", bad name/type, count mismatch) — fatal.
+ * @retval -1  NULL @p out, OR activated but malformed (missing "api", bad name/type, count mismatch) — fatal.
  */
 int sd_take_listen_fds(sd_listen_set_t* out);
 

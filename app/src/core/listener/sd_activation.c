@@ -79,11 +79,17 @@ static int _adopt_fd(int fd)
 
 int sd_take_listen_fds(sd_listen_set_t* out)
 {
-    if(out)
+    /* `out` is a REQUIRED output parameter (the whole point of the call). The body dereferences it
+     * unconditionally once activation is detected, so a NULL here would crash the process on the very
+     * path this function exists to serve — treat it as a fatal caller bug, fail closed, never deref
+     * NULL (external review R10). */
+    if(!out)
     {
-        out->api_fd    = -1;
-        out->upload_fd = -1;
+        EML_ERROR(LOG_TAG, "sd_take_listen_fds: NULL output set — caller bug");
+        return -1;
     }
+    out->api_fd    = -1;
+    out->upload_fd = -1;
 
     const char* s_pid   = getenv("LISTEN_PID");
     const char* s_fds   = getenv("LISTEN_FDS");
