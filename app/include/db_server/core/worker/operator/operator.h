@@ -9,6 +9,7 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#include <db_app/response/response.h>
 #include <db_server/core/config_core.h>
 #include <db_server/core/reactor.h>
 #include <db_server/core/worker/operator/client/client.h>
@@ -125,6 +126,16 @@ typedef struct
      * connections still sitting in the ring). atomic for the same load-balancing-visibility reason.
      */
     atomic_uint queued_clients;
+
+    /**
+     * @brief This operator's DB_app response arena (MEMORY_MODEL.md step 2). Bound once via
+     * db_app_response_arena_bind() in operator_thread(), right after this thread pins itself — so the
+     * arena's pages are first-touched (memset) from the pinned core, not the boot thread. Every
+     * db_app_response_reserve()/set_jsonf() call made while handling this operator's clients bump-
+     * allocates from here; DB_app owns the size contract (DB_APP_RESPONSE_ARENA_BYTES), this struct
+     * owns the storage.
+     */
+    uint8_t resp_arena[DB_APP_RESPONSE_ARENA_BYTES];
 
 } operator_t;
 

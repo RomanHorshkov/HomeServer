@@ -207,6 +207,12 @@ void* operator_thread(void* arg)
      * so it stays cache-hot and never migrates under load. Non-fatal. */
     srv_affinity_pin_self("operator", (int)op->id + 1);
 
+    /* First-touch the response arena from THIS pinned thread, not the boot thread that called
+     * operator_init() — MEMORY_MODEL.md §4.3. memset() is the actual touch that faults pages onto
+     * this core's NUMA node; arena_bind() just publishes the thread-local pointer/cap afterward. */
+    memset(op->resp_arena, 0, sizeof(op->resp_arena));
+    db_app_response_arena_bind(op->resp_arena, sizeof(op->resp_arena));
+
     EML_INFO(LOG_TAG, "[op %d] thread starting", op->id);
 
     /* Main loop */

@@ -31,6 +31,7 @@
 #include <DB_http/DB_http.h>
 #include <emlog.h>
 
+#include <db_app/response/response.h>
 #include <db_server/core/config_core.h>
 #include <db_server/core/worker/operator/client/client.h>
 #include <db_server/core/worker/operator/client/upload_pump.h>
@@ -154,6 +155,12 @@ static void* _worker_main(void* arg)
     static _Thread_local client_t cli;
     memset(&cli, 0, sizeof cli);
     cli.ctx.fd = -1;
+
+    /* This worker's own DB_app response arena (MEMORY_MODEL.md step 2) — client_upload_pump() builds
+     * response bodies on this thread just like an operator does, so it needs its own bound arena too.
+     * Bound once per worker thread, not per connection, mirroring the operator pool's arena_bind(). */
+    static _Thread_local uint8_t resp_arena[DB_APP_RESPONSE_ARENA_BYTES];
+    db_app_response_arena_bind(resp_arena, sizeof(resp_arena));
 
     DB_http_parser_t* parser = NULL;
     if(db_http_parser_init(&parser) != DB_http_status_OK ||
