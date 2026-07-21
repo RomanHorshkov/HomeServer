@@ -50,9 +50,25 @@ typedef enum
     OPERATOR_STATUS_FULL = 1 << 1,
 
     /**
+     * @brief Initializing: operator_init() finished on the boot thread (ring, reactor, timer, wakeup
+     * fd all live), but this operator's OWN thread hasn't started serving yet — it still has to pin
+     * itself and run its post-pin init (client parser allocation, response-arena first-touch,
+     * MEMORY_MODEL.md §4.3) before it can transition to ACTIVE. worker_run() waits for every operator
+     * to leave this state before declaring the worker pool up.
+     */
+    OPERATOR_STATUS_INITIALIZING = 1 << 2,
+
+    /**
      * @brief Shutdown: shutting down and cleaning up.
      */
     OPERATOR_STATUS_SHUTDOWN = 1 << 6,
+
+    /**
+     * @brief Init failed: this operator's own thread failed its post-pin init (see
+     * OPERATOR_STATUS_INITIALIZING) and returned without ever serving a client. worker_run() treats
+     * this exactly like a pthread_create() failure — the whole worker pool fails to start.
+     */
+    OPERATOR_STATUS_INIT_FAILED = 1 << 4,
 
     /**
      * @brief Invalid: max value for operator status.
@@ -96,6 +112,13 @@ typedef struct
      * @brief Timer fd for periodic housekeeping.
      */
     int timer_fd;
+
+    /**
+     * @brief Timer reactor context. A struct field (not heap-allocated), same as wakeup_ctx above —
+     * this used to be a calloc() in _operator_timer_init() that operator_shutdown() never freed (a
+     * real per-operator leak, caught by ASan/LeakSanitizer on the operator_lifecycle unit tests).
+     */
+    fd_ctx_t timer_ctx;
 
     /**
      * @brief Timer housekeeping frequency (seconds).

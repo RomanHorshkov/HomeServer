@@ -15,7 +15,6 @@
 #include <errno.h>
 #include <pthread.h>
 #include <stdint.h>
-#include <stdlib.h>
 #include <string.h>
 #include <sys/eventfd.h>
 #include <unistd.h>
@@ -169,15 +168,14 @@ int operator_init(operator_t* op, uint8_t id, uint32_t ring_capacity)
         goto fail;
     }
 
-    /* init each client's http parser; the stream gate (§9.4) lets POST /api/app/files bypass body buffering into the upload pump */
-    for(size_t cli_idx = 0; cli_idx < WORKER_MAX_CLIENTS; cli_idx++)
-    {
-        if(db_http_parser_init(&op->clients[cli_idx].http_parser) != DB_http_status_OK) goto fail;
-        if(db_http_parser_set_stream_gate(op->clients[cli_idx].http_parser, upload_stream_gate, NULL) != DB_http_status_OK) goto fail;
-    }
+    /* Client parser allocation (db_http_parser_init) is deliberately NOT done here. It used to run in
+     * this loop, on the BOOT thread — a real NUMA first-touch violation (MEMORY_MODEL.md §4.3): every
+     * write to op->clients[i].http_parser faults that page onto the boot thread's node, not this
+     * operator's eventual pinned node. It now runs in operator_thread(), right after this operator
+     * pins itself, and reports back via op->status (see OPERATOR_STATUS_INITIALIZING/_INIT_FAILED). */
 
-    /* Set operator status to ACTIVE */
-    op->status = OPERATOR_STATUS_ACTIVE;
+    /* Ring/reactor/timer/wakeup are live; the operator is ready for its own thread to finish setup. */
+    op->status = OPERATOR_STATUS_INITIALIZING;
 
     return STATUS_SUCCESS;
 
@@ -212,6 +210,43 @@ void* operator_thread(void* arg)
      * this core's NUMA node; arena_bind() just publishes the thread-local pointer/cap afterward. */
     memset(op->resp_arena, 0, sizeof(op->resp_arena));
     db_app_response_arena_bind(op->resp_arena, sizeof(op->resp_arena));
+
+    /* Client parser allocation — moved here from operator_init() (§4.3, same NUMA reasoning as the
+     * arena above): every db_http_parser_init() write to op->clients[i].http_parser now lands on
+     * THIS pinned thread's node instead of the boot thread's. The stream gate (§9.4) lets POST
+     * /api/app/files bypass body buffering into the upload pump. */
+    int init_failed = 0;
+    for(size_t cli_idx = 0; cli_idx < WORKER_MAX_CLIENTS; cli_idx++)
+    {
+        if(db_http_parser_init(&op->clients[cli_idx].http_parser) != DB_http_status_OK ||
+           db_http_parser_set_stream_gate(op->clients[cli_idx].http_parser, upload_stream_gate, NULL) != DB_http_status_OK)
+        {
+            EML_ERROR(LOG_TAG, "[op %d] thread: client %zu parser init failed", op->id, cli_idx);
+            init_failed = 1;
+            break;
+        }
+    }
+
+    /* Publish the outcome with a CAS, not a plain store: worker_run() (still on the boot thread) may
+     * have already given up waiting and asked every operator to shut down (operator_request_shutdown()
+     * — a plain atomic_store of SHUTDOWN) WHILE this loop was still running. A plain store here would
+     * silently clobber that SHUTDOWN back to ACTIVE/INIT_FAILED, the main loop below would start
+     * anyway, and worker_destroy()'s pthread_join() on this thread would hang forever waiting for a
+     * shutdown signal that already came and went. The CAS only succeeds if status is still
+     * INITIALIZING; on failure `expected` comes back as whatever it actually is (SHUTDOWN), and this
+     * thread honors that instead of overwriting it. */
+    operator_status_t expected = OPERATOR_STATUS_INITIALIZING;
+    operator_status_t target   = init_failed ? OPERATOR_STATUS_INIT_FAILED : OPERATOR_STATUS_ACTIVE;
+    if(!atomic_compare_exchange_strong(&op->status, &expected, target))
+    {
+        EML_INFO(LOG_TAG, "[op %d] thread: shutdown requested during init (status=%d) — exiting without serving", op->id,
+                 (int)expected);
+        return NULL;
+    }
+    if(init_failed)
+    {
+        return NULL;
+    }
 
     EML_INFO(LOG_TAG, "[op %d] thread starting", op->id);
 
@@ -589,19 +624,13 @@ static int _operator_timer_init(operator_t* op)
         return STATUS_FAILURE;
     }
 
-    /* Create timer context */
-    fd_ctx_t* timer_ctx = calloc(1, sizeof(*timer_ctx));
-    if(!timer_ctx)
-    {
-        EML_PERR(LOG_TAG, "[op %d] calloc timer_ctx failed", op->id);
-        goto fail;
-    }
-
-    /* Setup context */
-    timer_ctx->fd      = op->timer_fd;
-    timer_ctx->owner   = op;
-    timer_ctx->handler = _operator_handle_timer_event;
-    op->timer_period   = OPERATOR_TIMER_PERIOD_LONG;
+    /* Setup context — op->timer_ctx is a struct field (operator.h), not a heap allocation: it lives
+     * exactly as long as op itself, so there is nothing to free on any shutdown path. */
+    fd_ctx_t* timer_ctx = &op->timer_ctx;
+    timer_ctx->fd       = op->timer_fd;
+    timer_ctx->owner    = op;
+    timer_ctx->handler  = _operator_handle_timer_event;
+    op->timer_period    = OPERATOR_TIMER_PERIOD_LONG;
 
     /* Start timer with idle frequency */
     if(time_helper_set(op->timer_fd, op->timer_period /* [s] */, 0 /* [ns] */) == -1)
@@ -618,11 +647,10 @@ static int _operator_timer_init(operator_t* op)
 
     return STATUS_SUCCESS;
 
-fail:
-    close(op->timer_fd);
-    op->timer_fd = -1;
 fail_timer:
-    free(timer_ctx);
+    /* timer_ctx is op->timer_ctx now (a struct field) — nothing to free. op->timer_fd stays open
+     * here; operator_init()'s own failure path always routes through operator_shutdown(), which
+     * closes it (op->timer_fd != -1 still holds since we never touch it on this path). */
     return STATUS_FAILURE;
 }
 

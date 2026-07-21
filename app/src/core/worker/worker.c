@@ -20,6 +20,7 @@
 #include <pthread.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 
 #include <db_server/core/worker/operator/operator.h>
 #include <emlog.h>
@@ -32,6 +33,12 @@
 #define LOG_TAG                           "srv_worker"
 
 #define BLIND_ASSIGNMENT_LIMIT_PERCENTAGE (WORKER_MAX_CLIENTS) / (10U) /* 10% load */
+
+/* Bound on worker_run()'s wait for each operator's post-pin init (client parser alloc — a handful of
+ * mallocs, microseconds in practice). Generous on purpose: this only fires once, at startup, and
+ * exists to catch a genuinely stuck/failed thread, not to shave milliseconds off the happy path. */
+#define WORKER_OPERATOR_INIT_TIMEOUT_S    2U
+#define WORKER_OPERATOR_INIT_POLL_NS      1000000L /* 1ms */
 
 /*****************************************************************************************************************************************
  * PRIVATE ENUMERATED VARIABLES
@@ -185,10 +192,13 @@ int worker_init(uint8_t cpu_count)
             goto fail;
         }
 
-        /* Paranoia check */
-        if(_worker.operators[op_idx].status != OPERATOR_STATUS_ACTIVE)
+        /* Paranoia check. Not yet ACTIVE here by design (§4.3): each operator finishes its own
+         * post-pin init (client parser alloc, response-arena first-touch) on its own thread, once
+         * worker_run() starts it — this just confirms operator_init()'s boot-thread half (ring,
+         * reactor, timer, wakeup) actually landed in the state it claims to have. */
+        if(_worker.operators[op_idx].status != OPERATOR_STATUS_INITIALIZING)
         {
-            EML_ERROR(LOG_TAG, "init: operator %u not active, status %d", (unsigned)op_idx, _worker.operators[op_idx].status);
+            EML_ERROR(LOG_TAG, "init: operator %u not ready, status %d", (unsigned)op_idx, _worker.operators[op_idx].status);
             goto fail;
         }
     }
@@ -285,6 +295,43 @@ int worker_run(void)
     }
 
     _worker.threads_started = true;
+
+    /* Every operator thread now runs its own post-pin init (client parser alloc + response-arena
+     * first-touch, MEMORY_MODEL.md §4.3) before it's ready to serve. Wait here for each to report
+     * ACTIVE or INIT_FAILED — this is a one-time startup gate, not a steady-state poll, so a bounded
+     * wait costs nothing on the happy path and catches a genuinely stuck/failed thread on the bad one. */
+    for(uint8_t op_idx = 0; op_idx < _worker.operators_count; op_idx++)
+    {
+        struct timespec deadline;
+        clock_gettime(CLOCK_MONOTONIC, &deadline);
+        deadline.tv_sec += WORKER_OPERATOR_INIT_TIMEOUT_S;
+
+        operator_status_t st;
+        while((st = atomic_load(&_worker.operators[op_idx].status)) == OPERATOR_STATUS_INITIALIZING)
+        {
+            struct timespec now;
+            clock_gettime(CLOCK_MONOTONIC, &now);
+            if(now.tv_sec > deadline.tv_sec || (now.tv_sec == deadline.tv_sec && now.tv_nsec >= deadline.tv_nsec))
+            {
+                EML_ERROR(LOG_TAG, "operator %u: post-pin init timed out after %us", (unsigned)op_idx,
+                          (unsigned)WORKER_OPERATOR_INIT_TIMEOUT_S);
+                st = OPERATOR_STATUS_INIT_FAILED;
+                break;
+            }
+            struct timespec poll_interval = {.tv_sec = 0, .tv_nsec = WORKER_OPERATOR_INIT_POLL_NS};
+            nanosleep(&poll_interval, NULL);
+        }
+        if(st != OPERATOR_STATUS_ACTIVE)
+        {
+            EML_ERROR(LOG_TAG, "operator %u: post-pin init failed (status=%d) — tearing the worker pool down", (unsigned)op_idx,
+                      (int)st);
+            /* threads_started is already true: worker_destroy() will request-shutdown + join every
+             * operator (including any still mid-init, or not yet even started) before freeing. */
+            worker_destroy();
+            return STATUS_FAILURE;
+        }
+    }
+
     return STATUS_SUCCESS;
 }
 
