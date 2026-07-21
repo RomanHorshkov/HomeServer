@@ -79,10 +79,19 @@ int client_handle(client_t* cli, uint8_t thread_id)
             DB_http_status_t parse_status = db_http_parser_exec(cli->http_parser, cli->buf, new_bytes, &parsed_req);
 
             /* §9.4: the stream gate claimed this request at headers-complete — the upload pump owns the body from here.
-             * Uploads are one-shot: a response has been sent on every pump path, and the connection closes either way. */
+             * Uploads are one-shot: a response has been sent on every pump path, and the connection closes either way —
+             * forced here (not left to whatever the ORIGINAL request's Connection header said) so that decision is
+             * correct and visible to response_writer_resume() too, if this response's send ends up parking. */
             if(parse_status == DB_http_status_HeadersComplete_Stream)
             {
+                cli->connection_policy = (uint8_t)HTTP_CONNECTION_CLOSE;
                 (void)client_upload_pump(cli, thread_id, parsed_req);
+                if(cli->draining)
+                {
+                    /* Parked mid-send (response_writer.c) — response_writer_resume() closes once the drain
+                     * finishes; do NOT reset cli->buf/goto fail out from under it while it's still in flight. */
+                    return STATUS_SUCCESS;
+                }
                 goto fail; /* the fail label is also the clean-close path (see HTTP_CONNECTION_CLOSE below) */
             }
 
@@ -90,8 +99,13 @@ int client_handle(client_t* cli, uint8_t thread_id)
             {
                 EML_ERROR(LOG_TAG, "fd %d: HTTP parse failed with status %d", cli->ctx.fd, parse_status);
                 /* Terse answer on the wire (413 for an over-declared body, 400 for everything else — including rejected
-                 * pipelining and chunked bodies), loud detail above; connection closes. */
+                 * pipelining and chunked bodies), loud detail above; connection closes (response_writer_error() sets
+                 * that itself now, immediately or deferred to response_writer_resume() if this parks). */
                 (void)response_writer_error(cli, parse_status == DB_http_status_ContentTooLarge ? 413u : 400u);
+                if(cli->draining)
+                {
+                    return STATUS_SUCCESS;
+                }
                 goto fail;
             }
 
@@ -127,6 +141,13 @@ int client_handle(client_t* cli, uint8_t thread_id)
                 if(dispatch_rc != STATUS_SUCCESS)
                 {
                     goto fail;
+                }
+                if(cli->draining)
+                {
+                    /* response_writer.c parked this fd on EPOLLOUT (§9.2 end state) — it, not this
+                     * function, decides close-vs-keep-alive once the send actually finishes
+                     * (response_writer_resume()). Nothing else to do on this dispatch. */
+                    return STATUS_SUCCESS;
                 }
                 if(cli->connection_policy == (uint8_t)HTTP_CONNECTION_CLOSE)
                 {
@@ -280,6 +301,15 @@ static void _client_reset_message(client_t* cli, int clear_stored_request)
 
     cli->buf_idx = 0u;
     memset(cli->buf, 0, sizeof(cli->buf));
+
+    /* Defensive: normally already 0 by the time this runs (a client reaches client_handle()'s fail
+     * label only when NOT draining — the reactor dispatch routes a draining client to
+     * response_writer_resume() instead — and a graceful drain completion clears these itself). Reset
+     * here too so an abrupt disconnect mid-drain (EPOLLRDHUP/HUP/ERR -> client_shutdown() -> here)
+     * can never leave stale send state behind for the next connection this slot serves. */
+    cli->draining = 0u;
+    cli->send_off = 0u;
+    cli->send_len = 0u;
 
     if(clear_stored_request)
     {

@@ -1,11 +1,23 @@
 /**
  * @file response_writer.c
  *
- * @brief Response serialization into the client buffer + bounded send loop.
+ * @brief Response serialization into the client buffer + send, with EPOLLOUT parking (§9.2 end state).
  *
- * S2 note on the send path: partial writes and EAGAIN are handled with a bounded poll(POLLOUT) wait inside the operator thread. The full
- * EPOLLOUT re-arm (parking the unsent tail and resuming from the reactor) is the §9.2 end state and lands with the streaming slice — for
- * API-sized responses on localhost-proxied connections the bounded wait is correct and loud on timeout.
+ * A response is always fully serialized into cli->buf first. Sending it either finishes inside the same
+ * call, or — when the client's fd is reactor-managed and the kernel can't take the whole thing right now
+ * — parks: cli->draining is set, the unsent tail stays in cli->buf, the fd is re-armed for EPOLLOUT via
+ * the operator's own reactor, and control returns to the caller without blocking the operator thread.
+ * response_writer_resume() is what the reactor calls back into once EPOLLOUT actually fires.
+ *
+ * Close-vs-keep-alive is a DEFERRED decision everywhere a send might park: it is never made at the point
+ * a response is handed off, only once the send is known to be fully complete (either synchronously here,
+ * or later in response_writer_resume()). client_handle() honors this via cli->draining before it ever
+ * looks at cli->connection_policy.
+ *
+ * The upload-worker pool drives its clients with its own blocking poll() loop, not a reactor (cli->ctx.owner
+ * is NULL for those clients — nothing to park against, and blocking there is the documented design:
+ * upload_worker.c "Blocking the worker in the pump is fine — that is its whole job"). _try_send() falls
+ * back to the original bounded poll(POLLOUT) wait in that case, unchanged from before this file's rewrite.
  *
  * @author  Roman Horshkov <github.com/RomanHorshkov>
  * @date    jul 2026
@@ -20,11 +32,15 @@
 #include <poll.h>
 #include <stdio.h>
 #include <string.h>
+#include <sys/epoll.h>
 #include <unistd.h>
 
 #include <emlog.h>
 
+#include <db_server/core/reactor.h>
 #include <db_server/core/worker/operator/client/response_writer.h>
+#include <db_server/core/worker/operator/operator.h>
+#include <db_server/utils/time_helper.h>
 
 /*****************************************************************************************************************************************
  * PRIVATE DEFINES
@@ -32,8 +48,16 @@
  */
 #define LOG_TAG                  "srv_response"
 
-/** @brief Max milliseconds to wait for POLLOUT before dropping the client. */
+/** @brief Max milliseconds to wait for POLLOUT before dropping a NON-reactor-managed client (the
+ *         upload-worker pool's blocking fallback only — reactor-managed clients never block here). */
 #define RESPONSE_SEND_TIMEOUT_MS 5000
+
+/** @brief Event mask for a client fd while its response is fully drained and it's ready for the next
+ *         request — mirrors reactor_add_in_client()'s own mask exactly. */
+#define CLIENT_EVENTS_IN         (EPOLLIN | EPOLLRDHUP | EPOLLHUP | EPOLLERR)
+
+/** @brief Event mask for a client fd while a response is parked, waiting to finish sending. */
+#define CLIENT_EVENTS_OUT        (EPOLLOUT | EPOLLRDHUP | EPOLLHUP | EPOLLERR)
 
 /*****************************************************************************************************************************************
  * PRIVATE ENUMERATED TYPEDEFS
@@ -59,7 +83,8 @@
  */
 
 static const char* _reason_phrase(uint16_t status);
-static int         _send_all(client_t* cli, const char* data, size_t len);
+static int         _park(client_t* cli, size_t total_len);
+static int         _try_send(client_t* cli, size_t total_len);
 
 /*****************************************************************************************************************************************
  * PUBLIC FUNCTIONS DEFINITIONS
@@ -121,12 +146,46 @@ int response_writer_send(client_t* cli, const DB_app_response_t* res)
         off += res->body_len;
     }
 
-    return _send_all(cli, buf, off);
+    cli->send_off = 0u;
+    return _try_send(cli, off);
 
 too_large:
     EML_ERROR(LOG_TAG, "fd %d: response (status=%u body=%zu headers=%u) exceeds %zu B buffer — sending 500", cli->ctx.fd,
               (unsigned)res->status, res->body_len, (unsigned)res->header_count, cap);
     return response_writer_error(cli, 500u);
+}
+
+int response_writer_resume(client_t* cli)
+{
+    if(!cli || cli->ctx.fd < 0 || !cli->draining)
+    {
+        EML_ERROR(LOG_TAG, "resume: invalid state (fd=%d draining=%d)", cli ? cli->ctx.fd : -1, cli ? (int)cli->draining : -1);
+        return STATUS_FAILURE;
+    }
+
+    const size_t total_len = cli->send_len;
+    if(_try_send(cli, total_len) != STATUS_SUCCESS)
+    {
+        return STATUS_FAILURE; /* real write error — caller (operator.c) removes the client */
+    }
+    if(cli->draining)
+    {
+        return STATUS_SUCCESS; /* EAGAIN again — still parked, reactor stays armed for EPOLLOUT */
+    }
+
+    /* Fully sent. buf is free again — re-arm EPOLLIN for the next request BEFORE making the
+     * close-vs-keep-alive call this exchange deferred while draining. */
+    operator_t* op = (operator_t*)cli->ctx.owner;
+    if(!op || reactor_mod(&op->reactor, cli->ctx.fd, CLIENT_EVENTS_IN, &cli->ctx) != STATUS_SUCCESS)
+    {
+        EML_ERROR(LOG_TAG, "fd %d: reactor_mod back to EPOLLIN failed — dropping", cli->ctx.fd);
+        return STATUS_FAILURE;
+    }
+    if(cli->connection_policy == (uint8_t)HTTP_CONNECTION_CLOSE)
+    {
+        return STATUS_FAILURE; /* deliberate close, not an error — caller removes the client */
+    }
+    return STATUS_SUCCESS;
 }
 
 int response_writer_error(client_t* cli, uint16_t status)
@@ -137,7 +196,12 @@ int response_writer_error(client_t* cli, uint16_t status)
         return STATUS_FAILURE;
     }
 
-    /* Deliberate errors always close: the connection state is suspect. */
+    /* Deliberate errors always close: the connection state is suspect. Set the policy BEFORE sending
+     * so both the Connection header this response carries and the eventual close decision (immediate
+     * if this send completes synchronously below, deferred to response_writer_resume() if it parks)
+     * agree — there is exactly one place that decides "close", not two. */
+    cli->connection_policy = (uint8_t)HTTP_CONNECTION_CLOSE;
+
     static const char body_500[] = "{\"error\":\"server_error\"}";
     static const char body_404[] = "{\"error\":\"not_found\"}";
     static const char body_400[] = "{\"error\":\"bad_body\"}";
@@ -160,19 +224,20 @@ int response_writer_error(client_t* cli, uint16_t status)
     }
     const size_t body_len = strlen(body);
 
-    char head[256];
-    int  n = snprintf(head, sizeof(head),
-                      "HTTP/1.1 %u %s\r\nContent-Length: %zu\r\nContent-Type: application/json\r\nConnection: close\r\n\r\n%s",
-                      (unsigned)status, _reason_phrase(status), body_len, body);
-    if(n < 0 || (size_t)n >= sizeof(head))
+    /* Built into cli->buf, not a local stack array: if this parks, the bytes must survive past this
+     * function returning for response_writer_resume() to finish sending them later. */
+    char*        buf = cli->buf;
+    const size_t cap = sizeof(cli->buf);
+    int          n   = snprintf(buf, cap, "HTTP/1.1 %u %s\r\nContent-Length: %zu\r\nContent-Type: application/json\r\nConnection: close\r\n\r\n%s",
+                                (unsigned)status, _reason_phrase(status), body_len, body);
+    if(n < 0 || (size_t)n >= cap)
     {
-        EML_CRIT(LOG_TAG, "error: static error response over 256 B — impossible");
+        EML_CRIT(LOG_TAG, "error: static error response over %zu B — impossible", cap);
         return STATUS_FAILURE;
     }
 
-    (void)_send_all(cli, head, (size_t)n);
-    /* Regardless of send outcome the connection must drop. */
-    return STATUS_FAILURE;
+    cli->send_off = 0u;
+    return _try_send(cli, (size_t)n);
 }
 
 /*****************************************************************************************************************************************
@@ -181,17 +246,46 @@ int response_writer_error(client_t* cli, uint16_t status)
  */
 
 /**
- * @brief Send every byte, tolerating partial writes and bounded EAGAIN waits.
+ * @brief Register this fd for EPOLLOUT and mark it draining. Called only when a write returned EAGAIN
+ *        on a reactor-managed client (cli->ctx.owner is a live operator_t*).
  */
-static int _send_all(client_t* cli, const char* data, size_t len)
+static int _park(client_t* cli, size_t total_len)
 {
-    size_t sent = 0u;
-    while(sent < len)
+    operator_t* op = (operator_t*)cli->ctx.owner;
+    if(reactor_mod(&op->reactor, cli->ctx.fd, CLIENT_EVENTS_OUT, &cli->ctx) != STATUS_SUCCESS)
     {
-        ssize_t n = write(cli->ctx.fd, data + sent, len - sent);
+        EML_ERROR(LOG_TAG, "fd %d: reactor_mod to EPOLLOUT failed — dropping (%zu/%zu B sent)", cli->ctx.fd, cli->send_off, total_len);
+        cli->draining = 0u;
+        cli->send_off = 0u;
+        cli->send_len = 0u;
+        return STATUS_FAILURE;
+    }
+    cli->draining = 1u;
+    cli->send_len = total_len;
+    return STATUS_SUCCESS;
+}
+
+/**
+ * @brief Write cli->buf[cli->send_off, total_len) to the socket, continuing from wherever send_off
+ *        already is (0 for a fresh send, mid-way for a resume). Tolerates partial writes and EINTR.
+ *
+ * @retval STATUS_SUCCESS  every byte reached the kernel (drain state is cleared), OR the client is
+ *                         reactor-managed and this parked on EPOLLOUT (draining stays set) — the two
+ *                         are told apart by checking cli->draining after this returns.
+ * @retval STATUS_FAILURE  a real write error, or (non-reactor-managed clients only) the bounded
+ *                         poll(POLLOUT) wait timed out.
+ */
+static int _try_send(client_t* cli, size_t total_len)
+{
+    const int reactor_managed = (cli->ctx.owner != NULL);
+
+    while(cli->send_off < total_len)
+    {
+        ssize_t n = write(cli->ctx.fd, cli->buf + cli->send_off, total_len - cli->send_off);
         if(n > 0)
         {
-            sent += (size_t)n;
+            cli->send_off     += (size_t)n;
+            cli->last_activity = (uint64_t)time_helper_get_now(); /* real progress — not an idle client */
             continue;
         }
         if(n < 0 && errno == EINTR)
@@ -200,6 +294,11 @@ static int _send_all(client_t* cli, const char* data, size_t len)
         }
         if(n < 0 && errno == EAGAIN)
         {
+            if(reactor_managed)
+            {
+                return _park(cli, total_len);
+            }
+            /* upload-worker path: no reactor to park against — block, exactly as before this rewrite. */
             struct pollfd pfd = {.fd = cli->ctx.fd, .events = POLLOUT};
             int           pr  = poll(&pfd, 1, RESPONSE_SEND_TIMEOUT_MS);
             if(pr == 1 && (pfd.revents & POLLOUT))
@@ -207,12 +306,21 @@ static int _send_all(client_t* cli, const char* data, size_t len)
                 continue;
             }
             EML_ERROR(LOG_TAG, "fd %d: POLLOUT wait failed (pr=%d revents=0x%x) after %zu/%zu B", cli->ctx.fd, pr, (unsigned)pfd.revents,
-                      sent, len);
+                      cli->send_off, total_len);
+            cli->send_off = 0u;
             return STATUS_FAILURE;
         }
-        EML_PERR(LOG_TAG, "fd %d: write failed after %zu/%zu B", cli->ctx.fd, sent, len);
+        EML_PERR(LOG_TAG, "fd %d: write failed after %zu/%zu B", cli->ctx.fd, cli->send_off, total_len);
+        cli->draining = 0u;
+        cli->send_off = 0u;
+        cli->send_len = 0u;
         return STATUS_FAILURE;
     }
+
+    /* Fully sent. */
+    cli->draining = 0u;
+    cli->send_off = 0u;
+    cli->send_len = 0u;
     return STATUS_SUCCESS;
 }
 

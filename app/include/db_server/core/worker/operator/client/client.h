@@ -26,6 +26,16 @@ typedef struct
 
     DB_http_request_t http_request;         /**< last parser DTO snapshot; views point into buf */
     DB_http_parser_t* http_parser;          /**< per-connection HTTP parser state */
+
+    /**
+     * @brief EPOLLOUT parking state (response_writer.c, §9.2 end state). While draining, buf[send_off,
+     * send_len) still holds the unsent tail of the current response; this fd is registered for EPOLLOUT
+     * (not EPOLLIN) with the reactor, so nothing else touches buf until the drain finishes. All three
+     * are 0 outside of an in-progress partial send.
+     */
+    uint8_t draining;   /**< 1 while parked waiting for EPOLLOUT to finish a partial response send */
+    size_t  send_off;   /**< bytes of the current response already written to the socket */
+    size_t  send_len;   /**< total length of the current response (valid only while draining) */
 } client_t;
 
 /**

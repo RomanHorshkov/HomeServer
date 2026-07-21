@@ -23,6 +23,7 @@
 
 #include <db_server/core/reactor.h>
 #include <db_server/core/worker/operator/client/client.h>
+#include <db_server/core/worker/operator/client/response_writer.h>
 #include <db_server/core/worker/operator/client/upload_pump.h>
 #include <db_server/utils/affinity.h>
 
@@ -424,8 +425,11 @@ static int _operator_handle_client_event(int fd, fd_ctx_t* ctx)
         return STATUS_FAILURE;
     }
 
-    /* Handle the client */
-    if(client_handle(cli, op->id) != STATUS_SUCCESS)
+    /* A draining client is registered for EPOLLOUT, not EPOLLIN (response_writer.c's EPOLLOUT parking,
+     * §9.2 end state) — this event means "the socket can accept more bytes now", not "there's a new
+     * request to parse", so it resumes the parked send instead of calling client_handle(). */
+    int rc = cli->draining ? response_writer_resume(cli) : client_handle(cli, op->id);
+    if(rc != STATUS_SUCCESS)
     {
         _operator_remove_client_by_fd(op, cli->ctx.fd);
     }
