@@ -449,7 +449,7 @@ static int _operator_handle_timer_event(int fd, fd_ctx_t* ctx)
          * to do this cycle" and keep going, instead of reporting reactor_run() failed
          * and spamming the log once per timer period forever. A non-EAGAIN errno on a
          * timerfd read (fd closed under us, bad fd, ...) is still a genuine error. */
-        if(errno == EAGAIN || errno == EWOULDBLOCK)
+        if(errno == EAGAIN) /* == EWOULDBLOCK on Linux */
         {
             return STATUS_SUCCESS;
         }

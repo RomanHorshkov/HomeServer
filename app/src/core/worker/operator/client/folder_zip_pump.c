@@ -109,7 +109,7 @@ static int _write_all(int fd, const void* buf, size_t len)
         {
             continue;
         }
-        if(n < 0 && (errno == EAGAIN || errno == EWOULDBLOCK))
+        if(n < 0 && errno == EAGAIN) /* == EWOULDBLOCK on Linux */
         {
             struct pollfd pfd = {.fd = fd, .events = POLLOUT};
             if(poll(&pfd, 1, 30000) <= 0)
