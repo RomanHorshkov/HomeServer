@@ -1,0 +1,245 @@
+name: CI
+
+# DB_server had no working CI at all. The only workflow file that existed
+# (http_manager_it_tests.yml, removed by this same commit) built and ran a
+# CMake project under tests/IT/ that referenced
+# app/src/core/worker/operator/client/http_man/http_manager.c and
+# sanitizer.c — files that don't exist in this tree. That logic was
+# extracted into the separate DB_http repo at some point (which now owns
+# app/src/sanitizer.c and has its own real tests — see DB_http's own ci.yml)
+# and tests/IT/ was never updated or removed to match. It also only ran on
+# workflow_dispatch against master, so its breakage was invisible on every
+# normal push/PR anyway.
+#
+# This file is DB_server's first real build+test gate: checks out every
+# sibling it transitively needs (same "sibling-first" doctrine as DB_app's
+# ci.yml — DB_server links DB_app, DB_http, DB_lmdb, DB_jose, EMlog, and has
+# no sibling-first override for SPSCring/MPSCring/uuid7, so those three must
+# be actually INSTALLED — see utils/deps.sh), builds each from source in
+# dependency order, then builds DB_server itself (release + audit + package
+# via utils/run_pipeline.sh) and its own test suite (utils/build_tests.sh —
+# separate from run_pipeline.sh, which does NOT build or run tests/*_tests.c).
+#
+# tests/IT/'s dead CMake project is left in place (not deleted) — retiring
+# the broken CI wiring is this commit's job; whether to migrate it to test
+# DB_http instead or delete it outright is a call for whoever owns that
+# decision, not something to make silently here.
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-test:
+    name: Build siblings + DB_server, run full test pipeline
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout DB_server
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          path: DB_server
+          persist-credentials: false
+
+      # --- Siblings, checked out as PEERS of DB_server. All ten are private —
+      # SIBLING_REPOS_PAT (contents:read on all ten) must be set as a repo
+      # secret or every checkout below 404s; `|| secrets.GITHUB_TOKEN` only
+      # helps a sibling that is still public. ---
+      - name: Checkout DB_app (sibling — DB_server links its release build)
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          repository: RomanHorshkov/DB_app
+          path: DB_app
+          token: ${{ secrets.SIBLING_REPOS_PAT || secrets.GITHUB_TOKEN }}
+          persist-credentials: false
+
+      - name: Checkout DB_http (sibling — DB_server links its release build)
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          repository: RomanHorshkov/DB_http
+          path: DB_http
+          token: ${{ secrets.SIBLING_REPOS_PAT || secrets.GITHUB_TOKEN }}
+          persist-credentials: false
+
+      - name: Checkout DB_lmdb (sibling — DB_app and DB_server both link it)
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          repository: RomanHorshkov/DB_lmdb
+          path: DB_lmdb
+          token: ${{ secrets.SIBLING_REPOS_PAT || secrets.GITHUB_TOKEN }}
+          persist-credentials: false
+
+      - name: Checkout DB_jose (sibling — DB_app and DB_server both link it)
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          repository: RomanHorshkov/DB_jose
+          path: DB_jose
+          token: ${{ secrets.SIBLING_REPOS_PAT || secrets.GITHUB_TOKEN }}
+          persist-credentials: false
+
+      - name: Checkout EMlog (sibling — DB_app/DB_jose/DB_lmdb/DB_server all need it)
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          repository: RomanHorshkov/EMlog
+          path: EMlog
+          token: ${{ secrets.SIBLING_REPOS_PAT || secrets.GITHUB_TOKEN }}
+          persist-credentials: false
+
+      - name: Checkout uuid7 (sibling — DB_app/DB_lmdb/DB_server all need it)
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          repository: RomanHorshkov/uuid7
+          path: uuid7
+          token: ${{ secrets.SIBLING_REPOS_PAT || secrets.GITHUB_TOKEN }}
+          persist-credentials: false
+
+      - name: Checkout MPSCring (sibling — DB_app and DB_server both link it)
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          repository: RomanHorshkov/MPSCring
+          path: MPSCring
+          token: ${{ secrets.SIBLING_REPOS_PAT || secrets.GITHUB_TOKEN }}
+          persist-credentials: false
+
+      - name: Checkout SPSCring (sibling — DB_server links it directly)
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          repository: RomanHorshkov/SPSCring
+          path: SPSCring
+          token: ${{ secrets.SIBLING_REPOS_PAT || secrets.GITHUB_TOKEN }}
+          persist-credentials: false
+
+      - name: Checkout fs_util (sibling — DB_lmdb compiles its source directly)
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          repository: RomanHorshkov/fs_util
+          path: fs_util
+          token: ${{ secrets.SIBLING_REPOS_PAT || secrets.GITHUB_TOKEN }}
+          persist-credentials: false
+
+      - name: Checkout Utils (sibling — DB_jose and DB_app both include <utils/*.h>)
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          repository: RomanHorshkov/Utils
+          path: Utils
+          token: ${{ secrets.SIBLING_REPOS_PAT || secrets.GITHUB_TOKEN }}
+          persist-credentials: false
+
+      - name: Install apt dependencies
+        env: { DEBIAN_FRONTEND: noninteractive }
+        run: |
+          sudo apt-get -yqq update
+          sudo apt-get -yqq install \
+            build-essential pkg-config fakeroot \
+            liblmdb-dev libsodium-dev zlib1g-dev libcmocka-dev gcovr
+
+      # --- Build siblings in dependency order (mirrors DB_app's ci.yml) -----
+      - name: Build + install EMlog
+        run: |
+          cd EMlog
+          ./utils/build_deb.sh
+          sudo apt-get install -y ./build/debs/emlog_*.deb
+
+      - name: Build + install uuid7
+        run: |
+          cd uuid7
+          ./utils/build_deb.sh
+          sudo apt-get install -y ./build/debs/uuid7_*.deb
+
+      - name: Build + install MPSCring
+        run: |
+          cd MPSCring
+          ./utils/build_deb.sh
+          sudo apt-get install -y ./build/debs/mpscring_*.deb
+
+      - name: Build + install SPSCring
+        run: |
+          cd SPSCring
+          ./utils/build_deb.sh
+          sudo apt-get install -y ./build/debs/spscring_*.deb
+
+      - name: Build + install Utils (header-only debs)
+        run: |
+          cd Utils
+          ./compilation/build_deb.sh
+          sudo apt-get install -y ./build/debs/rh-util-*.deb
+
+      - name: ldconfig refresh
+        run: sudo ldconfig
+
+      - name: Build DB_jose (release) + stage its deb
+        run: |
+          cd DB_jose
+          ./utils/build_deb.sh
+
+      - name: Build DB_lmdb (release — needs fs_util/uuid7/EMlog as sibling source)
+        run: |
+          cd DB_lmdb
+          ./utils/build_libs.sh --profile release
+
+      - name: Build DB_http (release)
+        run: |
+          cd DB_http
+          ./utils/build_libs.sh release
+
+      - name: DB_app — build libraries, build+run tests
+        run: |
+          cd DB_app
+          ./utils/run_pipeline.sh build
+          ./utils/run_pipeline.sh build_tests
+          ./utils/run_pipeline.sh run_tests
+
+      - name: Upload DB_app test results
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: db_app-test-results
+          if-no-files-found: warn
+          path: |
+            DB_app/build/tests/results.tsv
+            DB_app/build/tests/**/*.log
+
+      # --- DB_server itself -------------------------------------------------
+      - name: DB_server — build + audit + package (utils/run_pipeline.sh)
+        run: |
+          cd DB_server
+          ./utils/run_pipeline.sh
+
+      # run_pipeline.sh does NOT build or run tests/*_tests.c — that's a
+      # separate step (matches tests/bench/DANGEROUS_FOR_THE_HOST_TESTS.sh's
+      # build_everything, which drives this same repo the same way).
+      - name: DB_server — build test suite (release)
+        run: |
+          cd DB_server
+          ./utils/build_tests.sh release
+
+      - name: DB_server — run test suite
+        run: |
+          cd DB_server
+          status=0
+          for bin in build/tests/release/*_tests; do
+            [[ -x "${bin}" ]] || continue
+            echo "::group::$(basename "${bin}")"
+            "${bin}" || status=1
+            echo "::endgroup::"
+          done
+          exit "${status}"
+
+      - name: Upload DB_server pipeline logs + package
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: db_server-pipeline
+          if-no-files-found: warn
+          path: |
+            DB_server/build/pipeline/**
+            DB_server/build/debs/*.deb
