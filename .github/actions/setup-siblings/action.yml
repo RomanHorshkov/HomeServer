@@ -1,0 +1,162 @@
+name: Setup DB_server siblings
+description: >
+  Checks out and builds/installs the nine sibling repos DB_server (and the
+  DB_app it links) transitively need, as peers of whatever repo already
+  occupies $GITHUB_WORKSPACE/DB_server. A composite action, not a reusable
+  workflow: this has to run as STEPS inside the calling job, not a separate
+  job on its own runner, because the whole point is leaving built libraries
+  and installed .debs on the SAME filesystem the calling job's later steps
+  (DB_app's pipeline, DB_server's own build) read from. Three of ci.yml's
+  jobs each call this once — that's real duplicated build time, not shared
+  state, since GitHub Actions jobs never share a filesystem without an
+  explicit artifact upload/download; a composite action only de-duplicates
+  the YAML, not the compute.
+
+runs:
+  using: composite
+  steps:
+    - name: Checkout DB_app (sibling — DB_server links its release build)
+      uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      with:
+        repository: RomanHorshkov/DB_app
+        path: DB_app
+        token: ${{ env.SIBLING_REPOS_TOKEN }}
+        persist-credentials: false
+
+    - name: Checkout DB_http (sibling — DB_server links its release build)
+      uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      with:
+        repository: RomanHorshkov/DB_http
+        path: DB_http
+        token: ${{ env.SIBLING_REPOS_TOKEN }}
+        persist-credentials: false
+
+    - name: Checkout DB_lmdb (sibling — DB_app and DB_server both link it)
+      uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      with:
+        repository: RomanHorshkov/DB_lmdb
+        path: DB_lmdb
+        token: ${{ env.SIBLING_REPOS_TOKEN }}
+        persist-credentials: false
+
+    - name: Checkout DB_jose (sibling — DB_app and DB_server both link it)
+      uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      with:
+        repository: RomanHorshkov/DB_jose
+        path: DB_jose
+        token: ${{ env.SIBLING_REPOS_TOKEN }}
+        persist-credentials: false
+
+    - name: Checkout EMlog (sibling — DB_app/DB_jose/DB_lmdb/DB_server all need it)
+      uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      with:
+        repository: RomanHorshkov/EMlog
+        path: EMlog
+        token: ${{ env.SIBLING_REPOS_TOKEN }}
+        persist-credentials: false
+
+    - name: Checkout uuid7 (sibling — DB_app/DB_lmdb/DB_server all need it)
+      uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      with:
+        repository: RomanHorshkov/uuid7
+        path: uuid7
+        token: ${{ env.SIBLING_REPOS_TOKEN }}
+        persist-credentials: false
+
+    - name: Checkout MPSCring (sibling — DB_app and DB_server both link it)
+      uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      with:
+        repository: RomanHorshkov/MPSCring
+        path: MPSCring
+        token: ${{ env.SIBLING_REPOS_TOKEN }}
+        persist-credentials: false
+
+    - name: Checkout SPSCring (sibling — DB_server links it directly)
+      uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      with:
+        repository: RomanHorshkov/SPSCring
+        path: SPSCring
+        token: ${{ env.SIBLING_REPOS_TOKEN }}
+        persist-credentials: false
+
+    - name: Checkout fs_util (sibling — DB_lmdb compiles its source directly)
+      uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      with:
+        repository: RomanHorshkov/fs_util
+        path: fs_util
+        token: ${{ env.SIBLING_REPOS_TOKEN }}
+        persist-credentials: false
+
+    - name: Checkout Utils (sibling — DB_jose and DB_app both include <utils/*.h>)
+      uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      with:
+        repository: RomanHorshkov/Utils
+        path: Utils
+        token: ${{ env.SIBLING_REPOS_TOKEN }}
+        persist-credentials: false
+
+    - name: Install apt dependencies
+      shell: bash
+      env: { DEBIAN_FRONTEND: noninteractive }
+      run: |
+        sudo apt-get -yqq update
+        sudo apt-get -yqq install \
+          build-essential pkg-config fakeroot \
+          liblmdb-dev libsodium-dev zlib1g-dev libcmocka-dev gcovr
+
+    - name: Build + install EMlog
+      shell: bash
+      run: |
+        cd EMlog
+        ./utils/build_deb.sh
+        sudo apt-get install -y ./build/debs/emlog_*.deb
+
+    - name: Build + install uuid7
+      shell: bash
+      run: |
+        cd uuid7
+        ./utils/build_deb.sh
+        sudo apt-get install -y ./build/debs/uuid7_*.deb
+
+    - name: Build + install MPSCring
+      shell: bash
+      run: |
+        cd MPSCring
+        ./utils/build_deb.sh
+        sudo apt-get install -y ./build/debs/mpscring_*.deb
+
+    - name: Build + install SPSCring
+      shell: bash
+      run: |
+        cd SPSCring
+        ./utils/build_deb.sh
+        sudo apt-get install -y ./build/debs/spscring_*.deb
+
+    - name: Build + install Utils (header-only debs)
+      shell: bash
+      run: |
+        cd Utils
+        ./compilation/build_deb.sh
+        sudo apt-get install -y ./build/debs/rh-util-*.deb
+
+    - name: ldconfig refresh
+      shell: bash
+      run: sudo ldconfig
+
+    - name: Build DB_jose (release) + stage its deb
+      shell: bash
+      run: |
+        cd DB_jose
+        ./utils/build_deb.sh
+
+    - name: Build DB_lmdb (release — needs fs_util/uuid7/EMlog as sibling source)
+      shell: bash
+      run: |
+        cd DB_lmdb
+        ./utils/build_libs.sh --profile release
+
+    - name: Build DB_http (release)
+      shell: bash
+      run: |
+        cd DB_http
+        ./utils/build_libs.sh release
